@@ -163,7 +163,8 @@ struct IRISApp: App {
         await Advisor.shared.start(modelContainer: modelContainer, onCost: costSink)
 
         // 11. Witness v1.5.A — observe NSWorkspace frontmost app (debounce 10s)
-        await Witness.shared.start(modelContainer: modelContainer)
+        // v1.111 — onCost wired pour vision calls (Phase A)
+        await Witness.shared.start(modelContainer: modelContainer, onCost: costSink)
 
         // 12. v1.67 — BackupScheduler : auto-backup JSON 24h (opt-in via Settings)
         await BackupScheduler.shared.start(modelContainer: modelContainer)

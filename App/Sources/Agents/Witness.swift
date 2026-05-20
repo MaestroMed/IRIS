@@ -20,13 +20,15 @@ public actor Witness {
     private weak var modelContainer: ModelContainer?
     private var lastFrontmostBundleId: String?
     private var lastFrontmostAt: Date = .distantPast
+    private var onCost: CostSink?  // v1.111 — cost wiring vision
     private let debounceSeconds: TimeInterval = 10
     private let pollInterval: UInt64 = 5  // seconds
 
     private init() {}
 
-    public func start(modelContainer: ModelContainer) async {
+    public func start(modelContainer: ModelContainer, onCost: @escaping CostSink = { _, _ in }) async {
         self.modelContainer = modelContainer
+        self.onCost = onCost
         guard timerTask == nil else { return }
 
         timerTask = Task { [weak self] in
@@ -104,6 +106,15 @@ public actor Witness {
             return
         }
 
+        // v1.111 — Cost guardrail : check max calls/day
+        let used = Self.visionCallsToday
+        let limit = Self.maxVisionCallsPerDay
+        guard used < limit else {
+            irisLog(.warning, "Witness vision skip — daily quota exhausted (\(used)/\(limit))",
+                    category: IRISLogger.agents)
+            return
+        }
+
         guard let pngData = await Self.fetchFrontmostWindowPNG() else {
             irisLog(.warning, "Witness vision skip — screenshot returned nil (TCC denied?)",
                     category: IRISLogger.agents)
@@ -141,8 +152,13 @@ public actor Witness {
                 }
             }
 
+            // v1.111 — Cost wiring + daily counter increment
+            let cost = response.usage.estimatedCostUSD(model: visionModel)
+            onCost?(cost, visionModel.rawValue)
+            Self.incrementVisionCallsToday()
+
             irisLog(.info,
-                "Witness vision OK — \(description.prefix(80)) (input=\(response.usage.inputTokens) out=\(response.usage.outputTokens))",
+                "Witness vision OK — \(description.prefix(80)) (input=\(response.usage.inputTokens) out=\(response.usage.outputTokens) cost=$\(String(format: "%.5f", cost)) today=\(Self.visionCallsToday)/\(Self.maxVisionCallsPerDay))",
                 category: IRISLogger.agents
             )
         } catch {
@@ -252,6 +268,44 @@ public actor Witness {
 
     public static func setVisionModel(_ model: ClaudeModel) {
         UserDefaults.standard.set(model.rawValue, forKey: visionModelKey)
+    }
+
+    // MARK: — v1.111 Vision cost guardrail (max calls/day)
+
+    private static let maxVisionCallsPerDayKey = "iris.witness.visionMaxCallsPerDay"
+    private static let visionCallsTodayKey = "iris.witness.visionCallsToday"
+    private static let visionCallsDayStampKey = "iris.witness.visionCallsDayStamp"  // "yyyy-MM-dd"
+
+    public static var maxVisionCallsPerDay: Int {
+        let raw = UserDefaults.standard.integer(forKey: maxVisionCallsPerDayKey)
+        return raw > 0 ? raw : 100  // default 100/day (~$0.20 avec Haiku 4.5)
+    }
+
+    public static func setMaxVisionCallsPerDay(_ value: Int) {
+        UserDefaults.standard.set(max(1, min(1000, value)), forKey: maxVisionCallsPerDayKey)
+    }
+
+    /// Compteur du jour. Reset auto si day stamp != today.
+    public static var visionCallsToday: Int {
+        let today = currentDayStamp()
+        let stamp = UserDefaults.standard.string(forKey: visionCallsDayStampKey) ?? ""
+        if stamp != today {
+            UserDefaults.standard.set(today, forKey: visionCallsDayStampKey)
+            UserDefaults.standard.set(0, forKey: visionCallsTodayKey)
+            return 0
+        }
+        return UserDefaults.standard.integer(forKey: visionCallsTodayKey)
+    }
+
+    private static func incrementVisionCallsToday() {
+        let current = visionCallsToday  // auto-resets si new day
+        UserDefaults.standard.set(current + 1, forKey: visionCallsTodayKey)
+    }
+
+    private static func currentDayStamp() -> String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return f.string(from: Date())
     }
 
     /// Bundle IDs courants suggérés à blocker (apps sensibles).

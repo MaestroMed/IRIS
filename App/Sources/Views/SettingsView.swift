@@ -230,6 +230,7 @@ struct SettingsView: View {
     @State private var quillModelSelection: String = ""
     @State private var advisorModelSelection: String = ""
     @State private var witnessVisionModel: String = ""  // v1.110
+    @State private var witnessVisionMaxPerDay: Double = 100  // v1.111
     @State private var conductorMaxTokens: Double = 2048  // v1.61
     @State private var costLimitUSD: Double = 1.0          // v1.72
     @State private var auditorMonthlyAuto: Bool = false    // v1.93
@@ -300,6 +301,25 @@ struct SettingsView: View {
                         Quill.setModel(model)
                     }
                 }
+            }
+            .padding(.leading, IRISTokens.spacing16)
+
+            // v1.111 — Witness vision daily quota
+            HStack {
+                Text("Witness vision quota /jour")
+                    .font(.system(size: 11))
+                Slider(value: $witnessVisionMaxPerDay, in: 10...500, step: 10)
+                    .frame(maxWidth: 200)
+                Text("\(Int(witnessVisionMaxPerDay))")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 50, alignment: .trailing)
+                    .onChange(of: witnessVisionMaxPerDay) { _, newValue in
+                        Witness.setMaxVisionCallsPerDay(Int(newValue))
+                    }
+                Text("(used \(Witness.visionCallsToday))")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.secondary)
             }
             .padding(.leading, IRISTokens.spacing16)
 
@@ -453,6 +473,7 @@ struct SettingsView: View {
             quillModelSelection = Quill.currentModel.rawValue
             advisorModelSelection = Advisor.currentModel.rawValue
             witnessVisionModel = Witness.currentVisionModel.rawValue  // v1.110
+            witnessVisionMaxPerDay = Double(Witness.maxVisionCallsPerDay)  // v1.111
             conductorMaxTokens = Double(Conductor.currentMaxTokens)  // v1.61
             conductorHistoryPairs = Double(Conductor.currentMaxHistoryPairs)  // v1.106
             costLimitUSD = IRISAppState.costLimitUSD                     // v1.72
