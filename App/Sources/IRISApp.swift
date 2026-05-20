@@ -54,6 +54,9 @@ struct IRISApp: App {
 
     @MainActor
     private func bootstrap() async {
+        // 0. Sentry first — capture les erreurs des étapes suivantes.
+        IRISSentry.start()
+
         // 1. Seed agents si nécessaire
         let context = modelContainer.mainContext
         AgentSeeder.seedIfNeeded(in: context)

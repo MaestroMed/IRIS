@@ -16,8 +16,8 @@ let appTarget: Target = .target(
     deploymentTargets: .macOS("26.0"),
     infoPlist: .extendingDefault(with: [
         "CFBundleDisplayName": "IRIS",
-        "CFBundleShortVersionString": "0.0.1",
-        "CFBundleVersion": "1",
+        "CFBundleShortVersionString": "1.0.0",
+        "CFBundleVersion": "15",
         "LSApplicationCategoryType": "public.app-category.productivity",
         "ITSAppUsesNonExemptEncryption": false,
         // v0.0.1 — minimal. Permissions Screen Recording + Camera viendront en v1.5+ (Witness).
@@ -27,11 +27,8 @@ let appTarget: Target = .target(
     resources: ["App/Resources/**"],
     entitlements: .file(path: "App/IRIS.entitlements"),
     dependencies: [
-        // v0.0.1 — zéro dependencies externes. Ajout au fil des phases :
-        // v0.1 : swift-anthropic OU wrapper REST Claude Opus
-        // v0.2 : NaturalLanguage (système, pas externe)
-        // v0.3 : Process spawn pour MCP servers (système)
-        // v1.0 : Sentry (cohérence MIND)
+        // v1.0.B : Sentry SDK error tracking + performance + breadcrumbs (cohérence MIND iOS).
+        .external(name: "Sentry"),
     ],
     settings: .settings(base: [
         "SWIFT_VERSION": "6.0",

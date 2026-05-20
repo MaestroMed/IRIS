@@ -12,8 +12,8 @@ let packageSettings = PackageSettings(
 let package = Package(
     name: "IRIS",
     dependencies: [
-        // v0.0.1 — aucune dépendance externe.
-        // Phases suivantes :
-        // .package(url: "https://github.com/getsentry/sentry-cocoa", from: "8.0.0"),     // v1.0
+        // v1.0.B — Sentry SDK pour error tracking + performance (cohérence MIND iOS).
+        // Init conditionnel : si DSN absent (env var SENTRY_DSN ou Keychain), skip init.
+        .package(url: "https://github.com/getsentry/sentry-cocoa", from: "8.40.0"),
     ]
 )

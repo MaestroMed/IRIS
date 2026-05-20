@@ -49,7 +49,7 @@ jobs:
             -configuration Debug \
             build | tail -50
 
-      - name: xcodebuild test (IRISTests)
+      - name: xcodebuild test (IRISTests) — STRICT (v1.0+)
         run: |
           set -o pipefail
           xcodebuild \
@@ -57,8 +57,7 @@ jobs:
             -scheme IRIS \
             -destination 'platform=macOS' \
             -configuration Debug \
-            test | tail -80
-        continue-on-error: true  # v0.0.x : tests peuvent être en placeholder. Strict à partir de v0.1.
+            test | tail -120
 
   lint:
     name: Markdown lint (docs)
