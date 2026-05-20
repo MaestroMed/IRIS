@@ -114,18 +114,49 @@ struct DashboardView: View {
     private var signalsCard: some View {
         let oneDayAgo = Date().addingTimeInterval(-86400)
         let signals24h = allSignals.filter { $0.emittedAt >= oneDayAgo }
+        // v1.75 — Sparkline 24 buckets horaires
+        let buckets = Self.hourlyBuckets(signals: signals24h)
         return dashboardCard(title: "Signals 24h", count: signals24h.count, icon: "eye.circle", color: IRISTokens.aquaTint) {
             let groups = Dictionary(grouping: signals24h, by: \.source)
             let breakdown = groups.map { ($0.key, $0.value.count) }
                 .sorted { $0.1 > $1.1 }
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 6) {
                 if breakdown.isEmpty {
                     Text("Aucun signal sur 24h.")
                         .font(.system(size: 10)).foregroundStyle(.secondary)
                 } else {
+                    sparkline(buckets: buckets)
+                        .frame(height: 32)
                     ForEach(breakdown.prefix(5), id: \.0) { item in
                         statBar(label: item.0, value: item.1, total: signals24h.count, color: IRISTokens.aquaTint)
                     }
+                }
+            }
+        }
+    }
+
+    // v1.75 — Sparkline helpers
+    private static func hourlyBuckets(signals: [Signal]) -> [Int] {
+        var buckets = Array(repeating: 0, count: 24)
+        let now = Date()
+        for s in signals {
+            let elapsedHours = Int(now.timeIntervalSince(s.emittedAt) / 3600)
+            guard elapsedHours >= 0 && elapsedHours < 24 else { continue }
+            let bucketIdx = 23 - elapsedHours  // 0 = il y a 24h, 23 = maintenant
+            buckets[bucketIdx] += 1
+        }
+        return buckets
+    }
+
+    private func sparkline(buckets: [Int]) -> some View {
+        let maxVal = max(1, buckets.max() ?? 1)
+        return GeometryReader { geo in
+            HStack(alignment: .bottom, spacing: 1) {
+                ForEach(Array(buckets.enumerated()), id: \.offset) { _, count in
+                    let ratio = CGFloat(count) / CGFloat(maxVal)
+                    Rectangle()
+                        .fill(IRISTokens.aquaTint.opacity(count > 0 ? 0.7 : 0.15))
+                        .frame(height: max(2, geo.size.height * ratio))
                 }
             }
         }
