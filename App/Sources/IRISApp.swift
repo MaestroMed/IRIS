@@ -65,13 +65,23 @@ struct IRISApp: App {
         }
 
         // 3. Conductor démarre + écoute userInput
-        await Conductor.shared.start { @Sendable cost in
+        let costSink: @Sendable (Double) -> Void = { cost in
             Task { @MainActor in
                 appState.sessionCostUSD += cost
             }
         }
+        await Conductor.shared.start(onCost: costSink)
 
-        irisLog(.info, "IRIS bootstrapped — agents seeded + Conductor live", category: IRISLogger.ui)
+        // 4. Quill démarre — listen signaux importance ≥ 4, drafte via Sonnet
+        await Quill.shared.start(modelContainer: modelContainer, onCost: costSink)
+
+        // 5. Envoy démarre — listen draftReady, propose actionRequested + executeApproved
+        await Envoy.shared.start(modelContainer: modelContainer)
+
+        // 6. Sentinel démarre — stub signaux fictifs toutes les 60s (v0.3.5+ : vrai MCP Gmail)
+        await Sentinel.shared.start(modelContainer: modelContainer, intervalSeconds: 60)
+
+        irisLog(.info, "IRIS bootstrapped — Conductor + Quill + Envoy + Sentinel live", category: IRISLogger.ui)
     }
 }
 
@@ -163,6 +173,47 @@ final class EventBusBridge {
                 content: "[\(level.rawValue)] \(message) (\(file):\(line))"
             ))
             persist(event, payload: ["level": level.rawValue, "message": message, "file": file, "line": "\(line)"])
+
+        case .draftReady(let draftId, _, let channel, let summary):
+            appState.appendEntry(TranscriptEntry(
+                role: .agent(.quill),
+                content: "📝 Draft \(channel) : \(summary)"
+            ))
+            persist(event, payload: ["draftId": draftId.uuidString, "channel": channel, "summary": summary], from: AgentID.quill.rawValue)
+
+        case .actionRequested(let actionId, let agent, let summary, let isReversible):
+            let banner = isReversible ? "" : " (irréversible)"
+            appState.pendingActions.append(PendingActionUI(
+                actionId: actionId,
+                agentName: agent.descriptor.displayName,
+                summary: summary,
+                isReversible: isReversible
+            ))
+            appState.appendEntry(TranscriptEntry(
+                role: .system(level: "notice"),
+                content: "✋ Action proposée par \(agent.rawValue)\(banner) : \(summary). Approve dans l'Inspector."
+            ))
+            persist(event, payload: ["actionId": actionId.uuidString, "summary": summary, "reversible": "\(isReversible)"], from: agent.rawValue)
+
+        case .actionApproved(let actionId, let approvedAt):
+            appState.pendingActions.removeAll { $0.actionId == actionId }
+            persist(event, payload: ["actionId": actionId.uuidString, "at": "\(approvedAt)"])
+
+        case .actionRejected(let actionId, let reason):
+            appState.pendingActions.removeAll { $0.actionId == actionId }
+            appState.appendEntry(TranscriptEntry(
+                role: .system(level: "notice"),
+                content: "❌ Action \(actionId.uuidString.prefix(8)) rejetée. Raison : \(reason ?? "—")"
+            ))
+            persist(event, payload: ["actionId": actionId.uuidString, "reason": reason ?? ""])
+
+        case .actionExecuted(let actionId, let success, let result):
+            let icon = success ? "✅" : "⚠️"
+            appState.appendEntry(TranscriptEntry(
+                role: .agent(.envoy),
+                content: "\(icon) Action exécutée \(actionId.uuidString.prefix(8)) : \(result)"
+            ))
+            persist(event, payload: ["actionId": actionId.uuidString, "success": "\(success)", "result": result], from: AgentID.envoy.rawValue)
         }
     }
 
@@ -182,6 +233,11 @@ final class EventBusBridge {
             case .actionLogged: return "actionLogged"
             case .agentFailure: return "agentFailure"
             case .systemLog: return "systemLog"
+            case .draftReady: return "draftReady"
+            case .actionRequested: return "actionRequested"
+            case .actionApproved: return "actionApproved"
+            case .actionRejected: return "actionRejected"
+            case .actionExecuted: return "actionExecuted"
             }
         }()
 

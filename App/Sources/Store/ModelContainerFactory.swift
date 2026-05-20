@@ -12,6 +12,7 @@ public enum ModelContainerFactory {
         Memory.self,
         Signal.self,
         ProjectRecord.self,
+        Draft.self,
     ])
 
     /// Container persistent local (file-backed). Utilisé par l'app en production.

@@ -49,6 +49,21 @@ public enum IRISEvent: Sendable {
     /// Log interne (mirroring os_log). file/line aident le triage côté UI Inspector.
     case systemLog(level: LogLevel, message: String, file: String, line: Int)
 
+    /// Quill a produit un draft prêt à review (v0.4).
+    case draftReady(draftId: UUID, signalId: UUID?, channel: String, summary: String)
+
+    /// Envoy demande une approbation user pour exécuter une action (v0.5).
+    case actionRequested(actionId: UUID, agent: AgentID, summary: String, isReversible: Bool)
+
+    /// User a approuvé une action (depuis UI ou modal natif).
+    case actionApproved(actionId: UUID, approvedAt: Date)
+
+    /// User a rejeté une action (raison optionnelle).
+    case actionRejected(actionId: UUID, reason: String?)
+
+    /// Envoy a exécuté une action (succès ou échec via result).
+    case actionExecuted(actionId: UUID, success: Bool, result: String)
+
     /// Niveaux alignés sur os.Logger (cf Apple `OSLogType`).
     public enum LogLevel: String, Sendable, Codable {
         case debug, info, notice, warning, error, fault

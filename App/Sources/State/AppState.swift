@@ -34,6 +34,9 @@ public final class IRISAppState {
     /// Coût cumulé session (USD estimé via AnthropicClient usage tokens).
     public var sessionCostUSD: Double = 0
 
+    /// Actions en attente d'approbation user (proposées par Envoy après draftReady).
+    public var pendingActions: [PendingActionUI] = []
+
     /// Convenience : extrait l'AgentID si la sélection est un agent.
     public var selectedAgent: AgentID? {
         if case let .agent(id) = selection { return id }
@@ -61,6 +64,24 @@ public final class IRISAppState {
 
     public func refreshKeyPresence() {
         hasAnthropicKey = IRISKeychain.shared.hasAnthropicAPIKey()
+    }
+}
+
+/// Action en attente d'approbation user (UI ↔ Envoy bridge).
+public struct PendingActionUI: Identifiable, Sendable, Hashable {
+    public var id: UUID { actionId }
+    public let actionId: UUID
+    public let agentName: String
+    public let summary: String
+    public let isReversible: Bool
+    public let createdAt: Date
+
+    public init(actionId: UUID, agentName: String, summary: String, isReversible: Bool, createdAt: Date = .now) {
+        self.actionId = actionId
+        self.agentName = agentName
+        self.summary = summary
+        self.isReversible = isReversible
+        self.createdAt = createdAt
     }
 }
 
