@@ -27,6 +27,8 @@ struct InspectorView: View {
     @State private var expandedAuditIds: Set<UUID> = []  // v1.62
     @State private var editingDraftId: UUID? = nil       // v1.63
     @State private var draftEditBuffer: String = ""
+    @State private var draftStatusFilter: String = ""    // v1.78
+    @State private var projectStatusFilter: String = ""  // v1.79
 
     var body: some View {
         ScrollView {
@@ -220,24 +222,46 @@ struct InspectorView: View {
     // MARK: — Cartographer
 
     private var cartographerSection: some View {
-        VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
-            sectionHeader("Cartographer", count: allProjects.count, accent: IRISTokens.irisAccent, pinnable: .cartographer)
+        // v1.79 — filter status
+        let availableStatuses = Array(Set(allProjects.map(\.status))).sorted()
+        let filtered = projectStatusFilter.isEmpty
+            ? Array(allProjects)
+            : allProjects.filter { $0.status == projectStatusFilter }
+        let limited = Array(filtered.prefix(8))
+        return VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
+            sectionHeader("Cartographer", count: filtered.count, accent: IRISTokens.irisAccent, pinnable: .cartographer)
 
-            Button {
-                Task { await Cartographer.shared.refresh() }
-            } label: {
-                Label("Refresh now", systemImage: "arrow.clockwise")
-                    .font(.system(size: 11))
+            HStack {
+                Button {
+                    Task { await Cartographer.shared.refresh() }
+                } label: {
+                    Label("Refresh now", systemImage: "arrow.clockwise")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+
+                Spacer()
+
+                if !availableStatuses.isEmpty {
+                    Picker("", selection: $projectStatusFilter) {
+                        Text("all").tag("")
+                        ForEach(availableStatuses, id: \.self) { s in
+                            Text(s).tag(s)
+                        }
+                    }
+                    .labelsHidden()
+                    .controlSize(.mini)
+                    .frame(maxWidth: 100)
+                }
             }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
 
-            ForEach(Array(allProjects.prefix(8))) { project in
+            ForEach(limited) { project in
                 projectRow(project)
             }
 
-            if allProjects.count > 8 {
-                Text("… +\(allProjects.count - 8) autres")
+            if filtered.count > 8 {
+                Text("… +\(filtered.count - 8) autres")
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
             }
@@ -402,6 +426,17 @@ struct InspectorView: View {
                     Text("cost: $\(String(format: "%.4f", audit.costUSD))")
                     Text("\(Int(audit.durationSeconds))s")
                     Spacer()
+                    // v1.77 — Rerun audit (re-execute Auditor sur même projet)
+                    Button {
+                        let codename = audit.projectCodename
+                        Task { await Auditor.shared.auditProject(codename: codename) }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 10))
+                            .foregroundStyle(IRISTokens.aquaTint)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Re-audit ce projet (re-run Auditor)")
                     // v1.73 — Copy markdown
                     Button {
                         let md = Self.formatAuditAsMarkdown(audit)
@@ -725,11 +760,31 @@ struct InspectorView: View {
     // MARK: — Drafts + Signals
 
     private var draftsSection: some View {
-        let drafts = Array(allDrafts.prefix(5))
+        // v1.78 — filter status
+        let availableStatuses = Array(Set(allDrafts.map(\.status))).sorted()
+        let filteredAll = draftStatusFilter.isEmpty
+            ? Array(allDrafts)
+            : allDrafts.filter { $0.status == draftStatusFilter }
+        let drafts = Array(filteredAll.prefix(5))
         return VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
-            sectionHeader("Drafts récents", count: drafts.count, accent: .secondary)
+            HStack {
+                sectionHeader("Drafts récents", count: drafts.count, accent: .secondary)
+                if !availableStatuses.isEmpty {
+                    Picker("", selection: $draftStatusFilter) {
+                        Text("all").tag("")
+                        ForEach(availableStatuses, id: \.self) { s in
+                            Text(s).tag(s)
+                        }
+                    }
+                    .labelsHidden()
+                    .controlSize(.mini)
+                    .frame(maxWidth: 90)
+                }
+            }
             if drafts.isEmpty {
-                Text("Quill se déclenche sur signaux ≥ high.")
+                Text(draftStatusFilter.isEmpty
+                    ? "Quill se déclenche sur signaux ≥ high."
+                    : "Aucun draft avec status=\(draftStatusFilter).")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
