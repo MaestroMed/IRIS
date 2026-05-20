@@ -24,9 +24,9 @@ public actor Auditor {
         subscriptionTask = nil
     }
 
-    /// Lance un audit (mock v0.7). projectCodename doit matcher un ProjectRecord existant.
+    /// Lance un audit. v1.18 : vrai audit via Claude Sonnet si API key, sinon fallback mock v0.7.
     public func auditProject(codename: String) async {
-        irisLog(.info, "Auditor starting (mock) audit for \(codename)", category: IRISLogger.agents)
+        irisLog(.info, "Auditor starting audit for \(codename)", category: IRISLogger.agents)
 
         let start = Date()
         await EventBus.shared.publish(
@@ -38,13 +38,22 @@ public actor Auditor {
             )
         )
 
-        // Simulate work (v0.7.5+ remplacé par Process spawn)
-        try? await Task.sleep(nanoseconds: 1_500_000_000)
+        // v1.18 : route real vs mock
+        let useReal = IRISKeychain.shared.hasAnthropicAPIKey()
+        if useReal {
+            await runRealAudit(codename: codename, start: start)
+        } else {
+            await runMockAudit(codename: codename, start: start)
+        }
+    }
 
+    // MARK: — v0.7 mock
+
+    private func runMockAudit(codename: String, start: Date) async {
+        try? await Task.sleep(nanoseconds: 1_500_000_000)
         let duration = Date().timeIntervalSince(start)
         let mockResult = Self.makeMockReportPayload(for: codename)
 
-        // Crée + persiste le @Model directement sur le MainActor (évite passage cross-isolation)
         var resultVerdict = mockResult.verdict
         var resultHeadline = mockResult.headline
         if let container = await modelContainer {
@@ -66,18 +75,220 @@ public actor Auditor {
                 resultHeadline = report.headline
             }
         }
+        await publishAuditDone(codename: codename, verdict: resultVerdict, headline: resultHeadline)
+    }
 
-        let importance: SignalImportance = resultVerdict == "RED" ? .critical : (resultVerdict == "YELLOW" ? .high : .medium)
+    // MARK: — v1.18 real audit via Claude Sonnet
+
+    private static let realAuditSystemPrompt = """
+    Tu es Auditor — l'agent audit projet d'IRIS, basé sur le skill `damage-control` de Mehdi (Numelite).
+
+    Tu produis un audit 8 axes :
+    01 Attribution & Analytics (server-side tracking, Consent Mode v2, named conversion events)
+    02 CRO (session replay, heatmaps, funnel analytics, A/B testing)
+    03 Observability (Sentry, RUM, feature flags, uptime, alerting)
+    04 Growth loops (north star, k-factor, retention, compounding assets)
+    05 Edge performance (Core Web Vitals, edge functions, caching)
+    06 AI observability (LLM tracing, prompt versioning, eval harness, cost monitoring)
+    07 Compliance (WCAG/RGAA, AI Act, RGPD, DSA, security baselines)
+    08 Business leverage (pricing model, productisation, moat)
+
+    Pour chaque axe, verdict 🟢 GREEN / 🟡 YELLOW / 🔴 RED (ou ⚫ N/A).
+    Verdict global = pire des verdicts validés (RED > YELLOW > GREEN).
+
+    Output STRICT JSON (pas de markdown autour, juste JSON valide) :
+    {
+      "verdict": "GREEN|YELLOW|RED",
+      "headline": "1 ligne synthèse — what's the headline reality",
+      "findings": ["finding 1 concret avec file path si applicable", "finding 2", "..."],
+      "topActions": [
+        {"action": "action concrète (pas générique)", "effort": "Xh/Xj", "impact": 1-5}
+      ]
+    }
+
+    Règles : no glazing, dense, FR-casual + termes EN techniques. Cap findings 5, actions 5.
+    """
+
+    private func runRealAudit(codename: String, start: Date) async {
+        let projectInfo = await fetchProjectInfo(codename: codename)
+        let userPrompt = Self.buildAuditPrompt(codename: codename, info: projectInfo)
+
+        var accumulated = ""
+        let costCallback = onCostCallback
+        let stream = AnthropicClient.shared.streamMessage(
+            model: .sonnet46,
+            system: Self.realAuditSystemPrompt,
+            messages: [Message(role: .user, content: userPrompt)],
+            maxTokens: 2048,
+            cacheSystem: true,
+            onUsage: { usage in
+                let cost = usage.estimatedCostUSD(model: .sonnet46)
+                costCallback?(cost)
+            }
+        )
+
+        do {
+            for try await delta in stream {
+                accumulated += delta
+            }
+        } catch {
+            irisLog(.error, "Auditor real audit failed: \(error.localizedDescription)", category: IRISLogger.agents)
+            await EventBus.shared.publish(.agentFailure(agent: .auditor, error: error.localizedDescription))
+            return
+        }
+
+        let duration = Date().timeIntervalSince(start)
+        let parsed = Self.parseAuditOutput(accumulated) ?? Self.fallbackParsedOutput(verdict: "YELLOW", headline: "Audit parsing failed — voir Logs")
+
+        var resultVerdict = parsed.verdict
+        var resultHeadline = parsed.headline
+        if let container = await modelContainer {
+            await MainActor.run {
+                let report = AuditReport(
+                    projectCodename: codename,
+                    verdict: parsed.verdict,
+                    headline: parsed.headline,
+                    findingsJSON: parsed.findingsJSON,
+                    topActionsJSON: parsed.actionsJSON,
+                    modelUsed: ClaudeModel.sonnet46.rawValue,
+                    executedSkill: "damage-control-api",
+                    costUSD: 0,  // cost tracké via onCost callback global, pas attribué ici
+                    durationSeconds: duration
+                )
+                container.mainContext.insert(report)
+                try? container.mainContext.save()
+                resultVerdict = report.verdict
+                resultHeadline = report.headline
+            }
+        }
+
+        await publishAuditDone(codename: codename, verdict: resultVerdict, headline: resultHeadline)
+    }
+
+    private func publishAuditDone(codename: String, verdict: String, headline: String) async {
+        let importance: SignalImportance = verdict == "RED" ? .critical : (verdict == "YELLOW" ? .high : .medium)
         await EventBus.shared.publish(
             .signalEmitted(
                 from: .auditor,
                 importance: importance,
-                summary: "Audit terminé \(codename): \(resultVerdict) — \(resultHeadline)",
+                summary: "Audit terminé \(codename): \(verdict) — \(headline)",
                 source: "auditor"
             )
         )
+        irisLog(.notice, "Auditor finished \(codename) — verdict=\(verdict)", category: IRISLogger.agents)
+    }
 
-        irisLog(.notice, "Auditor finished \(codename) — verdict=\(resultVerdict)", category: IRISLogger.agents)
+    private var onCostCallback: (@Sendable (Double) -> Void)? {
+        // v1.18 : pas de cost sink registered ici, mais on pourrait wire via start() similaire à Conductor
+        nil
+    }
+
+    /// Sendable info struct pour traverser MainActor isolation.
+    private struct ProjectInfo: Sendable {
+        let codename: String
+        let localPath: String?
+        let stackJSON: String
+        let status: String
+        let domain: String?
+    }
+
+    private func fetchProjectInfo(codename: String) async -> ProjectInfo? {
+        guard let container = await modelContainer else { return nil }
+        return await Self.fetchProjectInfoMainActor(container: container, codename: codename)
+    }
+
+    @MainActor
+    private static func fetchProjectInfoMainActor(container: ModelContainer, codename: String) -> ProjectInfo? {
+        let descriptor = FetchDescriptor<ProjectRecord>(predicate: #Predicate { $0.codename == codename })
+        guard let project = (try? container.mainContext.fetch(descriptor))?.first else { return nil }
+        return ProjectInfo(
+            codename: project.codename,
+            localPath: project.localPath,
+            stackJSON: project.stackJSON,
+            status: project.status,
+            domain: project.domain
+        )
+    }
+
+    private static func buildAuditPrompt(codename: String, info: ProjectInfo?) -> String {
+        guard let info else {
+            return "Audit projet `\(codename)` — pas d'info ProjectRecord disponible. Audit aveugle générique 8 axes."
+        }
+
+        // Liste top-level files si localPath dispo (FS scan léger)
+        var topLevel: [String] = []
+        if let path = info.localPath {
+            let url = URL(fileURLWithPath: path)
+            topLevel = ((try? FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])) ?? [])
+                .map { $0.lastPathComponent }
+                .filter { !$0.hasPrefix(".") && $0 != "node_modules" }
+                .prefix(30)
+                .map { $0 }
+        }
+
+        return """
+        Audit projet `\(codename)` :
+
+        - Status : \(info.status)
+        - Domain : \(info.domain ?? "(non spécifié)")
+        - Stack : \(info.stackJSON)
+        - Local path : \(info.localPath ?? "(non clonage local)")
+        - Top-level files : \(topLevel.joined(separator: ", "))
+
+        Produis le rapport JSON 8 axes selon le format spécifié.
+        """
+    }
+
+    // MARK: — Output parser
+
+    struct ParsedAuditOutput: Sendable {
+        let verdict: String
+        let headline: String
+        let findingsJSON: String
+        let actionsJSON: String
+    }
+
+    private static func parseAuditOutput(_ raw: String) -> ParsedAuditOutput? {
+        // Strip markdown fences si présents
+        var cleaned = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if cleaned.hasPrefix("```") {
+            cleaned = cleaned
+                .replacingOccurrences(of: "```json", with: "")
+                .replacingOccurrences(of: "```", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        guard let data = cleaned.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+
+        let verdict = (json["verdict"] as? String) ?? "YELLOW"
+        let headline = (json["headline"] as? String) ?? "Audit complete — voir findings"
+
+        let findingsArray = (json["findings"] as? [String]) ?? []
+        let findingsJSON = (try? JSONSerialization.data(withJSONObject: findingsArray))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+
+        let actionsArray = (json["topActions"] as? [[String: Any]]) ?? []
+        let actionsJSON = (try? JSONSerialization.data(withJSONObject: actionsArray))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+
+        return ParsedAuditOutput(
+            verdict: verdict,
+            headline: headline,
+            findingsJSON: findingsJSON,
+            actionsJSON: actionsJSON
+        )
+    }
+
+    private static func fallbackParsedOutput(verdict: String, headline: String) -> ParsedAuditOutput {
+        ParsedAuditOutput(
+            verdict: verdict,
+            headline: headline,
+            findingsJSON: "[]",
+            actionsJSON: "[]"
+        )
     }
 
     // MARK: — Mock report generation
