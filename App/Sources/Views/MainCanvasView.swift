@@ -414,11 +414,23 @@ struct TranscriptRow: View {
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundStyle(.secondary)
                 }
-                Text(entry.content)
-                    .font(.system(size: compact ? 12 : 14))
-                    .foregroundStyle(.primary)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
+                // v1.87 — Render markdown si content contient des marqueurs (#, *, `, [).
+                // Sinon plain text. AttributedString.markdown lenient fallback.
+                Group {
+                    if TranscriptRow.looksLikeMarkdown(entry.content),
+                       let attr = try? AttributedString(
+                            markdown: entry.content,
+                            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+                       ) {
+                        Text(attr)
+                    } else {
+                        Text(entry.content)
+                    }
+                }
+                .font(.system(size: compact ? 12 : 14))
+                .foregroundStyle(.primary)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(.horizontal, compact ? 0 : IRISTokens.spacing4)
@@ -438,6 +450,13 @@ struct TranscriptRow: View {
         case .system(let level):
             return level.contains("error") ? .red : .secondary
         }
+    }
+
+    /// v1.87 — Heuristique légère pour détecter markdown (évite parse cost sur user input plain).
+    static func looksLikeMarkdown(_ s: String) -> Bool {
+        // Hits typiques : header ##, bullet -/*, fence ```, bold/italic **, lien []()
+        return s.contains("##") || s.contains("```") || s.contains("**") ||
+               s.contains("\n- ") || s.contains("\n* ") || s.contains("](")
     }
 }
 

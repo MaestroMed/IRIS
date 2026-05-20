@@ -156,6 +156,46 @@ public actor Sentinel {
 
     public static let knownSources: [String] = ["gmail", "github", "calendar", "fs"]
 
+    // MARK: — v1.88 Snooze (timed mute per source)
+
+    private static let snoozeUntilKey = "iris.sentinel.snoozeUntil"  // [source: ISO timestamp]
+
+    /// Set snooze pour `source` jusqu'à `until`. Pendant la fenêtre, Sentinel skip.
+    public static func snooze(source: String, until: Date) {
+        var map = snoozeMap()
+        let iso = ISO8601DateFormatter().string(from: until)
+        map[source] = iso
+        persistSnoozeMap(map)
+    }
+
+    public static func snoozeMap() -> [String: String] {
+        return (UserDefaults.standard.dictionary(forKey: snoozeUntilKey) as? [String: String]) ?? [:]
+    }
+
+    public static func snoozeUntil(source: String) -> Date? {
+        let map = snoozeMap()
+        guard let iso = map[source] else { return nil }
+        return ISO8601DateFormatter().date(from: iso)
+    }
+
+    public static func clearSnooze(source: String) {
+        var map = snoozeMap()
+        map.removeValue(forKey: source)
+        persistSnoozeMap(map)
+    }
+
+    /// True si snooze actif (future timestamp). Auto-clean si dépassé.
+    public static func isSnoozedNow(source: String) -> Bool {
+        guard let until = snoozeUntil(source: source) else { return false }
+        if until > Date() { return true }
+        clearSnooze(source: source)
+        return false
+    }
+
+    private static func persistSnoozeMap(_ map: [String: String]) {
+        UserDefaults.standard.set(map, forKey: snoozeUntilKey)
+    }
+
     /// v1.65 — Inject un signal custom (source/importance/summary par Mehdi).
     /// Émet sur bus + persiste Signal SwiftData. Utile pour tester Quill avec
     /// un input contrôlé (e.g. simuler signal client critical).
@@ -221,6 +261,11 @@ public actor Sentinel {
             irisLog(.debug, "Sentinel stub signal muted (source=\(stub.source))", category: IRISLogger.agents)
             return
         }
+        // v1.88 — skip si source snoozée
+        guard !Self.isSnoozedNow(source: stub.source) else {
+            irisLog(.debug, "Sentinel stub signal snoozed (source=\(stub.source))", category: IRISLogger.agents)
+            return
+        }
         let signalId = UUID()
 
         // Publish event on bus
@@ -270,6 +315,8 @@ public actor Sentinel {
     private func pollGitHubDeltas() async {
         // v1.74 — skip si source github mutée
         guard !Self.mutedSources.contains("github") else { return }
+        // v1.88 — skip si snoozée
+        guard !Self.isSnoozedNow(source: "github") else { return }
         let cached = await loadGitHubCache()
         let current = await fetchGitHubPushedAtMap()
         guard !current.isEmpty else { return }
@@ -383,6 +430,8 @@ public actor Sentinel {
     private func pollFSDeltas() async {
         // v1.74 — skip si source fs mutée
         guard !Self.mutedSources.contains("fs") else { return }
+        // v1.88 — skip si snoozée
+        guard !Self.isSnoozedNow(source: "fs") else { return }
         let cached = await loadFSCache()
         let current = await scanActiveProjectMtimes()
         guard !current.isEmpty else { return }

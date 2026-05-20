@@ -418,6 +418,18 @@ struct InspectorView: View {
                 .buttonStyle(.plain)
                 .help("Ouvrir \(urlStr) dans le navigateur")
             }
+            // v1.86 — Open in IDE (Cursor → Xcode → fallback Finder)
+            if let path = project.localPath, !path.isEmpty {
+                Button {
+                    openProjectInIDE(path: path)
+                } label: {
+                    Image(systemName: "chevron.left.forwardslash.chevron.right")
+                        .font(.system(size: 9))
+                        .foregroundStyle(IRISTokens.irisAccent.opacity(0.7))
+                }
+                .buttonStyle(.plain)
+                .help("Ouvrir dans IDE (Cursor / Xcode auto-detect)")
+            }
             // v1.81 — Archive / unarchive project (toggle status)
             Button {
                 project.status = (project.status == "archived") ? "active" : "archived"
@@ -1070,6 +1082,31 @@ struct InspectorView: View {
             try? modelContext.save()
         }
         .help(signal.acknowledged ? "Click pour un-acknowledge" : "Click pour acknowledge")
+    }
+
+    // v1.86 — Open project in IDE (Cursor first, then Xcode .xcodeproj, fallback Finder)
+    private func openProjectInIDE(path: String) {
+        let fm = FileManager.default
+        let projectURL = URL(fileURLWithPath: path)
+
+        // 1. Si .xcodeproj présent dans le dossier → Xcode
+        if let contents = try? fm.contentsOfDirectory(atPath: path),
+           let xcodeproj = contents.first(where: { $0.hasSuffix(".xcodeproj") || $0.hasSuffix(".xcworkspace") }) {
+            let fullPath = (path as NSString).appendingPathComponent(xcodeproj)
+            NSWorkspace.shared.open(URL(fileURLWithPath: fullPath))
+            return
+        }
+
+        // 2. Tente Cursor (bundle id com.todesktop.230313mzl4w4u92)
+        let cursorURL = URL(fileURLWithPath: "/Applications/Cursor.app")
+        if fm.fileExists(atPath: cursorURL.path) {
+            let config = NSWorkspace.OpenConfiguration()
+            NSWorkspace.shared.open([projectURL], withApplicationAt: cursorURL, configuration: config) { _, _ in }
+            return
+        }
+
+        // 3. Fallback Finder
+        NSWorkspace.shared.activateFileViewerSelecting([projectURL])
     }
 
     // v1.82 — Force Quill draft pour un signal donné (republie comme high importance)

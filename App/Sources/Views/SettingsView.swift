@@ -947,7 +947,49 @@ struct SettingsView: View {
                 }
                 Spacer()
             }
+
+            // v1.88 — Snooze (timed mute)
+            Text("SNOOZE (mute temporaire)")
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .padding(.top, 4)
+            HStack(spacing: 4) {
+                ForEach(Sentinel.knownSources, id: \.self) { source in
+                    let until = Sentinel.snoozeUntil(source: source)
+                    let active = (until ?? .distantPast) > Date()
+                    Menu {
+                        Button("10 min") { Sentinel.snooze(source: source, until: Date().addingTimeInterval(600)); sentinelMuteTick += 1 }
+                        Button("1 h") { Sentinel.snooze(source: source, until: Date().addingTimeInterval(3600)); sentinelMuteTick += 1 }
+                        Button("4 h") { Sentinel.snooze(source: source, until: Date().addingTimeInterval(14400)); sentinelMuteTick += 1 }
+                        Button("Clear") { Sentinel.clearSnooze(source: source); sentinelMuteTick += 1 }
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: active ? "moon.zzz.fill" : "moon.zzz")
+                                .font(.system(size: 9))
+                            Text(active ? Self.snoozeRemaining(until: until!) : source)
+                                .font(.system(size: 10, design: .monospaced))
+                        }
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background((active ? IRISTokens.goldAccent : .secondary).opacity(0.15))
+                        .clipShape(Capsule())
+                        .foregroundStyle(active ? IRISTokens.goldAccent : .secondary)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .help(active
+                        ? "Snooze \(source) jusqu'à \(until!.formatted(date: .omitted, time: .shortened))"
+                        : "Snooze \(source) (10min / 1h / 4h)")
+                }
+                Spacer()
+            }
         }
+    }
+
+    private static func snoozeRemaining(until: Date) -> String {
+        let s = max(0, until.timeIntervalSinceNow)
+        if s < 60 { return "\(Int(s))s" }
+        if s < 3600 { return "\(Int(s/60))min" }
+        return "\(Int(s/3600))h\(Int(s.truncatingRemainder(dividingBy: 3600)/60))m"
     }
 
     // MARK: — v1.65 Manual signal injector
