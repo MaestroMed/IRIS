@@ -401,6 +401,20 @@ struct InspectorView: View {
                     Text("model: \(audit.modelUsed)")
                     Text("cost: $\(String(format: "%.4f", audit.costUSD))")
                     Text("\(Int(audit.durationSeconds))s")
+                    Spacer()
+                    // v1.73 — Copy markdown
+                    Button {
+                        let md = Self.formatAuditAsMarkdown(audit)
+                        let pb = NSPasteboard.general
+                        pb.clearContents()
+                        pb.setString(md, forType: .string)
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Copy l'audit complet en Markdown")
                 }
                 .font(.system(size: 9, design: .monospaced))
                 .foregroundStyle(.secondary)
@@ -431,6 +445,38 @@ struct InspectorView: View {
               let arr = try? JSONSerialization.jsonObject(with: data) as? [String]
         else { return [] }
         return arr
+    }
+
+    // v1.73 — Audit → Markdown formaté
+    private static func formatAuditAsMarkdown(_ audit: AuditReport) -> String {
+        let findings = parseStringArray(audit.findingsJSON)
+        let topActions = parseActionObjects(audit.topActionsJSON)
+        let dateFmt = DateFormatter()
+        dateFmt.dateFormat = "yyyy-MM-dd HH:mm"
+
+        var md = "# Audit — \(audit.projectCodename) — \(audit.verdict)\n\n"
+        md += "**Date** : \(dateFmt.string(from: audit.createdAt))  \n"
+        md += "**Model** : `\(audit.modelUsed)` · `$\(String(format: "%.4f", audit.costUSD))` · `\(Int(audit.durationSeconds))s`\n\n"
+        md += "## Headline\n\n\(audit.headline)\n\n"
+
+        if !findings.isEmpty {
+            md += "## Findings (\(findings.count))\n\n"
+            for f in findings {
+                md += "- \(f)\n"
+            }
+            md += "\n"
+        }
+
+        if !topActions.isEmpty {
+            md += "## Top actions (\(topActions.count))\n\n"
+            for a in topActions {
+                md += "- **\(a.action)** _(effort: \(a.effort) · impact: \(a.impact))_\n"
+            }
+            md += "\n"
+        }
+
+        md += "---\n\n*Exported from IRIS auditor — \(dateFmt.string(from: Date()))*\n"
+        return md
     }
 
     private static func parseActionObjects(_ json: String) -> [ActionItem] {
