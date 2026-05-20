@@ -84,6 +84,20 @@ struct InspectorView: View {
                         .foregroundStyle(IRISTokens.irisAccent)
                     Text("Témoin")
                         .font(.system(size: 11)).foregroundStyle(.secondary)
+                    Spacer()
+                    // v1.27 — Pause/Resume Witness
+                    Button {
+                        Task {
+                            let isPaused = await Witness.shared.isPaused
+                            await Witness.shared.setPaused(!isPaused)
+                        }
+                    } label: {
+                        Image(systemName: "pause.circle")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Pause/Resume Witness (stop capture frontmost)")
                 }
                 Text("Capture NSWorkspace frontmost (debounce 10s). Vision Gemini en v1.5.B+.")
                     .font(.system(size: 11))

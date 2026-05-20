@@ -44,6 +44,22 @@ public actor Witness {
         timerTask = nil
     }
 
+    /// v1.27 — Pause / Resume sans détruire la config. Cancel le timer si paused, restart si false.
+    public func setPaused(_ paused: Bool) async {
+        if paused {
+            timerTask?.cancel()
+            timerTask = nil
+            irisLog(.info, "Witness paused", category: IRISLogger.agents)
+        } else if timerTask == nil, let container = modelContainer {
+            await start(modelContainer: container)
+            irisLog(.info, "Witness resumed", category: IRISLogger.agents)
+        }
+    }
+
+    public var isPaused: Bool {
+        timerTask == nil
+    }
+
     // MARK: — Capture frontmost
 
     private func captureFrontmost() async {
