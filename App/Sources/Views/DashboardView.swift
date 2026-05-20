@@ -63,6 +63,11 @@ struct DashboardView: View {
                         .help("Cliquer → Cartographer")
                 }
 
+                // v1.102 — Currently focused project (latest Witness signal with project scope)
+                if let focus = latestFocusedSignal {
+                    focusedProjectCard(focus)
+                }
+
                 // v1.92 — Snippet du dernier briefing Advisor
                 if let latest = advisorBriefings.first {
                     advisorBriefingCard(latest)
@@ -74,6 +79,42 @@ struct DashboardView: View {
             }
             .padding(IRISTokens.spacing24)
         }
+    }
+
+    // v1.102 — Latest signal from Witness (source=screen) avec project guess
+    private var latestFocusedSignal: Signal? {
+        allSignals.first { $0.source == "screen" && $0.emittedAt > Date().addingTimeInterval(-300) }
+    }
+
+    private func focusedProjectCard(_ signal: Signal) -> some View {
+        let elapsed = Int(Date().timeIntervalSince(signal.emittedAt))
+        let elapsedStr = elapsed < 60 ? "\(elapsed)s ago" : "\(elapsed/60)min ago"
+        return HStack(spacing: IRISTokens.spacing16) {
+            Image(systemName: "eyes")
+                .font(.system(size: 18, weight: .light))
+                .foregroundStyle(IRISTokens.aquaTint)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("CURRENTLY FOCUSED")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .tracking(1.4)
+                    .foregroundStyle(.secondary)
+                Text(signal.summary)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.primary)
+                if let project = signal.projectScope {
+                    Text("project: \(project)")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(IRISTokens.irisAccent)
+                }
+            }
+            Spacer()
+            Text(elapsedStr)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(.secondary)
+        }
+        .padding(IRISTokens.spacing16)
+        .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusMedium).fill(.regularMaterial))
+        .overlay(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusMedium).strokeBorder(IRISTokens.aquaTint.opacity(0.2), lineWidth: 0.5))
     }
 
     // v1.92 — Card snippet briefing Advisor (top markdown rendering)

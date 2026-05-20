@@ -188,9 +188,73 @@ struct InspectorView: View {
             witnessSection
         case .conductor:
             conductorSection  // v1.38
+        case .quill:
+            quillSection  // v1.101
         default:
             simpleAgentSection(id)
         }
+    }
+
+    // v1.101 — Quill dedicated section : last drafts + Sonnet routing badge + cost-this-session
+    private var quillSection: some View {
+        let recentDrafts = Array(allDrafts.prefix(8))
+        let totalDrafts = allDrafts.count
+        let pendingDrafts = allDrafts.filter { $0.status == "pending" }.count
+        let sonnetCost = appState.costByModel["claude-sonnet-4-6"] ?? 0
+        return VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
+            sectionHeader("Quill", count: totalDrafts, accent: IRISTokens.irisAccent, pinnable: .quill)
+
+            HStack(spacing: 4) {
+                Image(systemName: AgentID.quill.descriptor.symbol)
+                    .foregroundStyle(IRISTokens.irisAccent)
+                Text(AgentID.quill.descriptor.alias)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("Sonnet session: $\(String(format: "%.4f", sonnetCost))")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+
+            Text("Subscribe signals ≥ high (Sentinel + manual) → draft via Sonnet 4.6")
+                .font(.system(size: 10))
+                .foregroundStyle(.primary.opacity(0.8))
+                .fixedSize(horizontal: false, vertical: true)
+
+            // Mini stats
+            HStack(spacing: 4) {
+                statPill(label: "total", value: "\(totalDrafts)", color: .secondary)
+                statPill(label: "pending", value: "\(pendingDrafts)", color: pendingDrafts > 0 ? IRISTokens.goldAccent : .secondary)
+            }
+
+            Divider().padding(.vertical, 2)
+
+            if recentDrafts.isEmpty {
+                Text("Aucun draft. Forge un signal high importance pour tester.")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+            } else {
+                Text("DERNIERS DRAFTS")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                ForEach(recentDrafts) { draft in
+                    draftRow(draft)
+                }
+            }
+        }
+    }
+
+    private func statPill(label: String, value: String, color: Color) -> some View {
+        HStack(spacing: 3) {
+            Text(value)
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+            Text(label)
+                .font(.system(size: 9))
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 6).padding(.vertical, 2)
+        .background(color.opacity(0.12))
+        .clipShape(Capsule())
+        .foregroundStyle(color)
     }
 
     // MARK: — v1.38 Conductor session stats

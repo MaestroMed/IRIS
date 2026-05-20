@@ -51,14 +51,28 @@ public actor Advisor {
         dailyBriefingTask = Task { [weak self] in
             while !Task.isCancelled {
                 let now = Date()
-                let next8AM = Self.nextHourOccurrence(hour: 8, after: now)
-                let sleepInterval = next8AM.timeIntervalSince(now)
-                irisLog(.info, "Advisor next briefing in \(Int(sleepInterval/3600))h\(Int((sleepInterval.truncatingRemainder(dividingBy: 3600))/60))m",
+                let hour = Self.scheduledHour
+                let nextRun = Self.nextHourOccurrence(hour: hour, after: now)
+                let sleepInterval = nextRun.timeIntervalSince(now)
+                irisLog(.info, "Advisor next briefing in \(Int(sleepInterval/3600))h\(Int((sleepInterval.truncatingRemainder(dividingBy: 3600))/60))m (hour=\(hour)h)",
                         category: IRISLogger.agents)
                 try? await Task.sleep(nanoseconds: UInt64(sleepInterval * 1_000_000_000))
                 await self?.runBriefing(kind: .scheduled)
             }
         }
+    }
+
+    // v1.103 — Briefing hour configurable
+    private static let scheduledHourKey = "iris.advisor.scheduledHour"
+
+    public static var scheduledHour: Int {
+        let raw = UserDefaults.standard.integer(forKey: scheduledHourKey)
+        return raw >= 0 && raw < 24 && raw != 0 ? raw : 8  // default 8h
+    }
+
+    public static func setScheduledHour(_ hour: Int) {
+        let bounded = max(0, min(23, hour))
+        UserDefaults.standard.set(bounded, forKey: scheduledHourKey)
     }
 
     public enum BriefingKind: Sendable {

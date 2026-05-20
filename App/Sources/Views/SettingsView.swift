@@ -232,6 +232,7 @@ struct SettingsView: View {
     @State private var conductorMaxTokens: Double = 2048  // v1.61
     @State private var costLimitUSD: Double = 1.0          // v1.72
     @State private var auditorMonthlyAuto: Bool = false    // v1.93
+    @State private var advisorHour: Int = 8                // v1.103
 
     private var modelsRoutingSection: some View {
         VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
@@ -321,6 +322,26 @@ struct SettingsView: View {
             }
             .padding(.leading, IRISTokens.spacing16)
 
+            // v1.103 — Advisor briefing hour
+            HStack {
+                Text("Advisor briefing hour")
+                    .font(.system(size: 11))
+                Stepper(value: $advisorHour, in: 0...23) {
+                    Text("\(advisorHour)h00")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                .controlSize(.small)
+                .onChange(of: advisorHour) { _, newValue in
+                    Advisor.setScheduledHour(newValue)
+                }
+                Spacer()
+                Text("Restart IRIS pour appliquer")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.leading, IRISTokens.spacing16)
+
             // v1.93 — Auditor monthly auto-audit toggle
             HStack {
                 Toggle(isOn: $auditorMonthlyAuto) {
@@ -395,6 +416,7 @@ struct SettingsView: View {
             conductorMaxTokens = Double(Conductor.currentMaxTokens)  // v1.61
             costLimitUSD = IRISAppState.costLimitUSD                     // v1.72
             auditorMonthlyAuto = Auditor.monthlyAutoEnabled              // v1.93
+            advisorHour = Advisor.scheduledHour                          // v1.103
         }
     }
 
