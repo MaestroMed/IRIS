@@ -133,6 +133,17 @@ struct MainCanvasView: View {
             .help("Régénérer la dernière réponse Conductor")
             .disabled(appState.transcript.count < 2 || appState.isProcessing)
 
+            // v1.76 — Save conversation comme Memory
+            Button {
+                saveConversationAsMemory()
+            } label: {
+                Image(systemName: "bookmark.circle")
+                    .font(.system(size: 13))
+            }
+            .buttonStyle(.plain)
+            .help("Sauver la conversation comme Memory (indexée Scribe)")
+            .disabled(appState.transcript.isEmpty)
+
             // v1.19 — Bouton clear conversation (Nouvelle session)
             Button {
                 Task {
@@ -274,6 +285,43 @@ struct MainCanvasView: View {
     private var canSubmit: Bool {
         !appState.currentInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !appState.isProcessing
+    }
+
+    // v1.76 — Save conversation comme Memory persistante (indexée Scribe)
+    private func saveConversationAsMemory() {
+        guard !appState.transcript.isEmpty else { return }
+        let entries = appState.transcript
+        let firstUser = entries.first(where: { if case .user = $0.role { return true } else { return false } })?.content ?? "(no user input)"
+        let summary = String(firstUser.prefix(120))
+
+        var content = ""
+        let dateFmt = DateFormatter()
+        dateFmt.dateFormat = "yyyy-MM-dd HH:mm"
+        content += "# Conversation \(dateFmt.string(from: Date()))\n\n"
+        for entry in entries {
+            let role: String = {
+                switch entry.role {
+                case .user: return "User"
+                case .agent(let agentId): return agentId.descriptor.displayName
+                case .system(let level): return "System(\(level))"
+                }
+            }()
+            content += "**\(role)** : \(entry.content)\n\n"
+        }
+
+        let memory = Memory(
+            type: "conversation-summary",
+            name: "conv-summary-\(Int(Date().timeIntervalSince1970))",
+            summary: summary,
+            content: content,
+            sourceAgent: AgentID.conductor.rawValue,
+            projectScope: nil,
+            tagsCSV: "conversation-summary,manual-save,conductor"
+        )
+
+        Task {
+            await Scribe.store(memory: memory, in: modelContext)
+        }
     }
 
     private func submitInput() {
