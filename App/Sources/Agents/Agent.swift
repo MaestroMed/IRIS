@@ -178,20 +178,24 @@ public enum SidebarSection: String, CaseIterable, Hashable, Identifiable, Sendab
 
 /// Entrées système (sous la section System, en bas du sidebar).
 /// v0.0.3 — `logs` ouvrira le panel Logs runtime des agents.
+/// v1.36 — `stats` panel bus events stats par kind.
 public enum SystemDestination: String, CaseIterable, Hashable, Identifiable, Sendable {
     case logs
+    case stats
 
     public var id: String { rawValue }
 
     public var displayName: String {
         switch self {
         case .logs: return "Logs"
+        case .stats: return "Stats"
         }
     }
 
     public var symbol: String {
         switch self {
         case .logs: return "list.bullet.rectangle"
+        case .stats: return "chart.bar.fill"
         }
     }
 }

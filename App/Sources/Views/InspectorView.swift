@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import AppKit
 
 // IRIS v1.0.A — Inspector dédié par agent sélectionné. Sections globales (pending actions / drafts / signals) toujours visibles.
 // + Sections agent-spécifiques quand sélectionné : Cartographer / Auditor / Builder / Advisor.
@@ -504,6 +505,24 @@ struct InspectorView: View {
                 Text(draft.subject ?? String(draft.content.prefix(50)))
                     .font(.system(size: 12, weight: .medium)).lineLimit(1)
                 Spacer()
+                // v1.34 — Copy to clipboard
+                Button {
+                    let pasteboard = NSPasteboard.general
+                    pasteboard.clearContents()
+                    let toCopy: String
+                    if let subject = draft.subject {
+                        toCopy = "Subject: \(subject)\n\n\(draft.content)"
+                    } else {
+                        toCopy = draft.content
+                    }
+                    pasteboard.setString(toCopy, forType: .string)
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Copier draft dans le clipboard")
                 statusBadge(draft.status)
             }
             HStack(spacing: IRISTokens.spacing8) {

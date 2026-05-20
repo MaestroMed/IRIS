@@ -315,6 +315,9 @@ struct MainCanvasView: View {
         case .logs:
             // v1.16 — vraie panel logs runtime (EventLog SwiftData query)
             LogsView()
+        case .stats:
+            // v1.36 — stats Bus events par kind sur 3 fenêtres temporelles
+            BusStatsView()
         }
     }
 }
