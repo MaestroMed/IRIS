@@ -48,6 +48,10 @@ struct SettingsView: View {
 
             conductorPromptSection
 
+            Divider()
+
+            agentVisibilitySection
+
             Spacer()
 
             footer
@@ -210,6 +214,46 @@ struct SettingsView: View {
                 routingRow(label: "Witness (v1.5+)", model: "gemini-2.5-flash-lite", cost: "cheap vision input")
             }
             .padding(.leading, IRISTokens.spacing16)
+        }
+    }
+
+    // MARK: — v1.43 Agent visibility sidebar
+
+    private var agentVisibilitySection: some View {
+        let visibility = AgentVisibility.shared
+        return VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
+            sectionTitle(
+                "Sidebar agents (\(visibility.visibleAgents.count)/\(AgentID.businessAgents.count) visibles)",
+                subtitle: "Toggle pour masquer/afficher dans le sidebar. Persist UserDefaults."
+            )
+
+            VStack(alignment: .leading, spacing: 3) {
+                ForEach(AgentID.businessAgents, id: \.rawValue) { agent in
+                    HStack(spacing: 6) {
+                        Toggle("", isOn: Binding(
+                            get: { !visibility.isHidden(agent) },
+                            set: { _ in visibility.toggle(agent) }
+                        ))
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .controlSize(.mini)
+
+                        Image(systemName: agent.descriptor.symbol)
+                            .font(.system(size: 11))
+                            .foregroundStyle(IRISTokens.irisAccent)
+                            .frame(width: 16)
+
+                        Text(agent.descriptor.displayName)
+                            .font(.system(size: 11, design: .monospaced))
+
+                        Text(agent.descriptor.alias)
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+
+                        Spacer()
+                    }
+                }
+            }
         }
     }
 

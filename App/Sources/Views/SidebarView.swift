@@ -11,7 +11,7 @@ struct SidebarView: View {
 
         List(selection: $binding.selection) {
             Section {
-                ForEach(AgentID.businessAgents) { agent in
+                ForEach(AgentVisibility.shared.visibleAgents) { agent in
                     AgentRow(descriptor: agent.descriptor, status: appState.agentStatus(agent))
                         .tag(SidebarSelection.agent(agent))
                 }
