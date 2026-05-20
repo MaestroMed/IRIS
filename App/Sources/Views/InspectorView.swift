@@ -8,6 +8,7 @@ import AppKit
 struct InspectorView: View {
     @Environment(IRISAppState.self) private var appState
     @Environment(\.modelContext) private var modelContext
+    @State private var pinned = InspectorPinnedSections.shared  // v1.48
 
     @Query(sort: \Draft.createdAt, order: .reverse) private var allDrafts: [Draft]
     @Query(sort: \Signal.emittedAt, order: .reverse) private var allSignals: [Signal]
@@ -31,7 +32,14 @@ struct InspectorView: View {
                     pendingActionsSection
                 }
 
-                agentDedicatedSection
+                // v1.48 — pinned sections d'abord, puis sélection courante (si non pinned)
+                ForEach(pinnedSectionsList, id: \.self) { agentId in
+                    agentSectionView(for: agentId)
+                }
+
+                if let current = appState.selectedAgent, !pinned.isPinned(current) {
+                    agentSectionView(for: current)
+                }
 
                 draftsSection
 
@@ -58,9 +66,14 @@ struct InspectorView: View {
 
     // MARK: — Section par agent sélectionné
 
+    // v1.48 — Liste ordonnée des agents épinglés (ordre AgentID.businessAgents pour stabilité)
+    private var pinnedSectionsList: [AgentID] {
+        AgentID.businessAgents.filter { pinned.isPinned($0) }
+    }
+
     @ViewBuilder
-    private var agentDedicatedSection: some View {
-        switch appState.selectedAgent {
+    private func agentSectionView(for id: AgentID) -> some View {
+        switch id {
         case .cartographer:
             cartographerSection
         case .auditor:
@@ -73,10 +86,8 @@ struct InspectorView: View {
             witnessSection
         case .conductor:
             conductorSection  // v1.38
-        case .some(let other):
-            simpleAgentSection(other)
-        case .none:
-            EmptyView()
+        default:
+            simpleAgentSection(id)
         }
     }
 
@@ -93,7 +104,7 @@ struct InspectorView: View {
         }.count
 
         return VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
-            sectionHeader("Conductor", count: messageCount, accent: IRISTokens.irisAccent)
+            sectionHeader("Conductor", count: messageCount, accent: IRISTokens.irisAccent, pinnable: .conductor)
 
             VStack(alignment: .leading, spacing: 4) {
                 conductorStatRow(label: "Messages user", value: "\(userMessages)", color: IRISTokens.aquaTint)
@@ -141,7 +152,7 @@ struct InspectorView: View {
     private var witnessSection: some View {
         let screenSignals = allSignals.filter { $0.source == "screen" }.prefix(5)
         return VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
-            sectionHeader("Witness", count: screenSignals.count, accent: IRISTokens.irisAccent)
+            sectionHeader("Witness", count: screenSignals.count, accent: IRISTokens.irisAccent, pinnable: .witness)
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 4) {
@@ -207,7 +218,7 @@ struct InspectorView: View {
 
     private var cartographerSection: some View {
         VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
-            sectionHeader("Cartographer", count: allProjects.count, accent: IRISTokens.irisAccent)
+            sectionHeader("Cartographer", count: allProjects.count, accent: IRISTokens.irisAccent, pinnable: .cartographer)
 
             Button {
                 Task { await Cartographer.shared.refresh() }
@@ -260,7 +271,7 @@ struct InspectorView: View {
 
     private var auditorSection: some View {
         VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
-            sectionHeader("Auditor", count: allAudits.count, accent: IRISTokens.irisAccent)
+            sectionHeader("Auditor", count: allAudits.count, accent: IRISTokens.irisAccent, pinnable: .auditor)
 
             HStack(spacing: IRISTokens.spacing8) {
                 Picker("Projet", selection: $auditPickedProject) {
@@ -314,7 +325,7 @@ struct InspectorView: View {
 
     private var builderSection: some View {
         VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
-            sectionHeader("Builder", count: Builder.availableSkills.count, accent: IRISTokens.irisAccent)
+            sectionHeader("Builder", count: Builder.availableSkills.count, accent: IRISTokens.irisAccent, pinnable: .builder)
 
             Picker("Skill", selection: $scaffoldSelectedSkill) {
                 ForEach(Builder.availableSkills) { skill in
@@ -391,7 +402,7 @@ struct InspectorView: View {
         let recent = Array(advisorBriefings.prefix(3))
         let opusCost = appState.costByModel["claude-opus-4-7"] ?? 0
         return VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
-            sectionHeader("Advisor", count: recent.count, accent: IRISTokens.irisAccent)
+            sectionHeader("Advisor", count: recent.count, accent: IRISTokens.irisAccent, pinnable: .advisor)
 
             HStack(spacing: IRISTokens.spacing8) {
                 Button {
@@ -461,7 +472,7 @@ struct InspectorView: View {
     private func simpleAgentSection(_ id: AgentID) -> some View {
         let descriptor = id.descriptor
         return VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
-            sectionHeader(descriptor.displayName, count: 0, accent: IRISTokens.irisAccent)
+            sectionHeader(descriptor.displayName, count: 0, accent: IRISTokens.irisAccent, pinnable: id)
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 4) {
@@ -647,6 +658,12 @@ struct InspectorView: View {
     // MARK: — Helpers visuels
 
     private func sectionHeader(_ title: String, count: Int, accent: Color) -> some View {
+        sectionHeader(title, count: count, accent: accent, pinnable: nil)
+    }
+
+    // v1.48 — Header avec bouton pin pour agent sections
+    @ViewBuilder
+    private func sectionHeader(_ title: String, count: Int, accent: Color, pinnable agentId: AgentID?) -> some View {
         HStack(spacing: 4) {
             Text(title.uppercased())
                 .font(.system(size: 10, weight: .semibold)).tracking(1.4).foregroundStyle(.secondary)
@@ -654,6 +671,17 @@ struct InspectorView: View {
                 Text("\(count)").font(.system(size: 10, weight: .bold, design: .monospaced)).foregroundStyle(accent)
             }
             Spacer()
+            if let agentId {
+                Button {
+                    pinned.toggle(agentId)
+                } label: {
+                    Image(systemName: pinned.isPinned(agentId) ? "pin.fill" : "pin")
+                        .font(.system(size: 10))
+                        .foregroundStyle(pinned.isPinned(agentId) ? IRISTokens.irisAccent : .secondary)
+                }
+                .buttonStyle(.plain)
+                .help(pinned.isPinned(agentId) ? "Désépingler section" : "Épingler section (toujours visible)")
+            }
         }
         .padding(.horizontal, IRISTokens.spacing4)
     }
