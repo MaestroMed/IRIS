@@ -110,6 +110,20 @@ struct MainCanvasView: View {
             Text("$\(String(format: "%.4f", appState.sessionCostUSD))")
                 .font(IRISTokens.monoFont)
                 .foregroundStyle(.secondary)
+
+            // v1.19 — Bouton clear conversation (Nouvelle session)
+            Button {
+                Task {
+                    await Conductor.shared.resetHistory()
+                    appState.clearTranscript()
+                }
+            } label: {
+                Image(systemName: "arrow.counterclockwise.circle")
+                    .font(.system(size: 13))
+            }
+            .buttonStyle(.plain)
+            .help("Nouvelle conversation (clear history + transcript)")
+            .disabled(appState.transcript.isEmpty)
         }
         .padding(.horizontal, IRISTokens.spacing24)
         .padding(.vertical, IRISTokens.spacing16)

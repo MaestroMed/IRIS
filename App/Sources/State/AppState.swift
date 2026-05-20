@@ -67,6 +67,16 @@ public final class IRISAppState {
         }
     }
 
+    /// v1.19 — Clear le transcript UI (les events restent dans EventLog SwiftData).
+    /// Couplé à Conductor.resetHistory() pour reset multi-turn dialog.
+    public func clearTranscript() {
+        transcript.removeAll()
+        streamingText = ""
+        streamingEventId = nil
+        currentInput = ""
+        isProcessing = false
+    }
+
     public func refreshKeyPresence() {
         hasAnthropicKey = IRISKeychain.shared.hasAnthropicAPIKey()
     }

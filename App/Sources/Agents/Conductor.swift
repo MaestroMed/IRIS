@@ -18,7 +18,26 @@ public actor Conductor {
     private var onCost: (@Sendable (Double) -> Void)?
     private weak var modelContainer: ModelContainer?
 
+    /// v1.19 — history derniers échanges (alternance user/assistant) pour multi-turn dialog.
+    /// Max 10 paires = 20 messages pour éviter explosion context.
+    private var conversationHistory: [Message] = []
+    private let maxHistoryPairs = 10
+
     private init() {}
+
+    /// v1.19 — Reset conversation (nouvelle session dialog).
+    public func resetHistory() {
+        conversationHistory.removeAll()
+        irisLog(.info, "Conductor conversation history reset", category: IRISLogger.conductor)
+    }
+
+    private func appendToHistory(_ message: Message) {
+        conversationHistory.append(message)
+        if conversationHistory.count > maxHistoryPairs * 2 {
+            let excess = conversationHistory.count - maxHistoryPairs * 2
+            conversationHistory.removeFirst(excess)
+        }
+    }
 
     /// Démarre l'écoute du bus. À appeler une seule fois au launch (depuis IRISApp).
     public func start(
@@ -108,13 +127,16 @@ public actor Conductor {
             ? Self.systemPrompt
             : Self.systemPrompt + "\n\n## Mémoires pertinentes (Scribe top-3 par similarité)\n\n" + memoriesContext
 
-        // v1.17 — utilise streaming SSE pour UX "Claude tape en live"
+        // v1.17 + v1.19 — streaming SSE + multi-turn history
+        appendToHistory(Message(role: .user, content: text))
         var accumulated = ""
         let costCallback = onCost  // @Sendable capture (typed property)
+        let history = conversationHistory  // snapshot pour l'appel
+
         let stream = AnthropicClient.shared.streamMessage(
             model: .opus47,
             system: enrichedSystemPrompt,
-            messages: [Message(role: .user, content: text)],
+            messages: history,  // v1.19 : envoie tout l'history (alternance user/assistant)
             maxTokens: 2048,
             cacheSystem: true,
             onUsage: { usage in
@@ -131,8 +153,11 @@ public actor Conductor {
                 )
             }
 
+            // v1.19 — append assistant response to history for next turn
+            appendToHistory(Message(role: .assistant, content: accumulated))
+
             irisLog(.info,
-                "Conductor stream done — \(accumulated.count) chars memories=\(memoriesContext.isEmpty ? 0 : 3)",
+                "Conductor stream done — \(accumulated.count) chars memories=\(memoriesContext.isEmpty ? 0 : 3) history=\(conversationHistory.count) msgs",
                 category: IRISLogger.conductor
             )
 
