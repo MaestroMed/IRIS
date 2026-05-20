@@ -1,22 +1,207 @@
 import SwiftUI
+import SwiftData
 
-// IRIS v0.0.1 — entry point.
-// "Premier exocortex local desktop multi-agents avec UX visuelle dense."
-// Cf /Users/mehdinafaa/Iris/docs/IRIS-VISION.md
+// IRIS v0.0.5 / v0.1 — entry point.
+// - ModelContainer SwiftData wired (6 modèles)
+// - AgentSeeder au premier launch
+// - Conductor démarré (subscribe au bus + handler userInput)
+// - EventBus → AppState transcript bridge
+// - SettingsView via Cmd+, ou menu
 
 @main
 struct IRISApp: App {
+    @State private var appState = IRISAppState()
+    @State private var bridge: EventBusBridge?
+
+    private let modelContainer: ModelContainer = ModelContainerFactory.makeLocalContainer()
+
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .frame(minWidth: 900, minHeight: 600)
+                .environment(appState)
+                .modelContainer(modelContainer)
+                .frame(minWidth: 1100, minHeight: 700)
+                .task {
+                    await bootstrap()
+                }
         }
         .windowStyle(.hiddenTitleBar)
         .windowToolbarStyle(.unifiedCompact)
         .defaultSize(width: 1400, height: 900)
         .commands {
-            // v0.0.x — pas de commandes custom encore. Standard menu macOS.
-            // v0.0.5+ — ajout commandes Conductor (Cmd+K palette, Cmd+, settings).
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings…") {
+                    NSApplication.openSettings()
+                }
+                .keyboardShortcut(",", modifiers: .command)
+            }
+
+            CommandGroup(after: .appInfo) {
+                Divider()
+                Button("À propos d'IRIS") {
+                    NSApplication.shared.orderFrontStandardAboutPanel(nil)
+                }
+            }
+        }
+
+        Settings {
+            SettingsView()
+                .environment(appState)
+        }
+    }
+
+    // MARK: — Bootstrap
+
+    @MainActor
+    private func bootstrap() async {
+        // 1. Seed agents si nécessaire
+        let context = modelContainer.mainContext
+        AgentSeeder.seedIfNeeded(in: context)
+
+        // 2. Bridge EventBus → AppState transcript
+        if bridge == nil {
+            bridge = EventBusBridge(appState: appState, modelContext: context)
+            await bridge?.start()
+        }
+
+        // 3. Conductor démarre + écoute userInput
+        await Conductor.shared.start { @Sendable cost in
+            Task { @MainActor in
+                appState.sessionCostUSD += cost
+            }
+        }
+
+        irisLog(.info, "IRIS bootstrapped — agents seeded + Conductor live", category: IRISLogger.ui)
+    }
+}
+
+// MARK: — NSApplication settings helper (workaround : SwiftUI Settings scene)
+
+extension NSApplication {
+    /// Ouvre la scene Settings native macOS (SwiftUI Settings { ... } scène).
+    static func openSettings() {
+        if #available(macOS 14, *) {
+            // macOS 14+ : action standard
+            let selector = Selector(("showSettingsWindow:"))
+            if NSApp.responds(to: selector) {
+                NSApp.perform(selector, with: nil)
+                return
+            }
+        }
+        // Fallback legacy macOS 13
+        let selector = Selector(("showPreferencesWindow:"))
+        if NSApp.responds(to: selector) {
+            NSApp.perform(selector, with: nil)
+        }
+    }
+}
+
+// MARK: — Bridge EventBus → AppState (UI live) + SwiftData EventLog (persistance)
+
+@MainActor
+final class EventBusBridge {
+    private let appState: IRISAppState
+    private let modelContext: ModelContext
+    private var task: Task<Void, Never>?
+
+    init(appState: IRISAppState, modelContext: ModelContext) {
+        self.appState = appState
+        self.modelContext = modelContext
+    }
+
+    func start() async {
+        guard task == nil else { return }
+        let stream = await EventBus.shared.subscribe()
+        task = Task { @MainActor [weak self] in
+            for await event in stream {
+                self?.handle(event)
+            }
+        }
+    }
+
+    func stop() {
+        task?.cancel()
+        task = nil
+    }
+
+    private func handle(_ event: IRISEvent) {
+        switch event {
+        case .userInput(let text, let timestamp):
+            // Le user input est déjà ajouté au transcript par MainCanvasView.submitInput()
+            // (pour latence UI < 16ms). On persiste juste dans EventLog ici.
+            persist(.userInput(text, timestamp: timestamp), payload: ["text": text])
+
+        case .agentResponse(let from, let content, let eventId):
+            appState.appendEntry(TranscriptEntry(role: .agent(from), content: content))
+            appState.isProcessing = false
+            persist(event, payload: ["content": content, "correlationId": eventId.uuidString], from: from.rawValue, correlationId: eventId)
+
+        case .agentDispatched(let from, let to, let intent, let eventId):
+            persist(event, payload: ["intent": intent], from: from.rawValue, to: to.rawValue, correlationId: eventId)
+
+        case .signalEmitted(let from, let importance, let summary, let source):
+            persist(event, payload: ["importance": "\(importance.rawValue)", "summary": summary, "source": source ?? "—"], from: from.rawValue)
+
+        case .actionLogged(let by, let action, let params, let reversible):
+            var p = params
+            p["action"] = action
+            p["reversible"] = "\(reversible)"
+            persist(event, payload: p, from: by.rawValue)
+
+        case .agentFailure(let agent, let error):
+            appState.appendEntry(TranscriptEntry(
+                role: .system(level: "error"),
+                content: "⚠️ \(agent.rawValue) : \(error)"
+            ))
+            appState.lastError = error
+            appState.isProcessing = false
+            persist(event, payload: ["error": error], from: agent.rawValue)
+
+        case .systemLog(let level, let message, let file, let line):
+            appState.appendEntry(TranscriptEntry(
+                role: .system(level: level.rawValue),
+                content: "[\(level.rawValue)] \(message) (\(file):\(line))"
+            ))
+            persist(event, payload: ["level": level.rawValue, "message": message, "file": file, "line": "\(line)"])
+        }
+    }
+
+    private func persist(
+        _ event: IRISEvent,
+        payload: [String: String],
+        from: String? = nil,
+        to: String? = nil,
+        correlationId: UUID? = nil
+    ) {
+        let kind: String = {
+            switch event {
+            case .userInput: return "userInput"
+            case .agentDispatched: return "agentDispatched"
+            case .agentResponse: return "agentResponse"
+            case .signalEmitted: return "signalEmitted"
+            case .actionLogged: return "actionLogged"
+            case .agentFailure: return "agentFailure"
+            case .systemLog: return "systemLog"
+            }
+        }()
+
+        let json = (try? JSONSerialization.data(withJSONObject: payload, options: []))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+
+        let log = EventLog(
+            timestamp: event.timestamp,
+            kind: kind,
+            fromAgent: from,
+            toAgent: to,
+            payloadJSON: json,
+            correlationId: correlationId
+        )
+        modelContext.insert(log)
+        // Best-effort save : si ça échoue, on log via os_log mais on n'explose pas.
+        do {
+            try modelContext.save()
+        } catch {
+            IRISLogger.store.error("EventLog persist failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 }

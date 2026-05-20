@@ -26,9 +26,36 @@ Artefacts produits :
 
 Cf section "Documents vision" ci-dessus.
 
-## Phase 3 — v0.0.1 code (en attente arbitrages Mehdi)
+## Phase 3 — Code (en cours)
 
-6 décisions requises (cf [docs/IRIS-ROADMAP.md](docs/IRIS-ROADMAP.md) section "Décisions Mehdi requises avant v0.0.1").
+**v0.0.1 ✅ shipped** : bootstrap Tuist + SwiftUI app shell + DesignTokens Liquid Glass + entitlements minimaux. Build SUCCEEDED. Lancé sur Mac M5.
+
+Versions suivantes en cours via swarm parallèle : v0.0.2 (NavigationSplitView 3 panels + Asset Catalog) · v0.0.3 (Event Bus AsyncStream) · v0.0.4 (SwiftData schema 6 models) · v0.0.5 (Conductor mock assemblage) · v0.1 (Conductor LLM réel Claude Opus).
+
+## Setup local (machine neuve)
+
+```bash
+./scripts/setup.sh
+```
+
+Installe Xcode CLT, Homebrew, Tuist, génère le projet, build verify. Suppose Xcode app déjà installé via App Store.
+
+## Dev quotidien
+
+```bash
+make help        # liste des commandes
+make generate    # tuist install + generate (régénère .xcodeproj)
+make build       # build Debug macOS
+make run         # build + open -a IRIS
+make test        # build + run tests
+make open        # ouvre Xcode sur IRIS.xcworkspace
+make clean       # clean DerivedData + .xcodeproj
+make reset       # clean + install + generate (from scratch)
+```
+
+## CI
+
+GitHub Actions [`.github/workflows/ci.yml`](.github/workflows/ci.yml) tourne sur macos-15 à chaque push/PR sur main. Build + tests en non-strict pour v0.0.x (strict à partir v0.1).
 
 ## Structure
 

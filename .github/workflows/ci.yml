@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build IRIS macOS
+    runs-on: macos-15
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode (latest available)
+        run: sudo xcode-select -s /Applications/Xcode_26.0.app/Contents/Developer || sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Install Tuist via Homebrew
+        run: |
+          brew install --quiet tuist || true
+          tuist version
+
+      - name: Tuist install (dependencies)
+        run: tuist install
+
+      - name: Tuist generate (no open)
+        run: tuist generate --no-open
+
+      - name: xcodebuild (Debug, macOS)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -workspace IRIS.xcworkspace \
+            -scheme IRIS \
+            -destination 'platform=macOS' \
+            -configuration Debug \
+            build | tail -50
+
+      - name: xcodebuild test (IRISTests)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -workspace IRIS.xcworkspace \
+            -scheme IRIS \
+            -destination 'platform=macOS' \
+            -configuration Debug \
+            test | tail -80
+        continue-on-error: true  # v0.0.x : tests peuvent être en placeholder. Strict à partir de v0.1.
+
+  lint:
+    name: Markdown lint (docs)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Vérifier que les .md ont une heading H1
+        run: |
+          set -e
+          for f in docs/*.md artefacts/*.md README.md; do
+            if [ -f "$f" ]; then
+              if ! head -5 "$f" | grep -q "^# "; then
+                echo "::warning file=$f::Missing H1 heading in first 5 lines"
+              fi
+            fi
+          done
+          echo "Docs OK"

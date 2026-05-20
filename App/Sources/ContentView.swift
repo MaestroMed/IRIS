@@ -1,45 +1,25 @@
 import SwiftUI
 
-// IRIS v0.0.1 — ContentView minimal "Hello Mehdi".
-// v0.0.2 ajoutera le NavigationSplitView 3 panels (sidebar agents / main / inspector).
+// IRIS v0.0.2 — ContentView = NavigationSplitView 3 colonnes (sidebar / main / inspector).
+// Cf docs/IRIS-VISION.md, docs/IRIS-ARCHITECTURE.md.
+// v0.0.5+ — chaque colonne sera spécialisée par agent sélectionné.
 
 struct ContentView: View {
+    @State private var appState = IRISAppState()
+
     var body: some View {
-        ZStack {
-            // Background Liquid Glass — gradient soft iris → sky cohérent MIND
-            LinearGradient(
-                colors: [IRISTokens.skyBackground, IRISTokens.aquaTint],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+        @Bindable var binding = appState
 
-            VStack(spacing: 32) {
-                Spacer()
-
-                Text("IRIS")
-                    .font(.system(size: 96, weight: .ultraLight, design: .serif))
-                    .foregroundStyle(IRISTokens.irisAccent)
-                    .tracking(8)
-
-                Text("Hello Mehdi")
-                    .font(.system(size: 24, weight: .regular, design: .default))
-                    .foregroundStyle(.primary.opacity(0.7))
-
-                Text("v0.0.1 — bootstrap")
-                    .font(.system(size: 12, weight: .light, design: .monospaced))
-                    .foregroundStyle(.secondary)
-
-                Spacer()
-
-                Text("Exocortex local desktop multi-agents.\nPendant desktop de MIND.")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.bottom, 40)
-            }
-            .padding(48)
+        NavigationSplitView(columnVisibility: $binding.columnVisibility) {
+            SidebarView()
+        } content: {
+            MainCanvasView()
+        } detail: {
+            InspectorView()
         }
+        .navigationSplitViewStyle(.balanced)
+        .environment(appState)
+        .frame(minWidth: 1100, minHeight: 700)
     }
 }
 
