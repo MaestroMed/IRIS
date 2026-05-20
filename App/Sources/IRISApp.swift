@@ -87,6 +87,13 @@ struct IRISApp: App {
             SettingsView()
                 .environment(appState)
         }
+
+        // v1.45 — MenuBarExtra accessible quand fenêtre principale fermée
+        MenuBarExtra("IRIS", systemImage: "eye") {
+            MenuBarStatusView()
+                .modelContainer(modelContainer)
+        }
+        .menuBarExtraStyle(.window)
     }
 
     // MARK: — Bootstrap
