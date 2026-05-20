@@ -11,6 +11,7 @@ struct MemoryBrowserView: View {
 
     @State private var typeFilter: String = ""
     @State private var searchText: String = ""
+    @State private var tagFilter: String = ""  // v1.84
     @State private var retrievalQuery: String = ""
     @State private var retrievalResults: [(Memory, Double)] = []
     @State private var isRetrieving: Bool = false
@@ -24,6 +25,10 @@ struct MemoryBrowserView: View {
         if !typeFilter.isEmpty {
             items = items.filter { $0.type == typeFilter }
         }
+        if !tagFilter.isEmpty {
+            let tag = tagFilter.lowercased()
+            items = items.filter { $0.tagsCSV.lowercased().contains(tag) }
+        }
         if !searchText.isEmpty {
             let q = searchText.lowercased()
             items = items.filter {
@@ -33,6 +38,16 @@ struct MemoryBrowserView: View {
             }
         }
         return items
+    }
+
+    /// v1.84 — Liste des tags uniques (split CSV) pour suggestions
+    private var availableTags: [String] {
+        var tags = Set<String>()
+        for m in allMemories {
+            let parts = m.tagsCSV.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+            for p in parts where !p.isEmpty { tags.insert(p) }
+        }
+        return Array(tags).sorted()
     }
 
     var body: some View {
@@ -72,6 +87,17 @@ struct MemoryBrowserView: View {
             .labelsHidden()
             .controlSize(.small)
             .frame(maxWidth: 180)
+
+            // v1.84 — Tag filter Picker
+            Picker("Tag", selection: $tagFilter) {
+                Text("All tags").tag("")
+                ForEach(availableTags, id: \.self) { t in
+                    Text(t).tag(t)
+                }
+            }
+            .labelsHidden()
+            .controlSize(.small)
+            .frame(maxWidth: 140)
 
             TextField("Search name/summary/content…", text: $searchText)
                 .textFieldStyle(.roundedBorder)

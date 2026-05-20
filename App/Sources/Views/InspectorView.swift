@@ -29,6 +29,11 @@ struct InspectorView: View {
     @State private var draftEditBuffer: String = ""
     @State private var draftStatusFilter: String = ""    // v1.78
     @State private var projectStatusFilter: String = ""  // v1.79
+    @State private var showComposeDraft: Bool = false    // v1.85
+    @State private var composeSubject: String = ""
+    @State private var composeBody: String = ""
+    @State private var composeChannel: String = "email"
+    @State private var composeTone: String = "formel-fr-client"
 
     var body: some View {
         ScrollView {
@@ -67,6 +72,97 @@ struct InspectorView: View {
             ideal: IRISTokens.inspectorIdealWidth,
             max: IRISTokens.inspectorMaxWidth
         )
+        // v1.85 — Compose draft sheet
+        .sheet(isPresented: $showComposeDraft) {
+            composeDraftSheet
+        }
+    }
+
+    // v1.85 — Manual draft compose (bypass Quill LLM call)
+    private var composeDraftSheet: some View {
+        VStack(alignment: .leading, spacing: IRISTokens.spacing16) {
+            HStack {
+                Text("Compose draft (manual)")
+                    .font(.system(size: 18, weight: .light, design: .serif))
+                    .foregroundStyle(IRISTokens.irisAccent)
+                Spacer()
+                Button("Annuler") { showComposeDraft = false }
+                    .keyboardShortcut(.cancelAction)
+            }
+
+            HStack(spacing: IRISTokens.spacing8) {
+                Picker("Channel", selection: $composeChannel) {
+                    Text("email").tag("email")
+                    Text("slack").tag("slack")
+                    Text("github_comment").tag("github_comment")
+                }
+                .labelsHidden()
+                .controlSize(.small)
+                .frame(maxWidth: 140)
+
+                Picker("Tone", selection: $composeTone) {
+                    Text("formel-fr-client").tag("formel-fr-client")
+                    Text("tech-en-pr").tag("tech-en-pr")
+                    Text("casual-fr-team").tag("casual-fr-team")
+                    Text("marketing-fr-public").tag("marketing-fr-public")
+                }
+                .labelsHidden()
+                .controlSize(.small)
+                .frame(maxWidth: 180)
+                Spacer()
+            }
+
+            TextField("Subject…", text: $composeSubject)
+                .textFieldStyle(.roundedBorder)
+
+            TextEditor(text: $composeBody)
+                .font(.system(size: 12, design: .monospaced))
+                .frame(minHeight: 180, maxHeight: 360)
+                .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
+
+            HStack {
+                Spacer()
+                Button("Sauvegarder") {
+                    saveComposedDraft()
+                    showComposeDraft = false
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(IRISTokens.irisAccent)
+                .disabled(composeBody.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+        .padding(IRISTokens.spacing24)
+        .frame(minWidth: 560, minHeight: 480)
+    }
+
+    private func saveComposedDraft() {
+        let body = composeBody.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !body.isEmpty else { return }
+        let subject = composeSubject.trimmingCharacters(in: .whitespaces)
+        let draftId = UUID()
+        let draft = Draft(
+            id: draftId,
+            signalId: nil,
+            audience: "manual",
+            channel: composeChannel,
+            tone: composeTone,
+            subject: subject.isEmpty ? nil : subject,
+            content: body,
+            modelUsed: "manual",
+            costUSD: 0,
+            status: "pending"
+        )
+        modelContext.insert(draft)
+        try? modelContext.save()
+        // Reset compose fields
+        composeSubject = ""
+        composeBody = ""
+        // Publish draftReady event pour traçabilité (no signal, mais Envoy peut traiter)
+        Task {
+            await EventBus.shared.publish(
+                .draftReady(draftId: draftId, signalId: nil, channel: composeChannel, summary: subject.isEmpty ? String(body.prefix(80)) : subject)
+            )
+        }
     }
 
     // MARK: — Section par agent sélectionné
@@ -790,6 +886,16 @@ struct InspectorView: View {
         return VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
             HStack {
                 sectionHeader("Drafts récents", count: drafts.count, accent: .secondary)
+                // v1.85 — Compose new manual
+                Button {
+                    showComposeDraft = true
+                } label: {
+                    Image(systemName: "plus.circle")
+                        .font(.system(size: 11))
+                        .foregroundStyle(IRISTokens.aquaTint)
+                }
+                .buttonStyle(.plain)
+                .help("Composer un draft manuel (bypass Quill)")
                 if !availableStatuses.isEmpty {
                     Picker("", selection: $draftStatusFilter) {
                         Text("all").tag("")

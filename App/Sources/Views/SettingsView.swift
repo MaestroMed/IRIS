@@ -1303,12 +1303,64 @@ struct SettingsView: View {
 
     private var footer: some View {
         VStack(alignment: .leading, spacing: IRISTokens.spacing4) {
+            // v1.83 — IRIS info section
+            irisInfoRow
+
+            Divider().padding(.vertical, 2)
+
             Text("API key stockée dans le Keychain macOS (service `app.iris.macos.secrets`, account `anthropic-api-key`).")
                 .font(IRISTokens.monoFont)
                 .foregroundStyle(.secondary)
             Text("Coût session courante : $\(String(format: "%.4f", appState.sessionCostUSD))")
                 .font(IRISTokens.monoFont)
                 .foregroundStyle(appState.sessionCostUSD > 1 ? IRISTokens.goldAccent : .secondary)
+        }
+    }
+
+    // v1.83 — IRIS runtime info (version + bootstrap + uptime + build commit)
+    private var irisInfoRow: some View {
+        let uptime = IRISRuntimeInfo.uptime
+        let uptimeStr = uptime.map { IRISRuntimeInfo.formatUptime($0) } ?? "—"
+        let bootstrapStr = IRISRuntimeInfo.bootstrapAt.map {
+            let f = DateFormatter()
+            f.dateFormat = "yyyy-MM-dd HH:mm:ss"
+            return f.string(from: $0)
+        } ?? "—"
+        return HStack(spacing: IRISTokens.spacing16) {
+            HStack(spacing: 4) {
+                Image(systemName: "info.circle")
+                    .font(.system(size: 11))
+                    .foregroundStyle(IRISTokens.irisAccent)
+                Text("IRIS v\(IRISRuntimeInfo.appVersion)")
+                    .font(IRISTokens.monoFont)
+                    .foregroundStyle(.primary)
+            }
+            HStack(spacing: 4) {
+                Image(systemName: "clock")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                Text("uptime: \(uptimeStr)")
+                    .font(IRISTokens.monoFont)
+                    .foregroundStyle(.secondary)
+            }
+            HStack(spacing: 4) {
+                Image(systemName: "play.circle")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                Text("bootstrap: \(bootstrapStr)")
+                    .font(IRISTokens.monoFont)
+                    .foregroundStyle(.secondary)
+            }
+            if IRISRuntimeInfo.buildCommit != "—" {
+                HStack(spacing: 4) {
+                    Image(systemName: "number")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                    Text("commit: \(IRISRuntimeInfo.buildCommit)")
+                        .font(IRISTokens.monoFont)
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
     }
 

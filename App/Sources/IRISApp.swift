@@ -111,6 +111,9 @@ struct IRISApp: App {
         // 0. Sentry first — capture les erreurs des étapes suivantes.
         IRISSentry.start()
 
+        // v1.83 — Set bootstrap timestamp pour uptime tracking
+        IRISRuntimeInfo.bootstrapAt = Date()
+
         // 1. Seed agents si nécessaire
         let context = modelContainer.mainContext
         AgentSeeder.seedIfNeeded(in: context)
