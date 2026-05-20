@@ -108,10 +108,25 @@ struct SettingsView: View {
     private var skillMarketplaceSection: some View {
         let registry = SkillRegistry.shared
         return VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
-            sectionTitle(
-                "Skill marketplace (\(registry.enabledNames.count)/\(registry.allSkills.count) actifs)",
-                subtitle: "Toggle pour activer/désactiver. Builder utilise uniquement les skills actifs."
-            )
+            HStack(alignment: .top) {
+                sectionTitle(
+                    "Skill marketplace (\(registry.enabledNames.count)/\(registry.allSkills.count) actifs)",
+                    subtitle: "Toggle pour activer/désactiver. Builder utilise uniquement les skills actifs."
+                )
+                Spacer()
+                HStack(spacing: 4) {
+                    Button(action: exportSkillsConfig) {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                    .controlSize(.mini)
+                    .help("Export config skills en JSON (partage entre Macs)")
+                    Button(action: importSkillsConfig) {
+                        Image(systemName: "square.and.arrow.down")
+                    }
+                    .controlSize(.mini)
+                    .help("Import config skills JSON (overwrite current)")
+                }
+            }
 
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 4) {
@@ -278,6 +293,46 @@ struct SettingsView: View {
             backupStatus = "✅ Markdown exporté vers \(url.path) (\(humanByteSize(at: url)))"
         } catch {
             backupStatus = "⚠️ Export MD échoué : \(error.localizedDescription)"
+        }
+    }
+
+    // MARK: — v1.14 Skills config export/import
+
+    private func exportSkillsConfig() {
+        guard let data = SkillRegistry.shared.exportConfig() else {
+            backupStatus = "⚠️ Export skills échoué"
+            return
+        }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.json]
+        panel.nameFieldStringValue = "iris-skills-config.json"
+        panel.directoryURL = URL(fileURLWithPath: NSHomeDirectory())
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try data.write(to: url)
+            backupStatus = "✅ Config skills exportée vers \(url.lastPathComponent)"
+        } catch {
+            backupStatus = "⚠️ Save skills config échoué : \(error.localizedDescription)"
+        }
+    }
+
+    private func importSkillsConfig() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = URL(fileURLWithPath: NSHomeDirectory())
+        panel.title = "Sélectionne config skills JSON"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        do {
+            let data = try Data(contentsOf: url)
+            if SkillRegistry.shared.importConfig(from: data) {
+                backupStatus = "✅ Config skills importée (\(SkillRegistry.shared.enabledNames.count) actifs)"
+            } else {
+                backupStatus = "⚠️ Format JSON invalide"
+            }
+        } catch {
+            backupStatus = "⚠️ Read échoué : \(error.localizedDescription)"
         }
     }
 

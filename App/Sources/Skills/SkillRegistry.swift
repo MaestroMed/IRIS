@@ -93,6 +93,40 @@ public final class SkillRegistry {
     private func persist() {
         UserDefaults.standard.set(Array(enabledNames), forKey: Self.userDefaultsKey)
     }
+
+    // MARK: — v1.14 Export / Import config JSON
+
+    public struct SkillsConfig: Codable, Sendable {
+        public let version: String
+        public let exportedAt: Date
+        public let enabledNames: [String]
+    }
+
+    /// Export la config courante en JSON (pour partager entre machines / early adopters v2.x).
+    public func exportConfig() -> Data? {
+        let config = SkillsConfig(
+            version: "1.14",
+            exportedAt: .now,
+            enabledNames: Array(enabledNames).sorted()
+        )
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return try? encoder.encode(config)
+    }
+
+    /// Import une config JSON. Retourne true si valide + appliquée.
+    /// Idempotent : remplace complètement enabledNames (pas de merge).
+    @discardableResult
+    public func importConfig(from data: Data) -> Bool {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        guard let config = try? decoder.decode(SkillsConfig.self, from: data) else { return false }
+        let validNames = Set(allSkills.map(\.name))
+        let filtered = Set(config.enabledNames).intersection(validNames)
+        self.enabledNames = filtered
+        return true
+    }
 }
 
 public struct SkillEntry: Identifiable, Sendable, Hashable {

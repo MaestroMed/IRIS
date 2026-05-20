@@ -272,32 +272,12 @@ struct MainCanvasView: View {
 
     // MARK: — System panel
 
+    @ViewBuilder
     private func systemPanel(_ destination: SystemDestination) -> some View {
-        VStack(alignment: .leading, spacing: IRISTokens.spacing16) {
-            HStack {
-                Image(systemName: destination.symbol)
-                    .font(.system(size: 22))
-                    .foregroundStyle(.secondary)
-                Text(destination.displayName)
-                    .font(.system(size: 22, weight: .light, design: .serif))
-                Spacer()
-            }
-            .padding(.horizontal, IRISTokens.spacing24)
-            .padding(.top, IRISTokens.spacing16)
-
-            Divider()
-
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 6) {
-                    ForEach(appState.transcript.filter { entry in
-                        if case .system = entry.role { return true } else { return false }
-                    }) { entry in
-                        TranscriptRow(entry: entry, compact: true)
-                    }
-                }
-                .padding(IRISTokens.spacing16)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
+        switch destination {
+        case .logs:
+            // v1.16 — vraie panel logs runtime (EventLog SwiftData query)
+            LogsView()
         }
     }
 }
