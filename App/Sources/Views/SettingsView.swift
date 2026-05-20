@@ -229,6 +229,7 @@ struct SettingsView: View {
     @State private var auditorModelSelection: String = ""
     @State private var quillModelSelection: String = ""
     @State private var advisorModelSelection: String = ""
+    @State private var witnessVisionModel: String = ""  // v1.110
     @State private var conductorMaxTokens: Double = 2048  // v1.61
     @State private var costLimitUSD: Double = 1.0          // v1.72
     @State private var auditorMonthlyAuto: Bool = false    // v1.93
@@ -297,6 +298,27 @@ struct SettingsView: View {
                 .onChange(of: quillModelSelection) { _, newValue in
                     if let model = ClaudeModel(rawValue: newValue) {
                         Quill.setModel(model)
+                    }
+                }
+            }
+            .padding(.leading, IRISTokens.spacing16)
+
+            // v1.110 — Witness vision model picker (Phase A)
+            HStack {
+                Text("Witness vision model")
+                    .font(.system(size: 11))
+                Spacer()
+                Picker("", selection: $witnessVisionModel) {
+                    Text("Haiku 4.5 (cheap · ~$0.002/call)").tag(ClaudeModel.haiku45.rawValue)
+                    Text("Sonnet 4.6 (better · ~$0.006/call)").tag(ClaudeModel.sonnet46.rawValue)
+                    Text("Opus 4.7 (overkill)").tag(ClaudeModel.opus47.rawValue)
+                }
+                .labelsHidden()
+                .controlSize(.small)
+                .frame(maxWidth: 280)
+                .onChange(of: witnessVisionModel) { _, newValue in
+                    if let model = ClaudeModel(rawValue: newValue) {
+                        Witness.setVisionModel(model)
                     }
                 }
             }
@@ -430,6 +452,7 @@ struct SettingsView: View {
             auditorModelSelection = Auditor.currentModel.rawValue
             quillModelSelection = Quill.currentModel.rawValue
             advisorModelSelection = Advisor.currentModel.rawValue
+            witnessVisionModel = Witness.currentVisionModel.rawValue  // v1.110
             conductorMaxTokens = Double(Conductor.currentMaxTokens)  // v1.61
             conductorHistoryPairs = Double(Conductor.currentMaxHistoryPairs)  // v1.106
             costLimitUSD = IRISAppState.costLimitUSD                     // v1.72

@@ -110,7 +110,7 @@ public actor Witness {
             return
         }
 
-        let visionModel = ClaudeModel.haiku45  // v1.109 hardcoded, v1.110 picker
+        let visionModel = Self.currentVisionModel  // v1.110 — UserDefaults picker
 
         do {
             let response = try await AnthropicClient.shared.sendVisionMessage(
@@ -235,6 +235,23 @@ public actor Witness {
         var ids = blockedBundleIds
         ids.remove(id)
         setBlocked(ids)
+    }
+
+    // MARK: — v1.110 Vision model picker
+
+    private static let visionModelKey = "iris.witness.visionModel"
+
+    /// Modèle Claude utilisé pour les captures vision. Default Haiku 4.5 (cheap).
+    public static var currentVisionModel: ClaudeModel {
+        if let raw = UserDefaults.standard.string(forKey: visionModelKey),
+           let model = ClaudeModel(rawValue: raw) {
+            return model
+        }
+        return .haiku45
+    }
+
+    public static func setVisionModel(_ model: ClaudeModel) {
+        UserDefaults.standard.set(model.rawValue, forKey: visionModelKey)
     }
 
     /// Bundle IDs courants suggérés à blocker (apps sensibles).
