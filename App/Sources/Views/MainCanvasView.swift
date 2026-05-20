@@ -278,6 +278,18 @@ struct MainCanvasView: View {
             .buttonStyle(.plain)
             .keyboardShortcut(.return, modifiers: .command)
             .disabled(!canSubmit)
+
+            // v1.90 — Clear input (Cmd+Backspace shortcut hidden button)
+            Button {
+                appState.currentInput = ""
+            } label: {
+                EmptyView()
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut(.delete, modifiers: .command)
+            .disabled(appState.currentInput.isEmpty)
+            .opacity(0)
+            .frame(width: 0, height: 0)
         }
         .padding(IRISTokens.spacing16)
     }

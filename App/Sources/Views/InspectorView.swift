@@ -231,9 +231,44 @@ struct InspectorView: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .disabled(appState.transcript.isEmpty)
+                // v1.89 — Export transcript MD
+                Button {
+                    exportTranscriptMarkdown()
+                } label: {
+                    Label("Export MD", systemImage: "square.and.arrow.up")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(appState.transcript.isEmpty)
+                .help("Export la conversation en Markdown vers ~/iris-conv-<timestamp>.md")
                 Spacer()
             }
         }
+    }
+
+    // v1.89 — Export transcript as Markdown file
+    private func exportTranscriptMarkdown() {
+        let entries = appState.transcript
+        guard !entries.isEmpty else { return }
+        let dateFmt = DateFormatter()
+        dateFmt.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        var md = "# IRIS Conductor transcript — \(dateFmt.string(from: Date()))\n\n"
+        for entry in entries {
+            let role: String = {
+                switch entry.role {
+                case .user: return "User"
+                case .agent(let id): return id.descriptor.displayName
+                case .system(let lvl): return "System(\(lvl))"
+                }
+            }()
+            md += "## \(role) · \(entry.timestamp.formatted(date: .omitted, time: .standard))\n\n"
+            md += "\(entry.content)\n\n"
+        }
+        let isoNow = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
+        let url = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("iris-conv-\(isoNow).md")
+        try? md.write(to: url, atomically: true, encoding: .utf8)
+        NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
     private func conductorStatRow(label: String, value: String, color: Color) -> some View {
@@ -825,8 +860,46 @@ struct InspectorView: View {
                 Text("Runtime live (auto).")
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundStyle(.green)
+
+                // v1.91 — Sentinel snooze status badges (si id == sentinel)
+                if id == .sentinel {
+                    sentinelSnoozeBadges
+                }
             }
         }
+    }
+
+    // v1.91 — Affiche les sources Sentinel actuellement snoozées avec remaining time
+    @ViewBuilder
+    private var sentinelSnoozeBadges: some View {
+        let now = Date()
+        let snoozed = Sentinel.knownSources.compactMap { source -> (String, Date)? in
+            guard let until = Sentinel.snoozeUntil(source: source), until > now else { return nil }
+            return (source, until)
+        }
+        if !snoozed.isEmpty {
+            HStack(spacing: 4) {
+                Image(systemName: "moon.zzz.fill")
+                    .font(.system(size: 9))
+                    .foregroundStyle(IRISTokens.goldAccent)
+                ForEach(snoozed, id: \.0) { item in
+                    Text("\(item.0) \(Self.remainingShort(item.1))")
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(IRISTokens.goldAccent)
+                        .padding(.horizontal, 4).padding(.vertical, 1)
+                        .background(IRISTokens.goldAccent.opacity(0.12))
+                        .clipShape(Capsule())
+                }
+            }
+            .padding(.top, 4)
+        }
+    }
+
+    private static func remainingShort(_ until: Date) -> String {
+        let s = max(0, until.timeIntervalSinceNow)
+        if s < 60 { return "\(Int(s))s" }
+        if s < 3600 { return "\(Int(s/60))m" }
+        return "\(Int(s/3600))h"
     }
 
     // MARK: — Pending actions
