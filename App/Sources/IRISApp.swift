@@ -87,7 +87,13 @@ struct IRISApp: App {
         // 8. Auditor démarre — on-demand audit via UI (v0.7 mock)
         await Auditor.shared.start(modelContainer: modelContainer)
 
-        irisLog(.info, "IRIS bootstrapped — Conductor + Quill + Envoy + Sentinel + Cartographer + Auditor live",
+        // 9. Builder démarre — scaffold on-demand via UI (v0.8 mock)
+        await Builder.shared.start(modelContainer: modelContainer)
+
+        // 10. Advisor démarre — briefing scheduled 8h00 + manual on-demand
+        await Advisor.shared.start(modelContainer: modelContainer, onCost: costSink)
+
+        irisLog(.info, "IRIS bootstrapped — 10 agents live (Conductor + Sentinel + Scribe + Quill + Envoy + Cartographer + Auditor + Builder + Advisor)",
                 category: IRISLogger.ui)
     }
 }

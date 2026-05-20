@@ -1,7 +1,8 @@
 import SwiftUI
 import SwiftData
 
-// IRIS v0.5 — Inspector droit avec sections : Actions en attente, Drafts récents, Signals récents, Agent détail.
+// IRIS v1.0.A — Inspector dédié par agent sélectionné. Sections globales (pending actions / drafts / signals) toujours visibles.
+// + Sections agent-spécifiques quand sélectionné : Cartographer / Auditor / Builder / Advisor.
 
 struct InspectorView: View {
     @Environment(IRISAppState.self) private var appState
@@ -9,6 +10,12 @@ struct InspectorView: View {
 
     @Query(sort: \Draft.createdAt, order: .reverse) private var allDrafts: [Draft]
     @Query(sort: \Signal.emittedAt, order: .reverse) private var allSignals: [Signal]
+    @Query(sort: \ProjectRecord.lastPushAt, order: .reverse) private var allProjects: [ProjectRecord]
+    @Query(sort: \AuditReport.createdAt, order: .reverse) private var allAudits: [AuditReport]
+
+    @State private var scaffoldProjectName: String = ""
+    @State private var scaffoldSelectedSkill: String = "doc-first-project-scaffolding"
+    @State private var auditPickedProject: String = ""
 
     var body: some View {
         ScrollView {
@@ -17,14 +24,11 @@ struct InspectorView: View {
                     pendingActionsSection
                 }
 
+                agentDedicatedSection
+
                 draftsSection
 
                 signalsSection
-
-                if appState.selectedAgent != nil {
-                    Divider().padding(.vertical, IRISTokens.spacing4)
-                    agentSelectionDetails
-                }
 
                 Spacer(minLength: 0)
             }
@@ -43,6 +47,242 @@ struct InspectorView: View {
             ideal: IRISTokens.inspectorIdealWidth,
             max: IRISTokens.inspectorMaxWidth
         )
+    }
+
+    // MARK: — Section par agent sélectionné
+
+    @ViewBuilder
+    private var agentDedicatedSection: some View {
+        switch appState.selectedAgent {
+        case .cartographer:
+            cartographerSection
+        case .auditor:
+            auditorSection
+        case .builder:
+            builderSection
+        case .advisor:
+            advisorSection
+        case .some(let other):
+            simpleAgentSection(other)
+        case .none:
+            EmptyView()
+        }
+    }
+
+    // MARK: — Cartographer
+
+    private var cartographerSection: some View {
+        VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
+            sectionHeader("Cartographer", count: allProjects.count, accent: IRISTokens.irisAccent)
+
+            Button {
+                Task { await Cartographer.shared.refresh() }
+            } label: {
+                Label("Refresh now", systemImage: "arrow.clockwise")
+                    .font(.system(size: 11))
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+
+            ForEach(Array(allProjects.prefix(8))) { project in
+                projectRow(project)
+            }
+
+            if allProjects.count > 8 {
+                Text("… +\(allProjects.count - 8) autres")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func projectRow(_ project: ProjectRecord) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            statusBadge(project.status)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(project.displayName)
+                    .font(.system(size: 12, weight: .medium))
+                    .lineLimit(1)
+                if let url = project.repoURL {
+                    Text(url.replacingOccurrences(of: "https://github.com/", with: ""))
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            Spacer()
+            if project.isPrivate {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 4)
+        .padding(.horizontal, 6)
+        .background(RoundedRectangle(cornerRadius: 6).fill(.thinMaterial))
+    }
+
+    // MARK: — Auditor
+
+    private var auditorSection: some View {
+        VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
+            sectionHeader("Auditor", count: allAudits.count, accent: IRISTokens.irisAccent)
+
+            HStack(spacing: IRISTokens.spacing8) {
+                Picker("Projet", selection: $auditPickedProject) {
+                    Text("— choisir —").tag("")
+                    ForEach(allProjects.prefix(20)) { p in
+                        Text(p.codename).tag(p.codename)
+                    }
+                }
+                .labelsHidden()
+                .controlSize(.small)
+
+                Button("Audit") {
+                    let target = auditPickedProject
+                    guard !target.isEmpty else { return }
+                    Task { await Auditor.shared.auditProject(codename: target) }
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .tint(IRISTokens.irisAccent)
+                .disabled(auditPickedProject.isEmpty)
+            }
+
+            ForEach(Array(allAudits.prefix(5))) { audit in
+                auditRow(audit)
+            }
+        }
+    }
+
+    private func auditRow(_ audit: AuditReport) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                verdictBadge(audit.verdict)
+                Text(audit.projectCodename)
+                    .font(.system(size: 12, weight: .medium))
+                Spacer()
+                Text(audit.createdAt, format: .dateTime.day().month(.abbreviated).hour().minute())
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+            Text(audit.headline)
+                .font(.system(size: 11))
+                .foregroundStyle(.primary.opacity(0.8))
+                .lineLimit(2)
+        }
+        .padding(.vertical, 4)
+        .padding(.horizontal, 6)
+        .background(RoundedRectangle(cornerRadius: 6).fill(.thinMaterial))
+    }
+
+    // MARK: — Builder
+
+    private var builderSection: some View {
+        VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
+            sectionHeader("Builder", count: Builder.availableSkills.count, accent: IRISTokens.irisAccent)
+
+            Picker("Skill", selection: $scaffoldSelectedSkill) {
+                ForEach(Builder.availableSkills) { skill in
+                    Text(skill.name).tag(skill.name)
+                }
+            }
+            .labelsHidden()
+            .controlSize(.small)
+
+            TextField("nom du projet (ex: nouveau_client_v0)", text: $scaffoldProjectName)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(size: 11, design: .monospaced))
+                .controlSize(.small)
+
+            Button {
+                let name = scaffoldProjectName.trimmingCharacters(in: .whitespaces)
+                guard !name.isEmpty else { return }
+                Task {
+                    await Builder.shared.scaffold(
+                        skillName: scaffoldSelectedSkill,
+                        projectName: name,
+                        targetDirectory: nil
+                    )
+                }
+                scaffoldProjectName = ""
+            } label: {
+                Label("Scaffold", systemImage: "hammer")
+                    .font(.system(size: 11))
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .tint(IRISTokens.irisAccent)
+            .disabled(scaffoldProjectName.trimmingCharacters(in: .whitespaces).isEmpty)
+
+            Divider().padding(.vertical, 2)
+
+            Text("Skill sélectionné")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.secondary)
+
+            if let selected = Builder.availableSkills.first(where: { $0.name == scaffoldSelectedSkill }) {
+                Text(selected.summary)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.primary.opacity(0.8))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    // MARK: — Advisor
+
+    private var advisorSection: some View {
+        VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
+            sectionHeader("Advisor", count: 0, accent: IRISTokens.irisAccent)
+
+            Button {
+                Task { await Advisor.shared.runBriefing(kind: .manual) }
+            } label: {
+                Label("Brief now (manuel)", systemImage: "sunrise")
+                    .font(.system(size: 11))
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .tint(IRISTokens.irisAccent)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Briefing scheduled : 8h00 chaque matin")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                Text("Le briefing apparaîtra dans le transcript Conductor + Logs panel.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.top, IRISTokens.spacing4)
+        }
+    }
+
+    // MARK: — Simple agent (Conductor / Sentinel / Scribe / Quill / Envoy / Witness)
+
+    private func simpleAgentSection(_ id: AgentID) -> some View {
+        let descriptor = id.descriptor
+        return VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
+            sectionHeader(descriptor.displayName, count: 0, accent: IRISTokens.irisAccent)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 4) {
+                    Image(systemName: descriptor.symbol)
+                        .foregroundStyle(IRISTokens.irisAccent)
+                    Text(descriptor.alias)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+                Text(descriptor.tagline)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.primary.opacity(0.85))
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("Runtime live (auto).")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.green)
+            }
+        }
     }
 
     // MARK: — Pending actions
@@ -78,9 +318,7 @@ struct InspectorView: View {
             HStack(spacing: IRISTokens.spacing8) {
                 Button("Approve") {
                     Task {
-                        await EventBus.shared.publish(
-                            .actionApproved(actionId: action.actionId, approvedAt: .now)
-                        )
+                        await EventBus.shared.publish(.actionApproved(actionId: action.actionId, approvedAt: .now))
                     }
                 }
                 .buttonStyle(.borderedProminent)
@@ -89,9 +327,7 @@ struct InspectorView: View {
 
                 Button("Reject") {
                     Task {
-                        await EventBus.shared.publish(
-                            .actionRejected(actionId: action.actionId, reason: nil)
-                        )
+                        await EventBus.shared.publish(.actionRejected(actionId: action.actionId, reason: nil))
                     }
                 }
                 .buttonStyle(.bordered)
@@ -101,33 +337,23 @@ struct InspectorView: View {
                 Spacer()
             }
         }
-        .padding(IRISTokens.spacing12OrFallback)
-        .background(
-            RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusMedium)
-                .fill(.regularMaterial)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusMedium)
-                .strokeBorder(IRISTokens.goldAccent.opacity(0.3), lineWidth: 0.5)
-        )
+        .padding(IRISTokens.spacing16)
+        .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusMedium).fill(.regularMaterial))
+        .overlay(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusMedium).strokeBorder(IRISTokens.goldAccent.opacity(0.3), lineWidth: 0.5))
     }
 
-    // MARK: — Drafts
+    // MARK: — Drafts + Signals
 
     private var draftsSection: some View {
         let drafts = Array(allDrafts.prefix(5))
         return VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
             sectionHeader("Drafts récents", count: drafts.count, accent: .secondary)
-
             if drafts.isEmpty {
-                Text("Pas encore de drafts.\nQuill se déclenche sur signaux ≥ high.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                Text("Quill se déclenche sur signaux ≥ high.")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
-                ForEach(drafts) { draft in
-                    draftRow(draft)
-                }
+                ForEach(drafts) { draft in draftRow(draft) }
             }
         }
     }
@@ -136,50 +362,34 @@ struct InspectorView: View {
         VStack(alignment: .leading, spacing: 2) {
             HStack {
                 Image(systemName: channelIcon(draft.channel))
-                    .font(.system(size: 11))
-                    .foregroundStyle(IRISTokens.irisAccent)
-                Text(draft.subject ?? draft.content.prefix(50).description)
-                    .font(.system(size: 12, weight: .medium))
-                    .lineLimit(1)
+                    .font(.system(size: 11)).foregroundStyle(IRISTokens.irisAccent)
+                Text(draft.subject ?? String(draft.content.prefix(50)))
+                    .font(.system(size: 12, weight: .medium)).lineLimit(1)
                 Spacer()
                 statusBadge(draft.status)
             }
             HStack(spacing: IRISTokens.spacing8) {
-                Text(draft.tone)
-                    .font(.system(size: 9, design: .monospaced))
-                    .foregroundStyle(.secondary)
+                Text(draft.tone).font(.system(size: 9, design: .monospaced)).foregroundStyle(.secondary)
                 Text(draft.createdAt, format: .dateTime.hour().minute().second())
-                    .font(.system(size: 9, design: .monospaced))
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 9, design: .monospaced)).foregroundStyle(.secondary)
                 Spacer()
                 Text("$\(String(format: "%.5f", draft.costUSD))")
-                    .font(.system(size: 9, design: .monospaced))
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 9, design: .monospaced)).foregroundStyle(.secondary)
             }
         }
-        .padding(.vertical, 4)
-        .padding(.horizontal, IRISTokens.spacing8)
-        .background(
-            RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall)
-                .fill(.thinMaterial)
-        )
+        .padding(.vertical, 4).padding(.horizontal, IRISTokens.spacing8)
+        .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
     }
-
-    // MARK: — Signals
 
     private var signalsSection: some View {
         let signals = Array(allSignals.prefix(8))
         return VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
-            sectionHeader("Signals récents (Sentinel)", count: signals.count, accent: .secondary)
-
+            sectionHeader("Signals récents", count: signals.count, accent: .secondary)
             if signals.isEmpty {
                 Text("Sentinel démarre dans quelques secondes…")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
             } else {
-                ForEach(signals) { signal in
-                    signalRow(signal)
-                }
+                ForEach(signals) { signal in signalRow(signal) }
             }
         }
     }
@@ -190,61 +400,30 @@ struct InspectorView: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
                     Text(signal.source.uppercased())
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 9, weight: .bold, design: .monospaced)).foregroundStyle(.secondary)
                     if let project = signal.projectScope {
                         Text("· \(project)")
-                            .font(.system(size: 9, design: .monospaced))
-                            .foregroundStyle(IRISTokens.irisAccent)
+                            .font(.system(size: 9, design: .monospaced)).foregroundStyle(IRISTokens.irisAccent)
                     }
                     Spacer()
                     Text(signal.emittedAt, format: .dateTime.hour().minute().second())
-                        .font(.system(size: 9, design: .monospaced))
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 9, design: .monospaced)).foregroundStyle(.secondary)
                 }
                 Text(signal.summary)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.primary)
-                    .lineLimit(2)
+                    .font(.system(size: 11)).foregroundStyle(.primary).lineLimit(2)
             }
         }
         .padding(.vertical, 4)
     }
 
-    // MARK: — Agent selected
-
-    private var agentSelectionDetails: some View {
-        Group {
-            if let agentId = appState.selectedAgent {
-                let descriptor = agentId.descriptor
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 4) {
-                        Image(systemName: descriptor.symbol)
-                            .foregroundStyle(IRISTokens.irisAccent)
-                        Text(descriptor.displayName)
-                            .font(.system(size: 13, weight: .semibold))
-                    }
-                    Text(descriptor.alias).font(.system(size: 11)).foregroundStyle(.secondary)
-                    Text(descriptor.tagline).font(.system(size: 11)).foregroundStyle(.primary.opacity(0.8))
-                }
-            } else {
-                EmptyView()
-            }
-        }
-    }
-
-    // MARK: — Helpers
+    // MARK: — Helpers visuels
 
     private func sectionHeader(_ title: String, count: Int, accent: Color) -> some View {
         HStack(spacing: 4) {
             Text(title.uppercased())
-                .font(.system(size: 10, weight: .semibold))
-                .tracking(1.4)
-                .foregroundStyle(.secondary)
+                .font(.system(size: 10, weight: .semibold)).tracking(1.4).foregroundStyle(.secondary)
             if count > 0 {
-                Text("\(count)")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundStyle(accent)
+                Text("\(count)").font(.system(size: 10, weight: .bold, design: .monospaced)).foregroundStyle(accent)
             }
             Spacer()
         }
@@ -263,19 +442,35 @@ struct InspectorView: View {
     private func statusBadge(_ status: String) -> some View {
         let color: Color = {
             switch status {
-            case "sent": return .green
+            case "sent", "active": return .green
             case "approved": return IRISTokens.aquaTint
             case "rejected", "failed": return .red
+            case "tiede": return IRISTokens.goldAccent
+            case "dormant", "archived": return .secondary
             default: return .secondary
             }
         }()
         return Text(status)
             .font(.system(size: 9, design: .monospaced))
             .foregroundStyle(color)
-            .padding(.horizontal, 5)
-            .padding(.vertical, 1)
-            .background(color.opacity(0.12))
-            .clipShape(Capsule())
+            .padding(.horizontal, 5).padding(.vertical, 1)
+            .background(color.opacity(0.12)).clipShape(Capsule())
+    }
+
+    private func verdictBadge(_ verdict: String) -> some View {
+        let color: Color = {
+            switch verdict {
+            case "GREEN": return .green
+            case "YELLOW": return IRISTokens.goldAccent
+            case "RED": return .red
+            default: return .secondary
+            }
+        }()
+        return Text(verdict)
+            .font(.system(size: 9, weight: .bold, design: .monospaced))
+            .foregroundStyle(color)
+            .padding(.horizontal, 5).padding(.vertical, 1)
+            .background(color.opacity(0.15)).clipShape(Capsule())
     }
 
     private func importanceDot(_ importance: Int) -> some View {
@@ -288,21 +483,12 @@ struct InspectorView: View {
             default: return .secondary
             }
         }()
-        return Circle()
-            .fill(color)
-            .frame(width: 6, height: 6)
-            .padding(.top, 4)
+        return Circle().fill(color).frame(width: 6, height: 6).padding(.top, 4)
     }
-}
-
-extension IRISTokens {
-    /// Fallback alias pour ancien naming `spacing12` (n'existe pas dans la grille 4/8/16/24/32/48).
-    /// Mappé sur spacing16 pour cohérence visuelle.
-    public static let spacing12OrFallback: CGFloat = spacing16 * 0.75
 }
 
 #Preview {
     InspectorView()
         .environment(IRISAppState())
-        .frame(width: 320, height: 600)
+        .frame(width: 340, height: 700)
 }
