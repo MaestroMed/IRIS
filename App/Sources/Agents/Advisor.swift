@@ -30,6 +30,22 @@ public actor Advisor {
         dailyBriefingTask = nil
     }
 
+    // MARK: — v1.50 Model picker
+
+    private static let modelKey = "iris.advisor.model"
+
+    public static var currentModel: ClaudeModel {
+        if let raw = UserDefaults.standard.string(forKey: modelKey),
+           let model = ClaudeModel(rawValue: raw) {
+            return model
+        }
+        return .opus47
+    }
+
+    public static func setModel(_ model: ClaudeModel) {
+        UserDefaults.standard.set(model.rawValue, forKey: modelKey)
+    }
+
     private func startScheduledBriefing() {
         guard dailyBriefingTask == nil else { return }
         dailyBriefingTask = Task { [weak self] in
@@ -169,9 +185,10 @@ public actor Advisor {
     private func publishLiveBriefing(context: BriefContext, kind: BriefingKind) async {
         let userPrompt = Self.formatContext(context)
 
+        let advisorModel = Self.currentModel  // v1.50
         do {
             let response = try await AnthropicClient.shared.sendMessage(
-                model: .opus47,
+                model: advisorModel,
                 system: Self.systemPrompt,
                 messages: [Message(role: .user, content: userPrompt)],
                 maxTokens: 1024,
@@ -179,8 +196,8 @@ public actor Advisor {
             )
 
             let content = response.firstTextContent ?? "[Advisor : réponse vide]"
-            let cost = response.usage.estimatedCostUSD(model: .opus47)
-            onCost?(cost, ClaudeModel.opus47.rawValue)
+            let cost = response.usage.estimatedCostUSD(model: advisorModel)
+            onCost?(cost, advisorModel.rawValue)
 
             await EventBus.shared.publish(
                 .agentResponse(from: .advisor, content: content, eventId: UUID())

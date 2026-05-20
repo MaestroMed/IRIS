@@ -45,6 +45,22 @@ public actor Quill {
         subscriptionTask = nil
     }
 
+    // MARK: — v1.50 Model picker
+
+    private static let modelKey = "iris.quill.model"
+
+    public static var currentModel: ClaudeModel {
+        if let raw = UserDefaults.standard.string(forKey: modelKey),
+           let model = ClaudeModel(rawValue: raw) {
+            return model
+        }
+        return .sonnet46
+    }
+
+    public static func setModel(_ model: ClaudeModel) {
+        UserDefaults.standard.set(model.rawValue, forKey: modelKey)
+    }
+
     // MARK: — Drafting
 
     private static let systemPrompt = """
@@ -86,9 +102,10 @@ public actor Quill {
         Drafte la réponse en JSON strict.
         """
 
+        let quillModel = Self.currentModel  // v1.50
         do {
             let response = try await AnthropicClient.shared.sendMessage(
-                model: .sonnet46,
+                model: quillModel,
                 system: Self.systemPrompt,
                 messages: [Message(role: .user, content: userPrompt)],
                 maxTokens: 1024,
@@ -96,8 +113,8 @@ public actor Quill {
             )
 
             let content = response.firstTextContent ?? "{}"
-            let cost = response.usage.estimatedCostUSD(model: .sonnet46)
-            onCost?(cost, ClaudeModel.sonnet46.rawValue)
+            let cost = response.usage.estimatedCostUSD(model: quillModel)
+            onCost?(cost, quillModel.rawValue)
 
             // Parse JSON (best-effort — si malformé, on fallback en texte brut comme body)
             let parsed = Self.parseDraftJSON(content) ?? .init(

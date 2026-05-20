@@ -213,6 +213,8 @@ struct SettingsView: View {
 
     @State private var conductorModelSelection: String = ""
     @State private var auditorModelSelection: String = ""
+    @State private var quillModelSelection: String = ""
+    @State private var advisorModelSelection: String = ""
 
     private var modelsRoutingSection: some View {
         VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
@@ -260,6 +262,48 @@ struct SettingsView: View {
             }
             .padding(.leading, IRISTokens.spacing16)
 
+            // v1.50 — Quill model picker
+            HStack {
+                Text("Quill model")
+                    .font(.system(size: 11))
+                Spacer()
+                Picker("", selection: $quillModelSelection) {
+                    Text("Sonnet 4.6 (recommandé)").tag(ClaudeModel.sonnet46.rawValue)
+                    Text("Opus 4.7 (qualité +)").tag(ClaudeModel.opus47.rawValue)
+                    Text("Haiku 4.5 (cheap)").tag(ClaudeModel.haiku45.rawValue)
+                }
+                .labelsHidden()
+                .controlSize(.small)
+                .frame(maxWidth: 280)
+                .onChange(of: quillModelSelection) { _, newValue in
+                    if let model = ClaudeModel(rawValue: newValue) {
+                        Quill.setModel(model)
+                    }
+                }
+            }
+            .padding(.leading, IRISTokens.spacing16)
+
+            // v1.50 — Advisor model picker
+            HStack {
+                Text("Advisor model")
+                    .font(.system(size: 11))
+                Spacer()
+                Picker("", selection: $advisorModelSelection) {
+                    Text("Opus 4.7 (recommandé)").tag(ClaudeModel.opus47.rawValue)
+                    Text("Sonnet 4.6 (cheaper)").tag(ClaudeModel.sonnet46.rawValue)
+                    Text("Haiku 4.5 (fast)").tag(ClaudeModel.haiku45.rawValue)
+                }
+                .labelsHidden()
+                .controlSize(.small)
+                .frame(maxWidth: 280)
+                .onChange(of: advisorModelSelection) { _, newValue in
+                    if let model = ClaudeModel(rawValue: newValue) {
+                        Advisor.setModel(model)
+                    }
+                }
+            }
+            .padding(.leading, IRISTokens.spacing16)
+
             Divider().padding(.vertical, 2)
 
             VStack(alignment: .leading, spacing: 4) {
@@ -273,6 +317,8 @@ struct SettingsView: View {
         .onAppear {
             conductorModelSelection = Conductor.currentModel.rawValue
             auditorModelSelection = Auditor.currentModel.rawValue
+            quillModelSelection = Quill.currentModel.rawValue
+            advisorModelSelection = Advisor.currentModel.rawValue
         }
     }
 
