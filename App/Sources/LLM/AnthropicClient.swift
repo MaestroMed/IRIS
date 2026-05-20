@@ -101,6 +101,139 @@ public actor AnthropicClient {
         )
         return response.firstTextContent ?? ""
     }
+
+    // MARK: — v1.17 Streaming SSE
+
+    /// Stream text chunks via SSE Anthropic Messages API.
+    /// Le AsyncThrowingStream yield des string deltas au fur et à mesure.
+    /// `onUsage` callback final avec input/output tokens (pour cost tracking).
+    /// nonisolated car retourne un AsyncStream qui gère sa propre Task et n'accède
+    /// qu'à la session URLSession (let constant) + Keychain singleton thread-safe.
+    nonisolated public func streamMessage(
+        model: ClaudeModel,
+        system: String? = nil,
+        messages: [Message],
+        maxTokens: Int = 4096,
+        cacheSystem: Bool = true,
+        onUsage: @escaping @Sendable (StreamUsage) -> Void = { _ in }
+    ) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    guard let apiKey = IRISKeychain.shared.getAnthropicAPIKey() else {
+                        continuation.finish(throwing: AnthropicError.missingAPIKey)
+                        return
+                    }
+
+                    let requestBody = MessageRequest(
+                        model: model.rawValue,
+                        messages: messages,
+                        system: system.map { systemContent in
+                            cacheSystem && systemContent.count > 4000
+                                ? [SystemBlock(type: "text", text: systemContent, cacheControl: .init(type: "ephemeral"))]
+                                : [SystemBlock(type: "text", text: systemContent, cacheControl: nil)]
+                        },
+                        maxTokens: maxTokens,
+                        stream: true
+                    )
+
+                    var request = URLRequest(url: baseURL.appendingPathComponent("messages"))
+                    request.httpMethod = "POST"
+                    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                    request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+                    request.setValue(anthropicVersion, forHTTPHeaderField: "anthropic-version")
+                    request.setValue(userAgent, forHTTPHeaderField: "user-agent")
+
+                    let encoder = JSONEncoder()
+                    encoder.keyEncodingStrategy = .convertToSnakeCase
+                    request.httpBody = try encoder.encode(requestBody)
+
+                    let (bytes, response) = try await session.bytes(for: request)
+
+                    guard let http = response as? HTTPURLResponse else {
+                        continuation.finish(throwing: AnthropicError.network("Non-HTTP response"))
+                        return
+                    }
+
+                    guard http.statusCode == 200 else {
+                        continuation.finish(throwing: AnthropicError.apiError(
+                            status: http.statusCode, message: "Stream init failed", type: "stream"
+                        ))
+                        return
+                    }
+
+                    // Parse SSE line-by-line.
+                    // Format : `event: <name>\ndata: <json>\n\n`
+                    var buffer = ""
+                    var inputTokens = 0
+                    var outputTokens = 0
+                    var cacheReadInputTokens = 0
+                    var cacheCreationInputTokens = 0
+
+                    for try await line in bytes.lines {
+                        if line.isEmpty { continue }
+                        guard line.hasPrefix("data: ") else { continue }
+                        let jsonStr = String(line.dropFirst("data: ".count))
+                        guard let data = jsonStr.data(using: .utf8) else { continue }
+
+                        // Parse event minimaliste — on extrait juste delta.text + usage
+                        if let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                            let type = event["type"] as? String ?? ""
+
+                            switch type {
+                            case "content_block_delta":
+                                if let delta = event["delta"] as? [String: Any],
+                                   let text = delta["text"] as? String {
+                                    continuation.yield(text)
+                                }
+                            case "message_start":
+                                if let message = event["message"] as? [String: Any],
+                                   let usage = message["usage"] as? [String: Any] {
+                                    inputTokens = (usage["input_tokens"] as? Int) ?? 0
+                                    cacheCreationInputTokens = (usage["cache_creation_input_tokens"] as? Int) ?? 0
+                                    cacheReadInputTokens = (usage["cache_read_input_tokens"] as? Int) ?? 0
+                                }
+                            case "message_delta":
+                                if let usage = event["usage"] as? [String: Any] {
+                                    outputTokens = (usage["output_tokens"] as? Int) ?? 0
+                                }
+                            case "message_stop":
+                                onUsage(StreamUsage(
+                                    inputTokens: inputTokens,
+                                    outputTokens: outputTokens,
+                                    cacheCreationInputTokens: cacheCreationInputTokens,
+                                    cacheReadInputTokens: cacheReadInputTokens
+                                ))
+                            default:
+                                break
+                            }
+                        }
+                        _ = buffer  // silence warning
+                    }
+
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+
+    public struct StreamUsage: Sendable {
+        public let inputTokens: Int
+        public let outputTokens: Int
+        public let cacheCreationInputTokens: Int
+        public let cacheReadInputTokens: Int
+
+        public func estimatedCostUSD(model: ClaudeModel) -> Double {
+            let regularInput = max(0, inputTokens - cacheReadInputTokens - cacheCreationInputTokens)
+            let inCost = (Double(regularInput) / 1_000_000.0) * model.inputCostPer1M
+            let cacheReadCost = (Double(cacheReadInputTokens) / 1_000_000.0) * model.cacheReadCostPer1M
+            let cacheCreateCost = (Double(cacheCreationInputTokens) / 1_000_000.0) * model.inputCostPer1M * 1.25
+            let outCost = (Double(outputTokens) / 1_000_000.0) * model.outputCostPer1M
+            return inCost + cacheReadCost + cacheCreateCost + outCost
+        }
+    }
 }
 
 // MARK: — Models
@@ -151,6 +284,7 @@ struct MessageRequest: Encodable {
     let messages: [Message]
     let system: [SystemBlock]?
     let maxTokens: Int
+    var stream: Bool = false
 }
 
 struct SystemBlock: Encodable {

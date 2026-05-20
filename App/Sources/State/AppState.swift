@@ -37,6 +37,11 @@ public final class IRISAppState {
     /// Actions en attente d'approbation user (proposées par Envoy après draftReady).
     public var pendingActions: [PendingActionUI] = []
 
+    /// v1.17 — Texte en cours de stream Conductor (Claude tape en live).
+    /// Non-empty pendant un stream actif, cleared quand .agentResponse final arrive.
+    public var streamingText: String = ""
+    public var streamingEventId: UUID? = nil
+
     /// Convenience : extrait l'AgentID si la sélection est un agent.
     public var selectedAgent: AgentID? {
         if case let .agent(id) = selection { return id }

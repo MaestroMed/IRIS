@@ -223,9 +223,24 @@ final class EventBusBridge {
             persist(.userInput(text, timestamp: timestamp), payload: ["text": text])
 
         case .agentResponse(let from, let content, let eventId):
+            // v1.17 — Si streaming en cours pour ce eventId, le finaliser
+            if appState.streamingEventId == eventId {
+                appState.streamingText = ""
+                appState.streamingEventId = nil
+            }
             appState.appendEntry(TranscriptEntry(role: .agent(from), content: content))
             appState.isProcessing = false
             persist(event, payload: ["content": content, "correlationId": eventId.uuidString], from: from.rawValue, correlationId: eventId)
+
+        case .conductorChunk(let eventId, let delta):
+            // v1.17 — accumule en live
+            if appState.streamingEventId != eventId {
+                appState.streamingEventId = eventId
+                appState.streamingText = delta
+            } else {
+                appState.streamingText += delta
+            }
+            // Pas de persist EventLog pour chaque chunk (trop bavard) — juste pour le final .agentResponse
 
         case .agentDispatched(let from, let to, let intent, let eventId):
             persist(event, payload: ["intent": intent], from: from.rawValue, to: to.rawValue, correlationId: eventId)
@@ -319,6 +334,7 @@ final class EventBusBridge {
             case .actionApproved: return "actionApproved"
             case .actionRejected: return "actionRejected"
             case .actionExecuted: return "actionExecuted"
+            case .conductorChunk: return "conductorChunk"
             }
         }()
 

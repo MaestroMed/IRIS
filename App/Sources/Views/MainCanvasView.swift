@@ -144,12 +144,28 @@ struct MainCanvasView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: IRISTokens.spacing16) {
-                    if appState.transcript.isEmpty {
+                    if appState.transcript.isEmpty && appState.streamingText.isEmpty {
                         emptyTranscriptHint
                     }
                     ForEach(appState.transcript) { entry in
                         TranscriptRow(entry: entry)
                             .id(entry.id)
+                    }
+                    // v1.17 — entry streaming live (en cours de génération)
+                    if !appState.streamingText.isEmpty {
+                        TranscriptRow(entry: TranscriptEntry(
+                            role: .agent(.conductor),
+                            content: appState.streamingText
+                        ))
+                        .opacity(0.85)
+                        .overlay(alignment: .trailing) {
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 11))
+                                .foregroundStyle(IRISTokens.irisAccent)
+                                .symbolEffect(.pulse, options: .repeating)
+                                .padding(.trailing, IRISTokens.spacing8)
+                        }
+                        .id("streaming-entry")
                     }
                 }
                 .padding(IRISTokens.spacing24)
@@ -158,6 +174,13 @@ struct MainCanvasView: View {
                 if let lastId {
                     withAnimation(.easeOut(duration: 0.2)) {
                         proxy.scrollTo(lastId, anchor: .bottom)
+                    }
+                }
+            }
+            .onChange(of: appState.streamingText.count) { _, _ in
+                if !appState.streamingText.isEmpty {
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        proxy.scrollTo("streaming-entry", anchor: .bottom)
                     }
                 }
             }

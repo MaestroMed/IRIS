@@ -64,6 +64,10 @@ public enum IRISEvent: Sendable {
     /// Envoy a exécuté une action (succès ou échec via result).
     case actionExecuted(actionId: UUID, success: Bool, result: String)
 
+    /// v1.17 — Chunk de texte streaming Conductor (Claude SSE live).
+    /// L'UI accumule en streamingText jusqu'à recevoir .agentResponse final.
+    case conductorChunk(eventId: UUID, delta: String)
+
     /// Niveaux alignés sur os.Logger (cf Apple `OSLogType`).
     public enum LogLevel: String, Sendable, Codable {
         case debug, info, notice, warning, error, fault

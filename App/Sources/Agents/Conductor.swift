@@ -15,7 +15,7 @@ public actor Conductor {
     public static let shared = Conductor()
 
     private var subscriptionTask: Task<Void, Never>?
-    private var onCost: ((Double) -> Void)?
+    private var onCost: (@Sendable (Double) -> Void)?
     private weak var modelContainer: ModelContainer?
 
     private init() {}
@@ -108,32 +108,42 @@ public actor Conductor {
             ? Self.systemPrompt
             : Self.systemPrompt + "\n\n## Mémoires pertinentes (Scribe top-3 par similarité)\n\n" + memoriesContext
 
-        do {
-            let response = try await AnthropicClient.shared.sendMessage(
-                model: .opus47,
-                system: enrichedSystemPrompt,
-                messages: [Message(role: .user, content: text)],
-                maxTokens: 2048,
-                cacheSystem: true
-            )
+        // v1.17 — utilise streaming SSE pour UX "Claude tape en live"
+        var accumulated = ""
+        let costCallback = onCost  // @Sendable capture (typed property)
+        let stream = AnthropicClient.shared.streamMessage(
+            model: .opus47,
+            system: enrichedSystemPrompt,
+            messages: [Message(role: .user, content: text)],
+            maxTokens: 2048,
+            cacheSystem: true,
+            onUsage: { usage in
+                let cost = usage.estimatedCostUSD(model: .opus47)
+                costCallback?(cost)
+            }
+        )
 
-            let content = response.firstTextContent ?? "[réponse vide]"
-            let cost = response.usage.estimatedCostUSD(model: .opus47)
-            onCost?(cost)
+        do {
+            for try await delta in stream {
+                accumulated += delta
+                await EventBus.shared.publish(
+                    .conductorChunk(eventId: eventId, delta: delta)
+                )
+            }
 
             irisLog(.info,
-                "Conductor response \(response.usage.inputTokens)in + \(response.usage.outputTokens)out = $\(String(format: "%.4f", cost)) memories=\(memoriesContext.isEmpty ? 0 : 3)",
+                "Conductor stream done — \(accumulated.count) chars memories=\(memoriesContext.isEmpty ? 0 : 3)",
                 category: IRISLogger.conductor
             )
 
             await EventBus.shared.publish(
-                .agentResponse(from: .conductor, content: content, eventId: eventId)
+                .agentResponse(from: .conductor, content: accumulated, eventId: eventId)
             )
 
             // v1.6 — store Q/R as Memory pour calibration future (Quill / Advisor / retrieval)
-            await storeConversationMemory(query: text, response: content)
+            await storeConversationMemory(query: text, response: accumulated)
         } catch {
-            irisLog(.error, "Conductor LLM failed: \(error.localizedDescription)", category: IRISLogger.conductor)
+            irisLog(.error, "Conductor stream failed: \(error.localizedDescription)", category: IRISLogger.conductor)
             await EventBus.shared.publish(
                 .agentFailure(agent: .conductor, error: error.localizedDescription)
             )
