@@ -12,6 +12,7 @@ struct LogsView: View {
     @State private var filterAgent: String = ""
     @State private var filterKind: String = ""
     @State private var filterLevel: String = ""
+    @State private var filterCorrelationId: UUID? = nil  // v1.70
     @State private var searchText: String = ""
     @State private var exportStatus: String?
 
@@ -29,6 +30,7 @@ struct LogsView: View {
             .filter { filterAgent.isEmpty || $0.fromAgent == filterAgent || $0.toAgent == filterAgent }
             .filter { filterKind.isEmpty || $0.kind == filterKind }
             .filter { filterLevel.isEmpty || $0.payloadJSON.contains("\"level\":\"\(filterLevel)\"") }
+            .filter { filterCorrelationId == nil || $0.correlationId == filterCorrelationId }
             .filter { searchText.isEmpty || $0.payloadJSON.localizedCaseInsensitiveContains(searchText) || $0.kind.localizedCaseInsensitiveContains(searchText) }
             .prefix(500)
             .map { $0 }
@@ -97,14 +99,38 @@ struct LogsView: View {
                 .controlSize(.small)
                 .frame(maxWidth: 300)
 
+            // v1.70 — Correlation badge si actif
+            if let cid = filterCorrelationId {
+                HStack(spacing: 3) {
+                    Image(systemName: "link")
+                        .font(.system(size: 10))
+                        .foregroundStyle(IRISTokens.aquaTint)
+                    Text(cid.uuidString.prefix(8))
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(IRISTokens.aquaTint)
+                    Button {
+                        filterCorrelationId = nil
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 5).padding(.vertical, 1)
+                .background(IRISTokens.aquaTint.opacity(0.12))
+                .clipShape(Capsule())
+            }
+
             Button("Clear") {
                 filterAgent = ""
                 filterKind = ""
                 filterLevel = ""
+                filterCorrelationId = nil
                 searchText = ""
             }
             .controlSize(.small)
-            .disabled(filterAgent.isEmpty && filterKind.isEmpty && filterLevel.isEmpty && searchText.isEmpty)
+            .disabled(filterAgent.isEmpty && filterKind.isEmpty && filterLevel.isEmpty && filterCorrelationId == nil && searchText.isEmpty)
 
             // v1.39 — Export filtered logs Markdown
             Button {
@@ -174,6 +200,22 @@ struct LogsView: View {
                         Text(to)
                             .font(.system(size: 9, design: .monospaced))
                             .foregroundStyle(IRISTokens.aquaTint)
+                    }
+                    // v1.70 — Correlation badge clickable
+                    if let cid = event.correlationId {
+                        Spacer()
+                        Button {
+                            filterCorrelationId = cid
+                        } label: {
+                            HStack(spacing: 2) {
+                                Image(systemName: "link")
+                                Text(cid.uuidString.prefix(8))
+                            }
+                            .font(.system(size: 8, design: .monospaced))
+                            .foregroundStyle(IRISTokens.aquaTint.opacity(0.7))
+                        }
+                        .buttonStyle(.plain)
+                        .help("Filter par cette correlation chain")
                     }
                 }
                 Text(payloadPreview(event.payloadJSON))
