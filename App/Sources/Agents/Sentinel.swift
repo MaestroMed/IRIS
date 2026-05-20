@@ -42,6 +42,7 @@ public actor Sentinel {
     public func start(modelContainer: ModelContainer, intervalSeconds: UInt64 = 60) async {
         self.modelContainer = modelContainer
         self.pollIntervalSeconds = intervalSeconds
+        restoreIntervalsFromDefaults()  // v1.30 — restore intervals from UserDefaults
         guard timerTask == nil else { return }
 
         timerTask = Task { [weak self] in
@@ -92,6 +93,47 @@ public actor Sentinel {
 
     public func setInterval(_ seconds: UInt64) {
         self.pollIntervalSeconds = max(10, seconds)
+    }
+
+    // MARK: — v1.30 Configurable intervals + UserDefaults persist
+
+    private static let stubIntervalKey = "iris.sentinel.intervalStub"
+    private static let githubIntervalKey = "iris.sentinel.intervalGithub"
+    private static let fsIntervalKey = "iris.sentinel.intervalFS"
+
+    public func setStubInterval(_ seconds: UInt64) {
+        let bounded = max(10, min(600, seconds))
+        self.pollIntervalSeconds = bounded
+        UserDefaults.standard.set(Int(bounded), forKey: Self.stubIntervalKey)
+    }
+
+    public func setGithubInterval(_ seconds: UInt64) {
+        let bounded = max(30, min(1800, seconds))
+        self.githubPollIntervalSeconds = bounded
+        UserDefaults.standard.set(Int(bounded), forKey: Self.githubIntervalKey)
+    }
+
+    public func setFSInterval(_ seconds: UInt64) {
+        let bounded = max(10, min(600, seconds))
+        self.fsPollIntervalSeconds = bounded
+        UserDefaults.standard.set(Int(bounded), forKey: Self.fsIntervalKey)
+    }
+
+    public var currentStubInterval: UInt64 { pollIntervalSeconds }
+    public var currentGithubInterval: UInt64 { githubPollIntervalSeconds }
+    public var currentFSInterval: UInt64 { fsPollIntervalSeconds }
+
+    /// Restore intervals depuis UserDefaults (appelé au start).
+    private func restoreIntervalsFromDefaults() {
+        if let stored = UserDefaults.standard.object(forKey: Self.stubIntervalKey) as? Int, stored > 0 {
+            self.pollIntervalSeconds = UInt64(stored)
+        }
+        if let stored = UserDefaults.standard.object(forKey: Self.githubIntervalKey) as? Int, stored > 0 {
+            self.githubPollIntervalSeconds = UInt64(stored)
+        }
+        if let stored = UserDefaults.standard.object(forKey: Self.fsIntervalKey) as? Int, stored > 0 {
+            self.fsPollIntervalSeconds = UInt64(stored)
+        }
     }
 
     // MARK: — Emit

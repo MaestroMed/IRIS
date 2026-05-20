@@ -40,6 +40,10 @@ struct SettingsView: View {
 
             backupSection
 
+            Divider()
+
+            sentinelIntervalsSection
+
             Spacer()
 
             footer
@@ -203,6 +207,85 @@ struct SettingsView: View {
             }
             .padding(.leading, IRISTokens.spacing16)
         }
+    }
+
+    // MARK: — v1.30 Sentinel intervals
+
+    @State private var stubIntervalSeconds: Double = 60
+    @State private var githubIntervalSeconds: Double = 300
+    @State private var fsIntervalSeconds: Double = 60
+
+    private var sentinelIntervalsSection: some View {
+        VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
+            sectionTitle("Sentinel intervals (poll cadence)", subtitle: "Tune si Sentinel est trop bavard ou pas assez réactif. Persist UserDefaults.")
+
+            intervalSlider(
+                label: "Stub signals (templates fictifs)",
+                value: $stubIntervalSeconds,
+                range: 10...600,
+                step: 10,
+                onCommit: { sec in
+                    Task { await Sentinel.shared.setStubInterval(UInt64(sec)) }
+                }
+            )
+
+            intervalSlider(
+                label: "GitHub pushedAt poll",
+                value: $githubIntervalSeconds,
+                range: 60...1800,
+                step: 30,
+                onCommit: { sec in
+                    Task { await Sentinel.shared.setGithubInterval(UInt64(sec)) }
+                }
+            )
+
+            intervalSlider(
+                label: "FS mtime poll (projets actifs)",
+                value: $fsIntervalSeconds,
+                range: 10...600,
+                step: 10,
+                onCommit: { sec in
+                    Task { await Sentinel.shared.setFSInterval(UInt64(sec)) }
+                }
+            )
+
+            Text("Restart IRIS pour appliquer aux timers en cours.")
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(.secondary)
+        }
+        .onAppear {
+            Task {
+                stubIntervalSeconds = Double(await Sentinel.shared.currentStubInterval)
+                githubIntervalSeconds = Double(await Sentinel.shared.currentGithubInterval)
+                fsIntervalSeconds = Double(await Sentinel.shared.currentFSInterval)
+            }
+        }
+    }
+
+    private func intervalSlider(
+        label: String,
+        value: Binding<Double>,
+        range: ClosedRange<Double>,
+        step: Double,
+        onCommit: @escaping (Double) -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Text(label)
+                    .font(.system(size: 11))
+                Spacer()
+                Text("\(Int(value.wrappedValue))s")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(IRISTokens.irisAccent)
+            }
+            Slider(value: value, in: range, step: step) {
+                Text(label)
+            } onEditingChanged: { editing in
+                if !editing { onCommit(value.wrappedValue) }
+            }
+            .controlSize(.small)
+        }
+        .padding(.bottom, 4)
     }
 
     // MARK: — v1.9 Backup / Restore + v1.4.A MIND import
