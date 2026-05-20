@@ -729,35 +729,50 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
             sectionTitle("Sentinel intervals (poll cadence)", subtitle: "Tune si Sentinel est trop bavard ou pas assez réactif. Persist UserDefaults.")
 
-            intervalSlider(
-                label: "Stub signals (templates fictifs)",
-                value: $stubIntervalSeconds,
-                range: 10...600,
-                step: 10,
-                onCommit: { sec in
-                    Task { await Sentinel.shared.setStubInterval(UInt64(sec)) }
+            HStack {
+                intervalSlider(
+                    label: "Stub signals (templates fictifs)",
+                    value: $stubIntervalSeconds,
+                    range: 10...600,
+                    step: 10,
+                    onCommit: { sec in
+                        Task { await Sentinel.shared.setStubInterval(UInt64(sec)) }
+                    }
+                )
+                triggerNowButton(help: "Force un signal stub immédiat") {
+                    Task { await Sentinel.shared.triggerStubNow() }
                 }
-            )
+            }
 
-            intervalSlider(
-                label: "GitHub pushedAt poll",
-                value: $githubIntervalSeconds,
-                range: 60...1800,
-                step: 30,
-                onCommit: { sec in
-                    Task { await Sentinel.shared.setGithubInterval(UInt64(sec)) }
+            HStack {
+                intervalSlider(
+                    label: "GitHub pushedAt poll",
+                    value: $githubIntervalSeconds,
+                    range: 60...1800,
+                    step: 30,
+                    onCommit: { sec in
+                        Task { await Sentinel.shared.setGithubInterval(UInt64(sec)) }
+                    }
+                )
+                triggerNowButton(help: "Force un poll GitHub immédiat (compare cache + emit deltas)") {
+                    Task { await Sentinel.shared.triggerGithubNow() }
                 }
-            )
+            }
 
-            intervalSlider(
-                label: "FS mtime poll (projets actifs)",
-                value: $fsIntervalSeconds,
-                range: 10...600,
-                step: 10,
-                onCommit: { sec in
-                    Task { await Sentinel.shared.setFSInterval(UInt64(sec)) }
+            HStack {
+                intervalSlider(
+                    label: "FS mtime poll (projets actifs)",
+                    value: $fsIntervalSeconds,
+                    range: 10...600,
+                    step: 10,
+                    onCommit: { sec in
+                        Task { await Sentinel.shared.setFSInterval(UInt64(sec)) }
+                    }
+                )
+                triggerNowButton(help: "Force un poll FS immédiat") {
+                    Task { await Sentinel.shared.triggerFSNow() }
                 }
-            )
+            }
 
             Text("Restart IRIS pour appliquer aux timers en cours.")
                 .font(.system(size: 9, design: .monospaced))
@@ -770,6 +785,17 @@ struct SettingsView: View {
                 fsIntervalSeconds = Double(await Sentinel.shared.currentFSInterval)
             }
         }
+    }
+
+    /// v1.60 — Bouton play.circle compact pour trigger un scan Sentinel immédiat.
+    private func triggerNowButton(help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: "play.circle")
+                .font(.system(size: 14))
+                .foregroundStyle(IRISTokens.aquaTint)
+        }
+        .buttonStyle(.plain)
+        .help(help)
     }
 
     private func intervalSlider(

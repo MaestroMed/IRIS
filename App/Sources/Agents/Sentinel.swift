@@ -123,6 +123,23 @@ public actor Sentinel {
     public var currentGithubInterval: UInt64 { githubPollIntervalSeconds }
     public var currentFSInterval: UInt64 { fsPollIntervalSeconds }
 
+    // MARK: — v1.60 Trigger now (force immediate scan, bypass timer)
+
+    /// Force un signal stub immédiat (pour tester le flow Sentinel→Quill).
+    public func triggerStubNow() async {
+        await emitStubSignal()
+    }
+
+    /// Force un poll GitHub immédiat (compare cache + emit deltas s'il y en a).
+    public func triggerGithubNow() async {
+        await pollGitHubDeltas()
+    }
+
+    /// Force un poll FS immédiat.
+    public func triggerFSNow() async {
+        await pollFSDeltas()
+    }
+
     /// Restore intervals depuis UserDefaults (appelé au start).
     private func restoreIntervalsFromDefaults() {
         if let stored = UserDefaults.standard.object(forKey: Self.stubIntervalKey) as? Int, stored > 0 {
