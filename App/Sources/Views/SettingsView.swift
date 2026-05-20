@@ -207,17 +207,45 @@ struct SettingsView: View {
         }
     }
 
+    @State private var conductorModelSelection: String = ""
+
     private var modelsRoutingSection: some View {
         VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
-            sectionTitle("Routing modèles (informatif v0.1)", subtitle: "Par défaut (override par agent en v1.0+).")
+            sectionTitle("Routing modèles", subtitle: "v1.47 : Conductor model picker. Autres agents en pickers v1.48+.")
+
+            // v1.47 — Picker dédié Conductor model
+            HStack {
+                Text("Conductor model")
+                    .font(.system(size: 11))
+                Spacer()
+                Picker("", selection: $conductorModelSelection) {
+                    Text("Opus 4.7 ($15/M in · $75/M out)").tag(ClaudeModel.opus47.rawValue)
+                    Text("Sonnet 4.6 ($3/M in · $15/M out)").tag(ClaudeModel.sonnet46.rawValue)
+                    Text("Haiku 4.5 ($1/M in · $5/M out)").tag(ClaudeModel.haiku45.rawValue)
+                }
+                .labelsHidden()
+                .controlSize(.small)
+                .frame(maxWidth: 280)
+                .onChange(of: conductorModelSelection) { _, newValue in
+                    if let model = ClaudeModel(rawValue: newValue) {
+                        Conductor.setModel(model)
+                    }
+                }
+            }
+            .padding(.leading, IRISTokens.spacing16)
+
+            Divider().padding(.vertical, 2)
 
             VStack(alignment: .leading, spacing: 4) {
-                routingRow(label: "Conductor · Builder · Advisor", model: "claude-opus-4-7", cost: "$15/M in · $75/M out")
+                routingRow(label: "Builder · Advisor", model: "claude-opus-4-7", cost: "$15/M in · $75/M out")
                 routingRow(label: "Quill · Auditor", model: "claude-sonnet-4-6", cost: "$3/M in · $15/M out")
                 routingRow(label: "Sentinel · Scribe · Cartographer · Envoy", model: "claude-haiku-4-5", cost: "$1/M in · $5/M out")
                 routingRow(label: "Witness (v1.5+)", model: "gemini-2.5-flash-lite", cost: "cheap vision input")
             }
             .padding(.leading, IRISTokens.spacing16)
+        }
+        .onAppear {
+            conductorModelSelection = Conductor.currentModel.rawValue
         }
     }
 

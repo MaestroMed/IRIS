@@ -186,6 +186,23 @@ public actor Conductor {
         }
     }
 
+    // MARK: — v1.47 Model picker (Opus / Sonnet / Haiku)
+
+    private static let modelKey = "iris.conductor.model"
+
+    /// Modèle actuel : lit UserDefaults, fallback opus47.
+    public static var currentModel: ClaudeModel {
+        if let raw = UserDefaults.standard.string(forKey: modelKey),
+           let model = ClaudeModel(rawValue: raw) {
+            return model
+        }
+        return .opus47
+    }
+
+    public static func setModel(_ model: ClaudeModel) {
+        UserDefaults.standard.set(model.rawValue, forKey: modelKey)
+    }
+
     private func respondWithClaude(_ text: String, eventId: UUID) async {
         // v1.6 — retrieve top-3 mémoires pertinentes via Scribe avant l'appel LLM
         let memoriesContext = await retrieveMemoryContext(query: text, topK: 3)
@@ -201,20 +218,22 @@ public actor Conductor {
         }
 
         // v1.17 + v1.19 — streaming SSE + multi-turn history
+        // v1.47 — model depuis UserDefaults
+        let currentModel = Self.currentModel
         appendToHistory(Message(role: .user, content: text))
         var accumulated = ""
         let costCallback = onCost  // @Sendable capture (typed property)
         let history = conversationHistory  // snapshot pour l'appel
 
         let stream = AnthropicClient.shared.streamMessage(
-            model: .opus47,
+            model: currentModel,
             system: enrichedSystemPrompt,
             messages: history,  // v1.19 : envoie tout l'history (alternance user/assistant)
             maxTokens: 2048,
             cacheSystem: true,
             onUsage: { usage in
-                let cost = usage.estimatedCostUSD(model: .opus47)
-                costCallback?(cost, ClaudeModel.opus47.rawValue)
+                let cost = usage.estimatedCostUSD(model: currentModel)
+                costCallback?(cost, currentModel.rawValue)
             }
         )
 
