@@ -122,6 +122,17 @@ struct MainCanvasView: View {
                 .font(IRISTokens.monoFont)
                 .foregroundStyle(.secondary)
 
+            // v1.57 — Régénérer la dernière réponse
+            Button {
+                Task { _ = await Conductor.shared.regenerateLastResponse() }
+            } label: {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.system(size: 13))
+            }
+            .buttonStyle(.plain)
+            .help("Régénérer la dernière réponse Conductor")
+            .disabled(appState.transcript.count < 2 || appState.isProcessing)
+
             // v1.19 — Bouton clear conversation (Nouvelle session)
             Button {
                 Task {

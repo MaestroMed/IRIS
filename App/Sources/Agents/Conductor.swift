@@ -121,6 +121,34 @@ public actor Conductor {
         currentResponseTask != nil && !(currentResponseTask?.isCancelled ?? true)
     }
 
+    /// v1.57 — Régénère la dernière réponse Conductor.
+    /// Pop le dernier message assistant de history + relance handleUserInput avec le dernier user input.
+    /// Si pas d'historique → no-op.
+    public func regenerateLastResponse() async -> String? {
+        // Cancel toute réponse en cours
+        cancelCurrentResponse()
+
+        // History attendu : [..., user, assistant] — pop assistant pour re-générer
+        guard conversationHistory.count >= 2,
+              case .assistant = conversationHistory.last?.role,
+              case .user = conversationHistory[conversationHistory.count - 2].role
+        else {
+            irisLog(.warning, "Conductor regenerate: history shape invalide (besoin user→assistant)",
+                    category: IRISLogger.conductor)
+            return nil
+        }
+
+        conversationHistory.removeLast()  // drop assistant
+        let lastUser = conversationHistory.removeLast()  // drop user (sera re-ajouté par handleUserInput)
+
+        irisLog(.info, "Conductor regenerate: replay user input (\(lastUser.content.prefix(40))…)",
+                category: IRISLogger.conductor)
+
+        // Re-poste sur le bus comme si Mehdi avait re-tapé
+        await EventBus.shared.publish(.userInput(lastUser.content, timestamp: Date()))
+        return lastUser.content
+    }
+
     // MARK: — Routing
 
     private func handleUserInput(_ text: String) async {
