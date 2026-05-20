@@ -42,6 +42,22 @@ public final class IRISAppState {
     public var streamingText: String = ""
     public var streamingEventId: UUID? = nil
 
+    /// v1.21 — Timestamps dernière activité par agent. Sidebar dot color dérive de là.
+    public var recentlyActiveAgents: [AgentID: Date] = [:]
+
+    /// Helper status agent pour Sidebar dot.
+    public func agentStatus(_ id: AgentID) -> AgentStatus {
+        guard let last = recentlyActiveAgents[id] else { return .inactive }
+        let elapsed = Date().timeIntervalSince(last)
+        if elapsed < 5 { return .working }
+        if elapsed < 60 { return .idle }
+        return .inactive
+    }
+
+    public func markAgentActive(_ id: AgentID) {
+        recentlyActiveAgents[id] = .now
+    }
+
     /// Convenience : extrait l'AgentID si la sélection est un agent.
     public var selectedAgent: AgentID? {
         if case let .agent(id) = selection { return id }

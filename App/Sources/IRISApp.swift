@@ -131,8 +131,8 @@ struct IRISApp: App {
         // 7. Cartographer démarre — scan ~/Developer + gh repo list MaestroMed (refresh 6h)
         await Cartographer.shared.start(modelContainer: modelContainer)
 
-        // 8. Auditor démarre — on-demand audit via UI (v0.7 mock)
-        await Auditor.shared.start(modelContainer: modelContainer)
+        // 8. Auditor démarre — on-demand audit via UI (v1.18 real Sonnet, v1.22 cost wire)
+        await Auditor.shared.start(modelContainer: modelContainer, onCost: costSink)
 
         // 9. Builder démarre — scaffold on-demand via UI (v0.8 mock)
         await Builder.shared.start(modelContainer: modelContainer)
@@ -230,6 +230,7 @@ final class EventBusBridge {
             }
             appState.appendEntry(TranscriptEntry(role: .agent(from), content: content))
             appState.isProcessing = false
+            appState.markAgentActive(from)  // v1.21
             persist(event, payload: ["content": content, "correlationId": eventId.uuidString], from: from.rawValue, correlationId: eventId)
 
         case .conductorChunk(let eventId, let delta):
@@ -243,9 +244,12 @@ final class EventBusBridge {
             // Pas de persist EventLog pour chaque chunk (trop bavard) — juste pour le final .agentResponse
 
         case .agentDispatched(let from, let to, let intent, let eventId):
+            appState.markAgentActive(from)  // v1.21
+            appState.markAgentActive(to)
             persist(event, payload: ["intent": intent], from: from.rawValue, to: to.rawValue, correlationId: eventId)
 
         case .signalEmitted(let from, let importance, let summary, let source):
+            appState.markAgentActive(from)  // v1.21
             persist(event, payload: ["importance": "\(importance.rawValue)", "summary": summary, "source": source ?? "—"], from: from.rawValue)
 
         case .actionLogged(let by, let action, let params, let reversible):

@@ -11,11 +11,16 @@ public actor Auditor {
 
     private weak var modelContainer: ModelContainer?
     private var subscriptionTask: Task<Void, Never>?
+    private var onCost: (@Sendable (Double) -> Void)?
 
     private init() {}
 
-    public func start(modelContainer: ModelContainer) async {
+    public func start(
+        modelContainer: ModelContainer,
+        onCost: @escaping @Sendable (Double) -> Void = { _ in }
+    ) async {
         self.modelContainer = modelContainer
+        self.onCost = onCost
         // v0.7 : audit on-demand uniquement (pas de schedule). v1.0+ : audit mensuel par projet actif.
     }
 
@@ -179,8 +184,7 @@ public actor Auditor {
     }
 
     private var onCostCallback: (@Sendable (Double) -> Void)? {
-        // v1.18 : pas de cost sink registered ici, mais on pourrait wire via start() similaire à Conductor
-        nil
+        onCost
     }
 
     /// Sendable info struct pour traverser MainActor isolation.
