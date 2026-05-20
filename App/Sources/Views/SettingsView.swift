@@ -1,14 +1,17 @@
 import SwiftUI
+import SwiftData
+import AppKit
 
-/// v0.1 — Settings panel. Pour l'instant : juste l'API key Anthropic.
-/// v0.x+ : credentials MCP (Gmail OAuth, GitHub, etc.), choix modèles par agent, théme, raccourcis.
+/// v0.1 + v1.9 — Settings panel : API key Anthropic + skill marketplace + backup/restore + MIND import.
 struct SettingsView: View {
     @Environment(IRISAppState.self) private var appState
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
     @State private var apiKeyDraft: String = ""
     @State private var testStatus: TestStatus = .idle
     @State private var savedMessage: String?
+    @State private var backupStatus: String?
 
     enum TestStatus: Equatable {
         case idle
@@ -32,6 +35,10 @@ struct SettingsView: View {
             Divider()
 
             modelsRoutingSection
+
+            Divider()
+
+            backupSection
 
             Spacer()
 
@@ -181,6 +188,110 @@ struct SettingsView: View {
             }
             .padding(.leading, IRISTokens.spacing16)
         }
+    }
+
+    // MARK: — v1.9 Backup / Restore + v1.4.A MIND import
+
+    private var backupSection: some View {
+        VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
+            sectionTitle("Backup / Import", subtitle: "Export complet SwiftData JSON · Import backup IRIS · Import audits depuis MIND.")
+
+            HStack(spacing: IRISTokens.spacing8) {
+                Button(action: exportBackup) {
+                    Label("Export tout", systemImage: "square.and.arrow.up")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .tint(IRISTokens.irisAccent)
+
+                Button(action: importBackup) {
+                    Label("Import backup", systemImage: "square.and.arrow.down")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+
+                Button(action: importMIND) {
+                    Label("Import MIND", systemImage: "iphone.gen3")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+
+                Spacer()
+            }
+
+            if let msg = backupStatus {
+                Text(msg)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(msg.hasPrefix("✅") ? .green : (msg.hasPrefix("⚠️") ? .red : .secondary))
+                    .padding(.top, 4)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text("MIND import attend ~/iris-mind-export.json (array {codename, verdict, headline, createdAt?, findings?[]}).")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func exportBackup() {
+        do {
+            let container = modelContext.container
+            let url = try BackupService.exportAll(container: container)
+            backupStatus = "✅ Exporté vers \(url.path) (\(humanByteSize(at: url)))"
+        } catch {
+            backupStatus = "⚠️ Export échoué : \(error.localizedDescription)"
+        }
+    }
+
+    private func importBackup() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = URL(fileURLWithPath: NSHomeDirectory())
+        panel.title = "Sélectionne un backup IRIS"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        do {
+            let container = modelContext.container
+            let stats = try BackupService.importBackup(container: container, from: url)
+            backupStatus = "✅ Backup importé : \(stats.summary)"
+        } catch {
+            backupStatus = "⚠️ Import échoué : \(error.localizedDescription)"
+        }
+    }
+
+    private func importMIND() {
+        let defaultURL = URL(fileURLWithPath: "\(NSHomeDirectory())/iris-mind-export.json")
+        let url: URL
+        if FileManager.default.fileExists(atPath: defaultURL.path) {
+            url = defaultURL
+        } else {
+            let panel = NSOpenPanel()
+            panel.allowedContentTypes = [.json]
+            panel.allowsMultipleSelection = false
+            panel.directoryURL = URL(fileURLWithPath: NSHomeDirectory())
+            panel.title = "Sélectionne le fichier MIND export JSON"
+            guard panel.runModal() == .OK, let pickedURL = panel.url else { return }
+            url = pickedURL
+        }
+
+        do {
+            let container = modelContext.container
+            let count = try BackupService.importMINDExport(container: container, from: url)
+            backupStatus = "✅ MIND : \(count) audits importés depuis \(url.lastPathComponent)"
+        } catch {
+            backupStatus = "⚠️ MIND import échoué : \(error.localizedDescription)"
+        }
+    }
+
+    private func humanByteSize(at url: URL) -> String {
+        guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize else { return "?" }
+        if size < 1024 { return "\(size) B" }
+        if size < 1024 * 1024 { return "\(size / 1024) kB" }
+        return "\(size / 1024 / 1024) MB"
     }
 
     private var footer: some View {
