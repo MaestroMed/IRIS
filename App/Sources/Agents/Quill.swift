@@ -70,11 +70,18 @@ public actor Quill {
         summary: String,
         source: String?
     ) async {
+        // v1.20 — Détection audience via context signal
+        let audience = Self.detectAudience(source: source, summary: summary)
+        let toneGuidance = Self.toneGuidanceFor(audience: audience)
+
         let userPrompt = """
         Signal entrant à drafter :
         - Source : \(source ?? "inconnu")
         - Importance : \(importance.rawValue)/5
         - Résumé : \(summary)
+        - Audience détectée : \(audience.rawValue)
+
+        \(toneGuidance)
 
         Drafte la réponse en JSON strict.
         """
@@ -139,6 +146,97 @@ public actor Quill {
         } catch {
             irisLog(.error, "Quill draft failed: \(error.localizedDescription)", category: IRISLogger.agents)
             await EventBus.shared.publish(.agentFailure(agent: .quill, error: error.localizedDescription))
+        }
+    }
+
+    // MARK: — v1.20 Audience detection
+
+    public enum Audience: String, Sendable {
+        case clientFormalFR = "formel-fr-client"
+        case techPullRequestEN = "tech-en-pr"
+        case casualTeamFR = "casual-fr-team"
+        case marketingPublicFR = "marketing-fr-public"
+    }
+
+    /// Détecte l'audience à partir du source + summary du signal Sentinel.
+    /// Mapping basique v1.20, à raffiner v1.20.B avec project context.
+    private static func detectAudience(source: String?, summary: String) -> Audience {
+        let lowSummary = summary.lowercased()
+        // Mention client codenames → tone formel client
+        let clientCodenames = ["atelier_frisson", "atelier frisson", "odelie",
+                               "az construction", "azconstruction",
+                               "ief", "iefandco",
+                               "sconnect", "s'connect", "s connect",
+                               "monjoel", "mon joel",
+                               "01ta", "01 ta", "transfert aeroport",
+                               "az epoxy", "azepoxy",
+                               "formaroute",
+                               "atelierfrissons"]
+        for codename in clientCodenames {
+            if lowSummary.contains(codename) {
+                return .clientFormalFR
+            }
+        }
+
+        // Source github + signal type → tech EN PR tone
+        if source == "github" {
+            if lowSummary.contains("ci ") || lowSummary.contains("ci failure") ||
+               lowSummary.contains("pr") || lowSummary.contains("pull request") ||
+               lowSummary.contains("commit") {
+                return .techPullRequestEN
+            }
+        }
+
+        // Calendar / interne → casual FR team
+        if source == "calendar" {
+            return .casualTeamFR
+        }
+
+        // Mention "newsletter" / "marketing" / "campagne" → marketing public FR
+        if lowSummary.contains("newsletter") || lowSummary.contains("marketing") ||
+           lowSummary.contains("campagne") || lowSummary.contains("public") {
+            return .marketingPublicFR
+        }
+
+        return .casualTeamFR
+    }
+
+    private static func toneGuidanceFor(audience: Audience) -> String {
+        switch audience {
+        case .clientFormalFR:
+            return """
+            **Tone à appliquer** : formel-fr-client (poli, sobre, valeur claire).
+            - Vouvoiement strict
+            - "Bonjour [prénom]," / "Bien à vous,"
+            - Pas d'argot, pas d'abréviation
+            - Termes techniques OK si pertinents pour le client (cite leur stack si visible)
+            - Si client = cliente (Odelie, Atelier Frisson...) : ton sobre + valoriser leur projet
+            """
+        case .techPullRequestEN:
+            return """
+            **Tone à appliquer** : tech-en-pr (concise, code-aware, GitHub style).
+            - English (PR conventions internationales)
+            - Imperative mood ("Fix Y", "Add X")
+            - Reference files/lines précisément (file.swift:42)
+            - Suggest specific actions (revert, hotfix, rebase, etc.)
+            - Skip pleasantries
+            """
+        case .casualTeamFR:
+            return """
+            **Tone à appliquer** : casual-fr-team (FR informel, direct, technique).
+            - Tutoiement OK
+            - FR-casual + termes EN techniques sans complexe (no glazing)
+            - Bullet points si > 2 idées
+            - Pas de "Bonjour" formel
+            """
+        case .marketingPublicFR:
+            return """
+            **Tone à appliquer** : marketing-fr-public (engageant, value-first, sans bullshit).
+            - FR fluide, attractif
+            - Hook puis bénéfice puis CTA
+            - Données chiffrées si dispo
+            - Pas de buzzwords vides ("innovant", "disruptif")
+            """
         }
     }
 
