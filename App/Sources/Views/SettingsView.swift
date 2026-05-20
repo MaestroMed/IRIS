@@ -139,6 +139,12 @@ struct SettingsView: View {
                 )
                 Spacer()
                 HStack(spacing: 4) {
+                    // v1.55 — Hot-reload skills depuis disk
+                    Button(action: reloadSkillsFromDisk) {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .controlSize(.mini)
+                    .help("Re-scan ~/.claude/skills/ pour détecter nouveaux skills installés")
                     Button(action: exportSkillsConfig) {
                         Image(systemName: "square.and.arrow.up")
                     }
@@ -751,6 +757,11 @@ struct SettingsView: View {
     }
 
     // MARK: — v1.14 Skills config export/import
+
+    private func reloadSkillsFromDisk() {
+        let count = SkillRegistry.shared.reloadFromDisk()
+        backupStatus = "🔄 Skills rescannés depuis disk : \(count) trouvés."
+    }
 
     private func exportSkillsConfig() {
         guard let data = SkillRegistry.shared.exportConfig() else {

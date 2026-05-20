@@ -8,8 +8,19 @@ import Observation
 public final class SkillRegistry {
     public static let shared = SkillRegistry()
 
-    /// Tous les skills connus (factory + plugins externes).
-    public let allSkills: [SkillEntry] = [
+    /// v1.55 — Skills découverts via scan disk (~/.claude/skills/). Mergés avec builtInSkills.
+    public private(set) var discoveredSkills: [SkillEntry] = []
+
+    /// v1.55 — Skills connus : built-in (factory + plugin) + découverts par scan disk.
+    public var allSkills: [SkillEntry] {
+        let builtInNames = Set(builtInSkills.map(\.name))
+        // Filtre dupes : si un skill discoveredSkill matche un builtIn, garde le builtIn (plus riche)
+        let extras = discoveredSkills.filter { !builtInNames.contains($0.name) }
+        return builtInSkills + extras
+    }
+
+    /// Liste statique des skills built-in (factory + plugins externes Anthropic).
+    public let builtInSkills: [SkillEntry] = [
         // Factory v1 (11 skills générés par la skill-factory phase 1)
         .init(name: "lead-gen-local-services-fr", priority: .high, source: .factory,
               summary: "Site vitrine + devis multi-step + RGPD + SEO local FR"),
@@ -59,12 +70,73 @@ public final class SkillRegistry {
             self.enabledNames = Set(stored)
         } else {
             self.enabledNames = Set(
-                allSkills
+                builtInSkills
                     .filter { $0.source == .anthropicPlugin || $0.priority == .high }
                     .map(\.name)
             )
             persist()
         }
+    }
+
+    // MARK: — v1.55 Hot-reload from disk
+
+    /// Scan ~/.claude/skills/ pour découvrir des skills installées manuellement.
+    /// Chaque subdir contenant SKILL.md devient un SkillEntry source=.userInstalled.
+    /// Parse simple : name = dirname, summary = description front matter (ou première ligne body).
+    @discardableResult
+    public func reloadFromDisk() -> Int {
+        let skillsPath = ("~/.claude/skills" as NSString).expandingTildeInPath
+        let fm = FileManager.default
+        guard let entries = try? fm.contentsOfDirectory(atPath: skillsPath) else {
+            irisLog(.warning, "SkillRegistry: ~/.claude/skills/ introuvable", category: IRISLogger.ui)
+            return 0
+        }
+
+        var discovered: [SkillEntry] = []
+        for name in entries {
+            let dirPath = (skillsPath as NSString).appendingPathComponent(name)
+            var isDir: ObjCBool = false
+            guard fm.fileExists(atPath: dirPath, isDirectory: &isDir), isDir.boolValue else { continue }
+
+            let skillMdPath = (dirPath as NSString).appendingPathComponent("SKILL.md")
+            guard fm.fileExists(atPath: skillMdPath) else { continue }
+
+            let summary = extractSummary(from: skillMdPath) ?? "(skill local — pas de description)"
+            discovered.append(SkillEntry(
+                name: name,
+                priority: .medium,
+                source: .userInstalled,
+                summary: summary
+            ))
+        }
+
+        self.discoveredSkills = discovered.sorted { $0.name < $1.name }
+        irisLog(.info, "SkillRegistry reloaded \(discovered.count) skills from disk", category: IRISLogger.ui)
+        return discovered.count
+    }
+
+    /// Extrait la description du front matter YAML d'un SKILL.md.
+    /// Format attendu : `description: ...` dans le bloc `---` initial.
+    private func extractSummary(from path: String) -> String? {
+        guard let content = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
+        // Trouve le frontmatter --- ... ---
+        let lines = content.components(separatedBy: .newlines)
+        guard lines.first == "---" else {
+            // Pas de frontmatter, prend la première ligne non-vide < 200 chars
+            return lines.first { !$0.trimmingCharacters(in: .whitespaces).isEmpty }?
+                .trimmingCharacters(in: .whitespaces)
+                .prefix(200).description
+        }
+        for line in lines.dropFirst() {
+            if line == "---" { break }
+            if line.hasPrefix("description:") {
+                return line
+                    .replacingOccurrences(of: "description:", with: "")
+                    .trimmingCharacters(in: .whitespaces)
+                    .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+            }
+        }
+        return nil
     }
 
     public func isEnabled(_ name: String) -> Bool {
