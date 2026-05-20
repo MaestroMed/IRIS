@@ -24,6 +24,7 @@ struct InspectorView: View {
     @State private var scaffoldProjectName: String = ""
     @State private var scaffoldSelectedSkill: String = "doc-first-project-scaffolding"
     @State private var auditPickedProject: String = ""
+    @State private var expandedAuditIds: Set<UUID> = []  // v1.62
 
     var body: some View {
         ScrollView {
@@ -301,7 +302,8 @@ struct InspectorView: View {
     }
 
     private func auditRow(_ audit: AuditReport) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+        let isExpanded = expandedAuditIds.contains(audit.id)
+        return VStack(alignment: .leading, spacing: 4) {
             HStack {
                 verdictBadge(audit.verdict)
                 Text(audit.projectCodename)
@@ -310,15 +312,113 @@ struct InspectorView: View {
                 Text(audit.createdAt, format: .dateTime.day().month(.abbreviated).hour().minute())
                     .font(.system(size: 9, design: .monospaced))
                     .foregroundStyle(.secondary)
+                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
             }
             Text(audit.headline)
                 .font(.system(size: 11))
                 .foregroundStyle(.primary.opacity(0.8))
-                .lineLimit(2)
+                .lineLimit(isExpanded ? nil : 2)
+
+            // v1.62 — Expanded : findings + topActions parsed
+            if isExpanded {
+                let findings = Self.parseStringArray(audit.findingsJSON)
+                let topActions = Self.parseActionObjects(audit.topActionsJSON)
+
+                if !findings.isEmpty {
+                    Divider().padding(.vertical, 2)
+                    Text("FINDINGS (\(findings.count))")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                    ForEach(Array(findings.enumerated()), id: \.offset) { _, f in
+                        HStack(alignment: .top, spacing: 4) {
+                            Image(systemName: "circle.fill")
+                                .font(.system(size: 4))
+                                .foregroundStyle(.secondary)
+                                .padding(.top, 6)
+                            Text(f)
+                                .font(.system(size: 10))
+                                .foregroundStyle(.primary.opacity(0.85))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+
+                if !topActions.isEmpty {
+                    Divider().padding(.vertical, 2)
+                    Text("TOP ACTIONS (\(topActions.count))")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                    ForEach(Array(topActions.enumerated()), id: \.offset) { _, a in
+                        HStack(alignment: .top, spacing: 4) {
+                            Image(systemName: "arrow.right")
+                                .font(.system(size: 9))
+                                .foregroundStyle(IRISTokens.irisAccent)
+                                .padding(.top, 2)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(a.action)
+                                    .font(.system(size: 10, weight: .medium))
+                                    .fixedSize(horizontal: false, vertical: true)
+                                HStack(spacing: 6) {
+                                    Text("effort: \(a.effort)").foregroundStyle(IRISTokens.goldAccent)
+                                    Text("impact: \(a.impact)").foregroundStyle(IRISTokens.aquaTint)
+                                }
+                                .font(.system(size: 8, design: .monospaced))
+                            }
+                        }
+                    }
+                }
+
+                Divider().padding(.vertical, 2)
+                HStack(spacing: IRISTokens.spacing8) {
+                    Text("model: \(audit.modelUsed)")
+                    Text("cost: $\(String(format: "%.4f", audit.costUSD))")
+                    Text("\(Int(audit.durationSeconds))s")
+                }
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(.secondary)
+            }
         }
         .padding(.vertical, 4)
         .padding(.horizontal, 6)
         .background(RoundedRectangle(cornerRadius: 6).fill(.thinMaterial))
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if isExpanded {
+                expandedAuditIds.remove(audit.id)
+            } else {
+                expandedAuditIds.insert(audit.id)
+            }
+        }
+    }
+
+    // v1.62 — JSON parsing helpers pour AuditReport
+    private struct ActionItem {
+        let action: String
+        let effort: String
+        let impact: String
+    }
+
+    private static func parseStringArray(_ json: String) -> [String] {
+        guard let data = json.data(using: .utf8),
+              let arr = try? JSONSerialization.jsonObject(with: data) as? [String]
+        else { return [] }
+        return arr
+    }
+
+    private static func parseActionObjects(_ json: String) -> [ActionItem] {
+        guard let data = json.data(using: .utf8),
+              let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]
+        else { return [] }
+        return arr.compactMap { dict in
+            guard let action = dict["action"] as? String else { return nil }
+            return ActionItem(
+                action: action,
+                effort: (dict["effort"] as? String) ?? "—",
+                impact: (dict["impact"] as? String) ?? "—"
+            )
+        }
     }
 
     // MARK: — Builder
