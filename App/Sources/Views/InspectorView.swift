@@ -166,6 +166,16 @@ struct InspectorView: View {
                     Text("Témoin")
                         .font(.system(size: 11)).foregroundStyle(.secondary)
                     Spacer()
+                    // v1.80 — Snapshot now (force capture immédiate)
+                    Button {
+                        Task { await Witness.shared.triggerSnapshotNow() }
+                    } label: {
+                        Image(systemName: "camera.viewfinder")
+                            .font(.system(size: 12))
+                            .foregroundStyle(IRISTokens.aquaTint)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Snapshot frontmost maintenant (bypass debounce)")
                     // v1.27 — Pause/Resume Witness
                     Button {
                         Task {
@@ -312,6 +322,17 @@ struct InspectorView: View {
                 .buttonStyle(.plain)
                 .help("Ouvrir \(urlStr) dans le navigateur")
             }
+            // v1.81 — Archive / unarchive project (toggle status)
+            Button {
+                project.status = (project.status == "archived") ? "active" : "archived"
+                try? modelContext.save()
+            } label: {
+                Image(systemName: project.status == "archived" ? "archivebox.fill" : "archivebox")
+                    .font(.system(size: 9))
+                    .foregroundStyle(project.status == "archived" ? .secondary : IRISTokens.goldAccent.opacity(0.7))
+            }
+            .buttonStyle(.plain)
+            .help(project.status == "archived" ? "Désarchiver (→ active)" : "Archiver le projet")
         }
         .padding(.vertical, 4)
         .padding(.horizontal, 6)
@@ -912,6 +933,16 @@ struct InspectorView: View {
                             .font(.system(size: 9, design: .monospaced)).foregroundStyle(IRISTokens.irisAccent)
                     }
                     Spacer()
+                    // v1.82 — Send to Quill (force draft generation pour ce signal)
+                    Button {
+                        sendSignalToQuill(signal)
+                    } label: {
+                        Image(systemName: "paperplane")
+                            .font(.system(size: 9))
+                            .foregroundStyle(IRISTokens.aquaTint.opacity(0.7))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Send to Quill (force draft generation high importance)")
                     if signal.acknowledged {
                         Image(systemName: "checkmark")
                             .font(.system(size: 8))
@@ -933,6 +964,18 @@ struct InspectorView: View {
             try? modelContext.save()
         }
         .help(signal.acknowledged ? "Click pour un-acknowledge" : "Click pour acknowledge")
+    }
+
+    // v1.82 — Force Quill draft pour un signal donné (republie comme high importance)
+    private func sendSignalToQuill(_ signal: Signal) {
+        // Republie le signal comme importance .high pour déclencher Quill (qui filtre >= .high)
+        let summary = signal.summary
+        let source = signal.source
+        Task {
+            await EventBus.shared.publish(
+                .signalEmitted(from: .sentinel, importance: .high, summary: summary, source: source)
+            )
+        }
     }
 
     // MARK: — Helpers visuels

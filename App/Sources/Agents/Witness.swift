@@ -60,6 +60,13 @@ public actor Witness {
         timerTask == nil
     }
 
+    /// v1.80 — Force une capture frontmost immédiate (bypass debounce 10s).
+    public func triggerSnapshotNow() async {
+        lastFrontmostBundleId = nil  // reset debounce
+        lastFrontmostAt = .distantPast
+        await captureFrontmost()
+    }
+
     // MARK: — v1.58 Blocklist (apps sensibles : Mail, Slack, 1Password, etc.)
 
     private static let blocklistKey = "iris.witness.blockedBundleIds"
