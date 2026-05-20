@@ -1,7 +1,9 @@
 import SwiftUI
 import SwiftData
+import AppKit
 
 /// v1.56 — Browse all Memory records + ad-hoc Scribe retrieval query.
+/// v1.64 — Delete memory record with confirmation (NSAlert).
 /// Permet à Mehdi d'inspecter ce que Scribe sait, et de tester les requêtes de similarité.
 struct MemoryBrowserView: View {
     @Environment(\.modelContext) private var modelContext
@@ -171,6 +173,16 @@ struct MemoryBrowserView: View {
                 Text(memory.createdAt, format: .dateTime.day().month().hour().minute())
                     .font(.system(size: 9, design: .monospaced))
                     .foregroundStyle(.secondary)
+                // v1.64 — Delete with confirmation
+                Button {
+                    confirmDelete(memory: memory)
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.red.opacity(0.7))
+                }
+                .buttonStyle(.plain)
+                .help("Supprimer cette memory (confirmation requise)")
             }
             if !memory.summary.isEmpty {
                 Text(memory.summary)
@@ -189,6 +201,29 @@ struct MemoryBrowserView: View {
         case "user", "feedback": return IRISTokens.aquaTint
         case "project", "reference": return IRISTokens.goldAccent
         default: return .secondary
+        }
+    }
+
+    // MARK: — v1.64 Delete
+
+    private func confirmDelete(memory: Memory) {
+        let alert = NSAlert()
+        alert.messageText = "Supprimer cette memory ?"
+        alert.informativeText = """
+        \(memory.type) · \(memory.name)
+        \(memory.summary.isEmpty ? String(memory.content.prefix(120)) : memory.summary)
+
+        Action irréversible. Si memory factory (seedée depuis ~/.claude/projects/.../memory/),
+        elle sera re-seedée au prochain launch IRIS.
+        """
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Supprimer")
+        alert.addButton(withTitle: "Annuler")
+        if alert.runModal() == .alertFirstButtonReturn {
+            modelContext.delete(memory)
+            try? modelContext.save()
+            // Si présent dans retrievalResults, le retirer
+            retrievalResults.removeAll { $0.0.id == memory.id }
         }
     }
 
