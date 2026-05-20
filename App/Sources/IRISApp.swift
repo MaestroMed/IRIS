@@ -67,13 +67,13 @@ struct IRISApp: App {
             await bridge?.start()
         }
 
-        // 3. Conductor démarre + écoute userInput
+        // 3. Conductor démarre + écoute userInput + Scribe integration (v1.6)
         let costSink: @Sendable (Double) -> Void = { cost in
             Task { @MainActor in
                 appState.sessionCostUSD += cost
             }
         }
-        await Conductor.shared.start(onCost: costSink)
+        await Conductor.shared.start(modelContainer: modelContainer, onCost: costSink)
 
         // 4. Quill démarre — listen signaux importance ≥ 4, drafte via Sonnet
         await Quill.shared.start(modelContainer: modelContainer, onCost: costSink)
