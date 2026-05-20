@@ -61,6 +61,11 @@ struct IRISApp: App {
         let context = modelContainer.mainContext
         AgentSeeder.seedIfNeeded(in: context)
 
+        // 1.b — v1.6.1 : pré-seed Memory depuis ~/.claude/projects/.../memory/*.md
+        // Permet à Conductor d'avoir le contexte Mehdi (profil, préférences, anti-patterns, projet IRIS)
+        // dès la 1ère conversation. Idempotent — skip si déjà seedé.
+        await MemorySeeder.seedIfNeeded(in: context)
+
         // 2. Bridge EventBus → AppState transcript
         if bridge == nil {
             bridge = EventBusBridge(appState: appState, modelContext: context)
@@ -96,7 +101,10 @@ struct IRISApp: App {
         // 10. Advisor démarre — briefing scheduled 8h00 + manual on-demand
         await Advisor.shared.start(modelContainer: modelContainer, onCost: costSink)
 
-        irisLog(.info, "IRIS bootstrapped — 10 agents live (Conductor + Sentinel + Scribe + Quill + Envoy + Cartographer + Auditor + Builder + Advisor)",
+        // 11. Witness v1.5.A — observe NSWorkspace frontmost app (debounce 10s)
+        await Witness.shared.start(modelContainer: modelContainer)
+
+        irisLog(.info, "IRIS bootstrapped — 10 agents live (Conductor + Sentinel + Scribe + Quill + Envoy + Cartographer + Auditor + Builder + Advisor + Witness)",
                 category: IRISLogger.ui)
     }
 }
