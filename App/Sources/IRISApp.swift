@@ -42,6 +42,45 @@ struct IRISApp: App {
                     NSApplication.shared.orderFrontStandardAboutPanel(nil)
                 }
             }
+
+            // v1.8 — Raccourcis clavier agents + actions fréquentes
+            CommandMenu("Agents") {
+                Button("Conductor") { IRISCommands.selectAgent(.conductor) }.keyboardShortcut("1", modifiers: .command)
+                Button("Sentinel")  { IRISCommands.selectAgent(.sentinel) }.keyboardShortcut("2", modifiers: .command)
+                Button("Scribe")    { IRISCommands.selectAgent(.scribe) }.keyboardShortcut("3", modifiers: .command)
+                Button("Quill")     { IRISCommands.selectAgent(.quill) }.keyboardShortcut("4", modifiers: .command)
+                Button("Auditor")   { IRISCommands.selectAgent(.auditor) }.keyboardShortcut("5", modifiers: .command)
+                Button("Cartographer") { IRISCommands.selectAgent(.cartographer) }.keyboardShortcut("6", modifiers: .command)
+                Button("Builder")   { IRISCommands.selectAgent(.builder) }.keyboardShortcut("7", modifiers: .command)
+                Button("Envoy")     { IRISCommands.selectAgent(.envoy) }.keyboardShortcut("8", modifiers: .command)
+                Button("Witness")   { IRISCommands.selectAgent(.witness) }.keyboardShortcut("9", modifiers: .command)
+                Button("Advisor")   { IRISCommands.selectAgent(.advisor) }.keyboardShortcut("0", modifiers: .command)
+            }
+
+            CommandMenu("Actions") {
+                Button("Refresh Cartographer") {
+                    Task { await Cartographer.shared.refresh() }
+                }
+                .keyboardShortcut("r", modifiers: [.command, .shift])
+
+                Button("Brief Advisor (now)") {
+                    Task { await Advisor.shared.runBriefing(kind: .manual) }
+                }
+                .keyboardShortcut("b", modifiers: [.command, .shift])
+
+                Divider()
+
+                Button("Audit projet sélectionné…") {
+                    // v1.8 minimal : tente d'auditer le ProjectRecord le plus récemment poussé.
+                    // v1.9+ : modal NSAlert avec picker projet.
+                    Task {
+                        if let codename = await IRISCommands.firstActiveCodename() {
+                            await Auditor.shared.auditProject(codename: codename)
+                        }
+                    }
+                }
+                .keyboardShortcut("a", modifiers: [.command, .shift])
+            }
         }
 
         Settings {
@@ -106,6 +145,24 @@ struct IRISApp: App {
 
         irisLog(.info, "IRIS bootstrapped — 10 agents live (Conductor + Sentinel + Scribe + Quill + Envoy + Cartographer + Auditor + Builder + Advisor + Witness)",
                 category: IRISLogger.ui)
+    }
+}
+
+// MARK: — v1.8 IRISCommands : helpers cross-Commands ↔ AppState via NotificationCenter
+
+enum IRISCommands {
+    static let selectAgentNotif = Notification.Name("iris.command.selectAgent")
+
+    static func selectAgent(_ id: AgentID) {
+        NotificationCenter.default.post(name: selectAgentNotif, object: id)
+    }
+
+    @MainActor
+    static func firstActiveCodename() async -> String? {
+        // Récupère le ModelContainer partagé via SkillRegistry pattern (singleton-like via app).
+        // v1.8 simple : on lit depuis le premier ModelContainer accessible.
+        // Si pas pratique : v1.9+ → pass via Commands closure capture.
+        nil  // v1.8 placeholder, l'audit nécessite un picker propre — v1.9 implémentera
     }
 }
 

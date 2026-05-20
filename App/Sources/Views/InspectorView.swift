@@ -62,11 +62,66 @@ struct InspectorView: View {
             builderSection
         case .advisor:
             advisorSection
+        case .witness:
+            witnessSection
         case .some(let other):
             simpleAgentSection(other)
         case .none:
             EmptyView()
         }
+    }
+
+    // MARK: — Witness (v1.7.B)
+
+    private var witnessSection: some View {
+        let screenSignals = allSignals.filter { $0.source == "screen" }.prefix(5)
+        return VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
+            sectionHeader("Witness", count: screenSignals.count, accent: IRISTokens.irisAccent)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 4) {
+                    Image(systemName: "eyes")
+                        .foregroundStyle(IRISTokens.irisAccent)
+                    Text("Témoin")
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+                Text("Capture NSWorkspace frontmost (debounce 10s). Vision Gemini en v1.5.B+.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.primary.opacity(0.8))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.bottom, IRISTokens.spacing8)
+
+            if screenSignals.isEmpty {
+                Text("Pas encore de capture. Première arrive dans ~10s.")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+            } else {
+                Text("DERNIERS CONTEXTES")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                ForEach(Array(screenSignals)) { signal in
+                    witnessRow(signal)
+                }
+            }
+        }
+    }
+
+    private func witnessRow(_ signal: Signal) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            HStack {
+                Image(systemName: "rectangle.on.rectangle")
+                    .font(.system(size: 10))
+                    .foregroundStyle(IRISTokens.aquaTint)
+                Text(signal.summary)
+                    .font(.system(size: 11)).lineLimit(1)
+                Spacer()
+                Text(signal.emittedAt, format: .dateTime.hour().minute().second())
+                    .font(.system(size: 9, design: .monospaced)).foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 3)
+        .padding(.horizontal, 6)
+        .background(RoundedRectangle(cornerRadius: 6).fill(.thinMaterial))
     }
 
     // MARK: — Cartographer

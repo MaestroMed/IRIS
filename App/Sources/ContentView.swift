@@ -1,8 +1,7 @@
 import SwiftUI
 
-// IRIS v0.0.2 — ContentView = NavigationSplitView 3 colonnes (sidebar / main / inspector).
+// IRIS v0.0.2 + v1.8 — ContentView = NavigationSplitView 3 colonnes + raccourcis clavier.
 // Cf docs/IRIS-VISION.md, docs/IRIS-ARCHITECTURE.md.
-// v0.0.5+ — chaque colonne sera spécialisée par agent sélectionné.
 
 struct ContentView: View {
     @State private var appState = IRISAppState()
@@ -20,6 +19,11 @@ struct ContentView: View {
         .navigationSplitViewStyle(.balanced)
         .environment(appState)
         .frame(minWidth: 1100, minHeight: 700)
+        .onReceive(NotificationCenter.default.publisher(for: IRISCommands.selectAgentNotif)) { notif in
+            if let agentId = notif.object as? AgentID {
+                appState.selection = .agent(agentId)
+            }
+        }
     }
 }
 
