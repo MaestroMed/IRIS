@@ -5,6 +5,7 @@ import AppKit
 /// v1.45 — Vue affichée dans le menu bar macOS via MenuBarExtra scene.
 /// Compteurs live + actions rapides accessibles même quand fenêtre principale fermée.
 struct MenuBarStatusView: View {
+    @Environment(IRISAppState.self) private var appState  // v1.98
     @Query(sort: \Signal.emittedAt, order: .reverse) private var allSignals: [Signal]
     @Query private var allDrafts: [Draft]
 
@@ -27,6 +28,16 @@ struct MenuBarStatusView: View {
                 menuRow(icon: "exclamationmark.triangle.fill", label: "Critical 24h", value: "\(criticalSignals)", color: .red)
             }
             menuRow(icon: "pencil.and.scribble", label: "Drafts pending", value: "\(pendingDrafts)", color: pendingDrafts > 0 ? .orange : .secondary)
+
+            // v1.98 — Cost session display (rouge si limit dépassée)
+            let costColor: Color = appState.costLimitTriggered ? .red :
+                                   (appState.sessionCostUSD > 0.5 ? .orange : .secondary)
+            menuRow(
+                icon: "dollarsign.circle",
+                label: "Cost session",
+                value: "$\(String(format: "%.4f", appState.sessionCostUSD))",
+                color: costColor
+            )
 
             Divider()
 

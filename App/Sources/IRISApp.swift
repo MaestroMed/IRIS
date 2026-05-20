@@ -100,6 +100,7 @@ struct IRISApp: App {
         MenuBarExtra("IRIS", systemImage: "eye") {
             MenuBarStatusView()
                 .modelContainer(modelContainer)
+                .environment(appState)  // v1.98 — accès à sessionCostUSD
         }
         .menuBarExtraStyle(.window)
     }

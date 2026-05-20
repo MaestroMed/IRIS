@@ -1150,8 +1150,26 @@ struct InspectorView: View {
 
     private var signalsSection: some View {
         let signals = Array(allSignals.prefix(8))
+        let unackedCount = signals.filter { !$0.acknowledged }.count
         return VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
-            sectionHeader("Signals récents", count: signals.count, accent: .secondary)
+            HStack {
+                sectionHeader("Signals récents", count: signals.count, accent: .secondary)
+                // v1.99 — Mark all visible acknowledged (batch action)
+                if unackedCount > 0 {
+                    Button {
+                        for signal in signals where !signal.acknowledged {
+                            signal.acknowledged = true
+                        }
+                        try? modelContext.save()
+                    } label: {
+                        Image(systemName: "checkmark.seal")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.green.opacity(0.8))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Marquer tous les \(unackedCount) signaux visibles comme acknowledged")
+                }
+            }
             if signals.isEmpty {
                 Text("Sentinel démarre dans quelques secondes…")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
