@@ -18,6 +18,9 @@ public actor Conductor {
     private var onCost: CostSink?
     private weak var modelContainer: ModelContainer?
 
+    /// v1.54 — Task de la réponse en cours, pour permettre l'annulation user.
+    private var currentResponseTask: Task<Void, Never>?
+
     /// v1.19 — history derniers échanges (alternance user/assistant) pour multi-turn dialog.
     /// Max 10 paires = 20 messages pour éviter explosion context.
     private var conversationHistory: [Message] = []
@@ -106,6 +109,18 @@ public actor Conductor {
         subscriptionTask = nil
     }
 
+    /// v1.54 — Annule la réponse en cours (stream SSE Claude). Le streamMessage for-await throws
+    /// CancellationError → catch publie le partial accumulé + tag annulée.
+    public func cancelCurrentResponse() {
+        currentResponseTask?.cancel()
+        currentResponseTask = nil
+    }
+
+    /// v1.54 — Indique si une réponse Conductor est actuellement en cours (pour UI Stop button).
+    public var isResponding: Bool {
+        currentResponseTask != nil && !(currentResponseTask?.isCancelled ?? true)
+    }
+
     // MARK: — Routing
 
     private func handleUserInput(_ text: String) async {
@@ -113,11 +128,18 @@ public actor Conductor {
         irisLog(.info, "Conductor handling user input (\(text.prefix(40))…)", category: IRISLogger.conductor)
 
         let hasKey = IRISKeychain.shared.hasAnthropicAPIKey()
-        if hasKey {
-            await respondWithClaude(text, eventId: eventId)
-        } else {
-            await respondMock(text, eventId: eventId)
+        // v1.54 — wrap dans Task pour permettre cancel via cancelCurrentResponse()
+        let task = Task { [weak self] in
+            guard let self else { return }
+            if hasKey {
+                await self.respondWithClaude(text, eventId: eventId)
+            } else {
+                await self.respondMock(text, eventId: eventId)
+            }
         }
+        currentResponseTask = task
+        await task.value
+        currentResponseTask = nil
     }
 
     // MARK: — Mock mode (sans API key)
@@ -259,6 +281,15 @@ public actor Conductor {
 
             // v1.6 — store Q/R as Memory pour calibration future (Quill / Advisor / retrieval)
             await storeConversationMemory(query: text, response: accumulated)
+        } catch is CancellationError {
+            // v1.54 — Annulation user. Publie le partial accumulé + tag.
+            let final = accumulated + "\n\n_[génération annulée]_"
+            appendToHistory(Message(role: .assistant, content: final))
+            irisLog(.info, "Conductor stream cancelled by user — \(accumulated.count) chars partial",
+                    category: IRISLogger.conductor)
+            await EventBus.shared.publish(
+                .agentResponse(from: .conductor, content: final, eventId: eventId)
+            )
         } catch {
             irisLog(.error, "Conductor stream failed: \(error.localizedDescription)", category: IRISLogger.conductor)
             await EventBus.shared.publish(

@@ -95,6 +95,17 @@ struct MainCanvasView: View {
             if appState.isProcessing {
                 ProgressView()
                     .controlSize(.small)
+                // v1.54 — Stop generation button (cancel SSE stream)
+                Button {
+                    Task { await Conductor.shared.cancelCurrentResponse() }
+                } label: {
+                    Image(systemName: "stop.circle.fill")
+                        .font(.system(size: 14))
+                        .foregroundStyle(.red)
+                }
+                .buttonStyle(.plain)
+                .help("Arrêter la génération en cours")
+                .keyboardShortcut(".", modifiers: .command)
             }
 
             if appState.hasAnthropicKey {
