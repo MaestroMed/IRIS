@@ -1,0 +1,31 @@
+node_modules/
+.DS_Store
+*.log
+.env
+.env.local
+artefacts/cache/
+
+# Swift / Xcode / Tuist
+*.xcodeproj/
+*.xcworkspace/
+**/.build/
+Tuist/.build/
+Tuist/Dependencies/
+Derived/
+DerivedData/
+*.swiftpm/
+.swiftpm/
+Package.resolved
+**/Package.resolved
+
+# Xcode user data
+xcuserdata/
+*.xcuserstate
+*.xcuserdatad/
+
+# Tuist generated
+Generated/
+
+# Logs build
+*.crashlog
+build/Logs/
