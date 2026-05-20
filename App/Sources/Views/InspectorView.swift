@@ -264,6 +264,30 @@ struct InspectorView: View {
                     .font(.system(size: 9))
                     .foregroundStyle(.secondary)
             }
+            // v1.68 — Open in Finder (si localPath)
+            if let path = project.localPath, !path.isEmpty {
+                Button {
+                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+                } label: {
+                    Image(systemName: "folder")
+                        .font(.system(size: 9))
+                        .foregroundStyle(IRISTokens.aquaTint)
+                }
+                .buttonStyle(.plain)
+                .help("Reveal \(path) dans Finder")
+            }
+            // v1.68 — Open repo dans browser (si repoURL)
+            if let urlStr = project.repoURL, let url = URL(string: urlStr) {
+                Button {
+                    NSWorkspace.shared.open(url)
+                } label: {
+                    Image(systemName: "arrow.up.right.square")
+                        .font(.system(size: 9))
+                        .foregroundStyle(IRISTokens.irisAccent)
+                }
+                .buttonStyle(.plain)
+                .help("Ouvrir \(urlStr) dans le navigateur")
+            }
         }
         .padding(.vertical, 4)
         .padding(.horizontal, 6)
