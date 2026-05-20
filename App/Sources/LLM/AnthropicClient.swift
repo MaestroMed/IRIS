@@ -85,6 +85,87 @@ public actor AnthropicClient {
         return try decoder.decode(MessageResponse.self, from: data)
     }
 
+    // MARK: — v1.107 Vision : single-turn user message with image attachment
+
+    /// Single-turn vision request : envoie un message user contenant text + image
+    /// (base64-encoded). Utilisé par Witness pour décrire un screenshot.
+    ///
+    /// Spec Anthropic vision : `content: [{type:"image", source:{type:"base64", media_type, data}}, {type:"text", text}]`.
+    /// Pas de streaming pour v1.107 (réponse complète attendue).
+    ///
+    /// - Parameters:
+    ///   - model: Claude model (haiku45 recommandé pour vision cheap).
+    ///   - system: System prompt optionnel (pas de cache pour Witness, prompt court).
+    ///   - text: Texte user accompagnant l'image (ex: "Décris ce qui se passe à l'écran").
+    ///   - imageData: Image PNG/JPEG raw data.
+    ///   - mediaType: MIME type ("image/png" ou "image/jpeg").
+    ///   - maxTokens: Max output tokens (default 512 pour description courte).
+    public func sendVisionMessage(
+        model: ClaudeModel,
+        system: String? = nil,
+        text: String,
+        imageData: Data,
+        mediaType: String = "image/png",
+        maxTokens: Int = 512
+    ) async throws -> MessageResponse {
+        guard let apiKey = IRISKeychain.shared.getAnthropicAPIKey() else {
+            throw AnthropicError.missingAPIKey
+        }
+
+        // Build le JSON body manuellement car Message.content est typé String.
+        // Vision API attend content = array of blocks.
+        let base64 = imageData.base64EncodedString()
+        var body: [String: Any] = [
+            "model": model.rawValue,
+            "max_tokens": maxTokens,
+            "messages": [
+                [
+                    "role": "user",
+                    "content": [
+                        [
+                            "type": "image",
+                            "source": [
+                                "type": "base64",
+                                "media_type": mediaType,
+                                "data": base64
+                            ]
+                        ],
+                        [
+                            "type": "text",
+                            "text": text
+                        ]
+                    ]
+                ]
+            ]
+        ]
+        if let system, !system.isEmpty {
+            body["system"] = system
+        }
+
+        var request = URLRequest(url: baseURL.appendingPathComponent("messages"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+        request.setValue(anthropicVersion, forHTTPHeaderField: "anthropic-version")
+        request.setValue(userAgent, forHTTPHeaderField: "user-agent")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [])
+
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw AnthropicError.network("Non-HTTP response")
+        }
+        guard http.statusCode == 200 else {
+            if let errorPayload = try? JSONDecoder().decode(APIErrorResponse.self, from: data) {
+                throw AnthropicError.apiError(status: http.statusCode, message: errorPayload.error.message, type: errorPayload.error.type)
+            }
+            throw AnthropicError.apiError(status: http.statusCode, message: String(data: data, encoding: .utf8) ?? "vision error", type: "vision")
+        }
+
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return try decoder.decode(MessageResponse.self, from: data)
+    }
+
     // MARK: — Convenience : single turn user → assistant
 
     public func ask(
