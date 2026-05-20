@@ -115,13 +115,16 @@ struct MainCanvasView: View {
         .padding(.vertical, IRISTokens.spacing16)
     }
 
-    // MARK: — Content (placeholder par agent, ou conversation Conductor)
+    // MARK: — Content (placeholder par agent, ou conversation Conductor, ou dashboard global)
 
     @ViewBuilder
     private var content: some View {
         switch appState.selection {
-        case .some(.agent(.conductor)), .none:
+        case .some(.agent(.conductor)):
             conductorConversation
+        case .none:
+            // v1.10 — aucun agent sélectionné = dashboard global stats
+            DashboardView()
         case .some(.agent(let agent)):
             agentPlaceholder(agent.descriptor)
         case .some(.system(let dest)):

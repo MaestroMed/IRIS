@@ -219,6 +219,14 @@ struct SettingsView: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
 
+                Button(action: exportMarkdown) {
+                    Label("Export MD", systemImage: "doc.text")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("Export human-readable Markdown (memories + audits + projects + signaux 24h)")
+
                 Spacer()
             }
 
@@ -260,6 +268,16 @@ struct SettingsView: View {
             backupStatus = "✅ Backup importé : \(stats.summary)"
         } catch {
             backupStatus = "⚠️ Import échoué : \(error.localizedDescription)"
+        }
+    }
+
+    private func exportMarkdown() {
+        do {
+            let container = modelContext.container
+            let url = try BackupService.exportAsMarkdown(container: container)
+            backupStatus = "✅ Markdown exporté vers \(url.path) (\(humanByteSize(at: url)))"
+        } catch {
+            backupStatus = "⚠️ Export MD échoué : \(error.localizedDescription)"
         }
     }
 
