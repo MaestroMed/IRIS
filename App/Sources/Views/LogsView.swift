@@ -11,19 +11,23 @@ struct LogsView: View {
 
     @State private var filterAgent: String = ""
     @State private var filterKind: String = ""
+    @State private var filterLevel: String = ""
     @State private var searchText: String = ""
 
     private static let kindOrder = [
         "userInput", "agentDispatched", "agentResponse",
         "signalEmitted", "draftReady", "actionRequested",
         "actionApproved", "actionRejected", "actionExecuted",
-        "actionLogged", "agentFailure", "systemLog"
+        "actionLogged", "agentFailure", "systemLog", "conductorChunk"
     ]
+
+    private static let levelOrder = ["debug", "info", "notice", "warning", "error", "fault"]
 
     var filtered: [EventLog] {
         allEvents.lazy
             .filter { filterAgent.isEmpty || $0.fromAgent == filterAgent || $0.toAgent == filterAgent }
             .filter { filterKind.isEmpty || $0.kind == filterKind }
+            .filter { filterLevel.isEmpty || $0.payloadJSON.contains("\"level\":\"\(filterLevel)\"") }
             .filter { searchText.isEmpty || $0.payloadJSON.localizedCaseInsensitiveContains(searchText) || $0.kind.localizedCaseInsensitiveContains(searchText) }
             .prefix(500)
             .map { $0 }
@@ -76,6 +80,17 @@ struct LogsView: View {
             .controlSize(.small)
             .frame(maxWidth: 180)
 
+            // v1.28 — Filter par level (applies aux systemLog events principalement)
+            Picker("Level", selection: $filterLevel) {
+                Text("Tous levels").tag("")
+                ForEach(Self.levelOrder, id: \.self) { level in
+                    Text(level).tag(level)
+                }
+            }
+            .labelsHidden()
+            .controlSize(.small)
+            .frame(maxWidth: 120)
+
             TextField("Search payload / kind…", text: $searchText)
                 .textFieldStyle(.roundedBorder)
                 .controlSize(.small)
@@ -84,10 +99,11 @@ struct LogsView: View {
             Button("Clear") {
                 filterAgent = ""
                 filterKind = ""
+                filterLevel = ""
                 searchText = ""
             }
             .controlSize(.small)
-            .disabled(filterAgent.isEmpty && filterKind.isEmpty && searchText.isEmpty)
+            .disabled(filterAgent.isEmpty && filterKind.isEmpty && filterLevel.isEmpty && searchText.isEmpty)
 
             Spacer()
         }
