@@ -52,6 +52,10 @@ struct SettingsView: View {
 
             agentVisibilitySection
 
+            Divider()
+
+            notificationsSection
+
             Spacer()
 
             footer
@@ -214,6 +218,55 @@ struct SettingsView: View {
                 routingRow(label: "Witness (v1.5+)", model: "gemini-2.5-flash-lite", cost: "cheap vision input")
             }
             .padding(.leading, IRISTokens.spacing16)
+        }
+    }
+
+    // MARK: — v1.44 Notifications natives macOS
+
+    @State private var notifsEnabled: Bool = false
+    @State private var notifsStatus: String = "(non vérifié)"
+
+    private var notificationsSection: some View {
+        VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
+            sectionTitle(
+                "Notifications natives macOS",
+                subtitle: "Push sur signaux importance critical (CI failures, leads chauds, alertes Sentinel). Demande permission une fois."
+            )
+
+            HStack(spacing: IRISTokens.spacing8) {
+                Toggle("Activer notifications critical", isOn: $notifsEnabled)
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                    .onChange(of: notifsEnabled) { _, newValue in
+                        IRISNotifications.isEnabled = newValue
+                        if newValue {
+                            Task {
+                                let granted = await IRISNotifications.requestAuthorization()
+                                notifsStatus = granted ? "✅ Autorisées" : "⚠️ Refusées (System Settings → Notifications → IRIS)"
+                            }
+                        }
+                    }
+
+                Spacer()
+
+                Text(notifsStatus)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(notifsStatus.hasPrefix("✅") ? .green : .secondary)
+            }
+        }
+        .onAppear {
+            notifsEnabled = IRISNotifications.isEnabled
+            Task {
+                let status = await IRISNotifications.authorizationStatus()
+                notifsStatus = {
+                    switch status {
+                    case .authorized, .provisional: return "✅ Autorisées"
+                    case .denied: return "⚠️ Refusées (System Settings)"
+                    case .notDetermined: return "(pas encore demandé)"
+                    default: return "(\(status.rawValue))"
+                    }
+                }()
+            }
         }
     }
 

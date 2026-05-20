@@ -254,6 +254,15 @@ final class EventBusBridge {
         case .signalEmitted(let from, let importance, let summary, let source):
             appState.markAgentActive(from)  // v1.21
             persist(event, payload: ["importance": "\(importance.rawValue)", "summary": summary, "source": source ?? "—"], from: from.rawValue)
+            // v1.44 — notif native macOS sur signaux critical
+            if importance == .critical {
+                Task {
+                    await IRISNotifications.push(
+                        title: "IRIS — \(source ?? from.rawValue) critique",
+                        body: summary
+                    )
+                }
+            }
 
         case .actionLogged(let by, let action, let params, let reversible):
             var p = params
