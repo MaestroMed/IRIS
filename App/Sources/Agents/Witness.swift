@@ -70,7 +70,86 @@ public actor Witness {
         await captureFrontmost()
     }
 
-    // MARK: — v1.108 Screenshot capture (frontmost window only)
+    // MARK: — v1.109 Vision capture (screenshot → Claude vision → Signal)
+
+    private static let visionPrompt = """
+    Tu observes le screenshot de la window que Mehdi a actuellement en focus.
+
+    Décris en 1-2 phrases concrètes ce qu'il est en train de faire :
+    - Quelle app, quel contenu/fichier ouvert ?
+    - Quelle action/tâche apparente ?
+
+    Style : neutre, factuel, FR. Pas de "il semble que" — direct.
+    Pas plus de 200 caractères. Pas de markdown.
+    """
+
+    /// v1.109 — Capture + vision : screenshot frontmost window + envoie à Claude vision
+    /// → emit Signal source="screen-vision" avec description.
+    /// Coût ~$0.002 par appel (Haiku 4.5). Pas auto pour l'instant — manual trigger only.
+    public func captureWithVision() async {
+        let pid = await MainActor.run { NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0 }
+        guard pid != 0 else { return }
+        let bundleId = await MainActor.run { NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "" }
+
+        // Respecte blocklist v1.58 + skip IRIS self
+        guard bundleId != "app.iris.macos",
+              !Self.blockedBundleIds.contains(bundleId)
+        else {
+            irisLog(.info, "Witness vision skip — bundleId blocked or IRIS self", category: IRISLogger.agents)
+            return
+        }
+
+        guard IRISKeychain.shared.hasAnthropicAPIKey() else {
+            irisLog(.warning, "Witness vision skip — no Anthropic API key", category: IRISLogger.agents)
+            return
+        }
+
+        guard let pngData = await Self.fetchFrontmostWindowPNG() else {
+            irisLog(.warning, "Witness vision skip — screenshot returned nil (TCC denied?)",
+                    category: IRISLogger.agents)
+            return
+        }
+
+        let visionModel = ClaudeModel.haiku45  // v1.109 hardcoded, v1.110 picker
+
+        do {
+            let response = try await AnthropicClient.shared.sendVisionMessage(
+                model: visionModel,
+                system: Self.visionPrompt,
+                text: "Décris cette window.",
+                imageData: pngData,
+                mediaType: "image/png",
+                maxTokens: 200
+            )
+            let description = (response.firstTextContent ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !description.isEmpty else { return }
+
+            // Emit Signal + persist
+            await EventBus.shared.publish(
+                .signalEmitted(from: .witness, importance: .trivial, summary: description, source: "screen-vision")
+            )
+            if let container = await modelContainer {
+                let summaryCopy = description
+                await MainActor.run {
+                    let signal = Signal(
+                        source: "screen-vision",
+                        importance: SignalImportance.trivial.rawValue,
+                        summary: summaryCopy
+                    )
+                    container.mainContext.insert(signal)
+                    try? container.mainContext.save()
+                }
+            }
+
+            irisLog(.info,
+                "Witness vision OK — \(description.prefix(80)) (input=\(response.usage.inputTokens) out=\(response.usage.outputTokens))",
+                category: IRISLogger.agents
+            )
+        } catch {
+            irisLog(.error, "Witness vision failed — \(error.localizedDescription)",
+                    category: IRISLogger.agents)
+        }
+    }
 
     /// Capture la frontmost window de l'app focus en PNG. Requiert Screen Recording TCC permission.
     /// Retourne nil si pas de window OU si TCC denied (CGWindowListCreateImage retourne nil).

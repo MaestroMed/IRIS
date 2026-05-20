@@ -497,6 +497,16 @@ struct InspectorView: View {
                     }
                     .buttonStyle(.plain)
                     .help("Snapshot frontmost maintenant (bypass debounce)")
+                    // v1.109 — Snapshot + Vision (screenshot → Claude Haiku 4.5 → description)
+                    Button {
+                        Task { await Witness.shared.captureWithVision() }
+                    } label: {
+                        Image(systemName: "eye.square")
+                            .font(.system(size: 12))
+                            .foregroundStyle(IRISTokens.irisAccent)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Snapshot + Vision Haiku 4.5 (~$0.002, requiert Screen Recording)")
                     // v1.27 — Pause/Resume Witness
                     Button {
                         Task {
