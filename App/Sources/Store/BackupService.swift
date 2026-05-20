@@ -376,6 +376,47 @@ public enum BackupService {
         return url
     }
 
+    // MARK: — v1.39 Export EventLogs as Markdown
+
+    /// Export une liste filtered d'EventLog en markdown human-readable.
+    /// Différent de exportAsMarkdown (qui dump tout SwiftData) — ici cible juste les logs LogsView.
+    public static func exportEventLogsAsMarkdown(_ events: [EventLog], to dir: URL? = nil) throws -> URL {
+        let isoFormatter = ISO8601DateFormatter()
+        let now = Date()
+
+        var md = ""
+        md += "# IRIS Logs export — \(isoFormatter.string(from: now))\n\n"
+        md += "Filtered logs from IRIS LogsView. \(events.count) events.\n\n"
+
+        // Group by kind
+        let groups = Dictionary(grouping: events, by: \.kind)
+        for kind in groups.keys.sorted() {
+            let kindEvents = groups[kind]!.sorted { $0.timestamp < $1.timestamp }
+            md += "## \(kind) (\(kindEvents.count))\n\n"
+            for event in kindEvents {
+                let timeStr = isoFormatter.string(from: event.timestamp)
+                var line = "- `\(timeStr)`"
+                if let from = event.fromAgent {
+                    line += " · **\(from)**"
+                }
+                if let to = event.toAgent {
+                    line += " → \(to)"
+                }
+                line += " · `\(event.payloadJSON.replacingOccurrences(of: "\n", with: " ").prefix(200))`"
+                md += line + "\n"
+            }
+            md += "\n"
+        }
+
+        md += "---\n\n*Exported by IRIS v\(backupVersion) at \(isoFormatter.string(from: now))*\n"
+
+        let dateStr = isoFormatter.string(from: now).replacingOccurrences(of: ":", with: "-")
+        let targetDir = dir ?? URL(fileURLWithPath: NSHomeDirectory())
+        let url = targetDir.appendingPathComponent("iris-logs-\(dateStr).md")
+        try md.write(to: url, atomically: true, encoding: .utf8)
+        return url
+    }
+
     @MainActor
     public static func importMINDExport(container: ModelContainer, from url: URL) throws -> Int {
         let data = try Data(contentsOf: url)

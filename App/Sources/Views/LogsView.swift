@@ -13,6 +13,7 @@ struct LogsView: View {
     @State private var filterKind: String = ""
     @State private var filterLevel: String = ""
     @State private var searchText: String = ""
+    @State private var exportStatus: String?
 
     private static let kindOrder = [
         "userInput", "agentDispatched", "agentResponse",
@@ -104,6 +105,23 @@ struct LogsView: View {
             }
             .controlSize(.small)
             .disabled(filterAgent.isEmpty && filterKind.isEmpty && filterLevel.isEmpty && searchText.isEmpty)
+
+            // v1.39 — Export filtered logs Markdown
+            Button {
+                exportFilteredLogs()
+            } label: {
+                Label("Export MD", systemImage: "square.and.arrow.up")
+                    .font(.system(size: 11))
+            }
+            .controlSize(.small)
+            .help("Export les events filtrés en Markdown")
+
+            if let status = exportStatus {
+                Text(status)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(status.hasPrefix("✅") ? .green : .red)
+                    .lineLimit(1)
+            }
 
             Spacer()
         }
@@ -203,6 +221,19 @@ struct LogsView: View {
         // Cap à 200 chars, strip multiline pour rester compact
         let trimmed = json.replacingOccurrences(of: "\n", with: " ")
         return String(trimmed.prefix(200))
+    }
+
+    private func exportFilteredLogs() {
+        do {
+            let url = try BackupService.exportEventLogsAsMarkdown(filtered)
+            exportStatus = "✅ → \(url.lastPathComponent)"
+            // Clear status après 5s
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+                exportStatus = nil
+            }
+        } catch {
+            exportStatus = "⚠️ \(error.localizedDescription)"
+        }
     }
 }
 
