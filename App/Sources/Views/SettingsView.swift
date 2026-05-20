@@ -896,6 +896,11 @@ struct SettingsView: View {
 
             Divider().padding(.vertical, IRISTokens.spacing4)
 
+            // v1.74 — Source mute toggles
+            sentinelMuteToggles
+
+            Divider().padding(.vertical, IRISTokens.spacing4)
+
             // v1.65 — Inject manual signal (test Quill flow)
             manualSignalInjector
         }
@@ -904,6 +909,43 @@ struct SettingsView: View {
                 stubIntervalSeconds = Double(await Sentinel.shared.currentStubInterval)
                 githubIntervalSeconds = Double(await Sentinel.shared.currentGithubInterval)
                 fsIntervalSeconds = Double(await Sentinel.shared.currentFSInterval)
+            }
+        }
+    }
+
+    // MARK: — v1.74 Sentinel source mute
+
+    @State private var sentinelMuteTick: Int = 0
+
+    private var sentinelMuteToggles: some View {
+        let muted = Sentinel.mutedSources
+        return VStack(alignment: .leading, spacing: 4) {
+            Text("SOURCE MUTE (skip emit)")
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .id(sentinelMuteTick)
+            HStack(spacing: 4) {
+                ForEach(Sentinel.knownSources, id: \.self) { source in
+                    let isMuted = muted.contains(source)
+                    Button {
+                        Sentinel.toggleMuted(source)
+                        sentinelMuteTick += 1
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: isMuted ? "speaker.slash.fill" : "speaker.wave.2")
+                                .font(.system(size: 9))
+                            Text(source)
+                                .font(.system(size: 10, design: .monospaced))
+                        }
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background((isMuted ? Color.red : IRISTokens.aquaTint).opacity(0.15))
+                        .clipShape(Capsule())
+                        .foregroundStyle(isMuted ? .red : IRISTokens.aquaTint)
+                    }
+                    .buttonStyle(.plain)
+                    .help(isMuted ? "Source mutée — Sentinel skip" : "Source active — click pour muter")
+                }
+                Spacer()
             }
         }
     }

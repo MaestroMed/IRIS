@@ -130,6 +130,32 @@ public actor Sentinel {
         await emitStubSignal()
     }
 
+    // MARK: — v1.74 Source mute (per-source toggle Settings)
+
+    private static let mutedSourcesKey = "iris.sentinel.mutedSources"
+
+    /// Sources mutées : Sentinel skip l'émission pour ces sources (gmail/github/calendar/fs/screen).
+    public static var mutedSources: Set<String> {
+        let raw = UserDefaults.standard.stringArray(forKey: mutedSourcesKey) ?? []
+        return Set(raw)
+    }
+
+    public static func setMuted(_ sources: Set<String>) {
+        UserDefaults.standard.set(Array(sources), forKey: mutedSourcesKey)
+    }
+
+    public static func toggleMuted(_ source: String) {
+        var ids = mutedSources
+        if ids.contains(source) {
+            ids.remove(source)
+        } else {
+            ids.insert(source)
+        }
+        setMuted(ids)
+    }
+
+    public static let knownSources: [String] = ["gmail", "github", "calendar", "fs"]
+
     /// v1.65 — Inject un signal custom (source/importance/summary par Mehdi).
     /// Émet sur bus + persiste Signal SwiftData. Utile pour tester Quill avec
     /// un input contrôlé (e.g. simuler signal client critical).
@@ -190,6 +216,11 @@ public actor Sentinel {
 
     private func emitStubSignal() async {
         let stub = Self.stubSignals.randomElement()!
+        // v1.74 — skip si source mutée
+        guard !Self.mutedSources.contains(stub.source) else {
+            irisLog(.debug, "Sentinel stub signal muted (source=\(stub.source))", category: IRISLogger.agents)
+            return
+        }
         let signalId = UUID()
 
         // Publish event on bus
@@ -237,6 +268,8 @@ public actor Sentinel {
 
     /// Poll deltas : compare current pushedAt vs cached, emit Signal pour chaque delta.
     private func pollGitHubDeltas() async {
+        // v1.74 — skip si source github mutée
+        guard !Self.mutedSources.contains("github") else { return }
         let cached = await loadGitHubCache()
         let current = await fetchGitHubPushedAtMap()
         guard !current.isEmpty else { return }
@@ -348,6 +381,8 @@ public actor Sentinel {
     }
 
     private func pollFSDeltas() async {
+        // v1.74 — skip si source fs mutée
+        guard !Self.mutedSources.contains("fs") else { return }
         let cached = await loadFSCache()
         let current = await scanActiveProjectMtimes()
         guard !current.isEmpty else { return }
