@@ -119,6 +119,8 @@ struct IRISApp: App {
             }
         }
         await Conductor.shared.start(modelContainer: modelContainer, onCost: costSink)
+        // v1.31 — Restore history depuis EventLog pour continuité cross-launch
+        await Conductor.shared.restoreHistory(from: modelContainer)
 
         // 4. Quill démarre — listen signaux importance ≥ 4, drafte via Sonnet
         await Quill.shared.start(modelContainer: modelContainer, onCost: costSink)

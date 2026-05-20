@@ -31,6 +31,46 @@ public actor Conductor {
         irisLog(.info, "Conductor conversation history reset", category: IRISLogger.conductor)
     }
 
+    /// v1.31 — Restore conversationHistory depuis EventLog SwiftData.
+    /// Au launch IRIS, repopulate derniers échanges Conductor pour continuité cross-launch.
+    public func restoreHistory(from container: ModelContainer) async {
+        // Skip si déjà des messages (start déjà fait restore — idempotence)
+        guard conversationHistory.isEmpty else { return }
+        let messages = await Self.fetchRecentMessages(container: container, limit: maxHistoryPairs * 2)
+        conversationHistory = messages
+        if !messages.isEmpty {
+            irisLog(.info, "Conductor history restored \(messages.count) msgs from EventLog", category: IRISLogger.conductor)
+        }
+    }
+
+    @MainActor
+    private static func fetchRecentMessages(container: ModelContainer, limit: Int) async -> [Message] {
+        var descriptor = FetchDescriptor<EventLog>(
+            predicate: #Predicate {
+                $0.kind == "userInput" || ($0.kind == "agentResponse" && $0.fromAgent == "conductor")
+            },
+            sortBy: [SortDescriptor(\.timestamp, order: .reverse)]
+        )
+        descriptor.fetchLimit = limit
+        let events = (try? container.mainContext.fetch(descriptor)) ?? []
+        // events arrive en order desc → reverse pour avoir chrono croissant
+        return events.reversed().compactMap { event -> Message? in
+            guard let data = event.payloadJSON.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            else { return nil }
+            if event.kind == "userInput" {
+                if let text = json["text"] as? String, !text.isEmpty {
+                    return Message(role: .user, content: text)
+                }
+            } else if event.kind == "agentResponse" {
+                if let content = json["content"] as? String, !content.isEmpty {
+                    return Message(role: .assistant, content: content)
+                }
+            }
+            return nil
+        }
+    }
+
     private func appendToHistory(_ message: Message) {
         conversationHistory.append(message)
         if conversationHistory.count > maxHistoryPairs * 2 {
