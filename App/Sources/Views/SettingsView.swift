@@ -1190,6 +1190,15 @@ struct SettingsView: View {
                 Spacer()
             }
 
+            // v1.116 — Source backend picker (stub vs MCP)
+            Text("SOURCE BACKEND")
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .padding(.top, 4)
+            ForEach(Sentinel.knownSources, id: \.self) { source in
+                sourceBackendRow(source)
+            }
+
             // v1.88 — Snooze (timed mute)
             Text("SNOOZE (mute temporaire)")
                 .font(.system(size: 9, weight: .bold, design: .monospaced))
@@ -1225,6 +1234,44 @@ struct SettingsView: View {
                 Spacer()
             }
         }
+    }
+
+    // v1.116 — Per-source backend picker row (stub vs mcp:<server>)
+    @State private var sourceBackendTick: Int = 0
+
+    private func sourceBackendRow(_ source: String) -> some View {
+        let current = Sentinel.sourceBackend(for: source)
+        let servers = MCPManager.shared.servers
+        return HStack {
+            Text(source)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(.primary)
+                .frame(width: 70, alignment: .leading)
+            Picker("", selection: Binding(
+                get: { current },
+                set: { newValue in
+                    Sentinel.setSourceBackend(newValue, for: source)
+                    sourceBackendTick += 1
+                }
+            )) {
+                Text("stub").tag("stub")
+                ForEach(servers) { server in
+                    Text("mcp: \(server.name)").tag("mcp:\(server.name)")
+                }
+            }
+            .labelsHidden()
+            .controlSize(.small)
+            .frame(maxWidth: 220)
+
+            if current.hasPrefix("mcp:") {
+                Image(systemName: "antenna.radiowaves.left.and.right")
+                    .font(.system(size: 9))
+                    .foregroundStyle(IRISTokens.aquaTint)
+                    .help("Backend MCP actif (real polling)")
+            }
+            Spacer()
+        }
+        .id("\(source)-\(sourceBackendTick)")
     }
 
     private static func snoozeRemaining(until: Date) -> String {

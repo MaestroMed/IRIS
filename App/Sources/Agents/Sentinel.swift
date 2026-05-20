@@ -156,6 +156,35 @@ public actor Sentinel {
 
     public static let knownSources: [String] = ["gmail", "github", "calendar", "fs"]
 
+    // MARK: — v1.116 Source backend (stub vs MCP <serverName>)
+
+    /// Backend par source : "stub" (templates fictifs) ou "mcp:<serverName>".
+    /// Stocké comme [source: backend] dans UserDefaults.
+    private static let sourceBackendKey = "iris.sentinel.sourceBackend"
+
+    public static func sourceBackend(for source: String) -> String {
+        let map = (UserDefaults.standard.dictionary(forKey: sourceBackendKey) as? [String: String]) ?? [:]
+        return map[source] ?? "stub"
+    }
+
+    public static func setSourceBackend(_ backend: String, for source: String) {
+        var map = (UserDefaults.standard.dictionary(forKey: sourceBackendKey) as? [String: String]) ?? [:]
+        map[source] = backend
+        UserDefaults.standard.set(map, forKey: sourceBackendKey)
+    }
+
+    /// True si backend de cette source est "mcp:..." (stub skip nécessaire).
+    public static func isMCPBackend(for source: String) -> Bool {
+        sourceBackend(for: source).hasPrefix("mcp:")
+    }
+
+    /// Extract le serverName depuis "mcp:<serverName>" — nil si stub.
+    public static func mcpServerName(for source: String) -> String? {
+        let backend = sourceBackend(for: source)
+        guard backend.hasPrefix("mcp:") else { return nil }
+        return String(backend.dropFirst("mcp:".count))
+    }
+
     // MARK: — v1.88 Snooze (timed mute per source)
 
     private static let snoozeUntilKey = "iris.sentinel.snoozeUntil"  // [source: ISO timestamp]
@@ -264,6 +293,11 @@ public actor Sentinel {
         // v1.88 — skip si source snoozée
         guard !Self.isSnoozedNow(source: stub.source) else {
             irisLog(.debug, "Sentinel stub signal snoozed (source=\(stub.source))", category: IRISLogger.agents)
+            return
+        }
+        // v1.116 — skip si backend MCP configuré pour cette source (real poll en v1.117)
+        guard !Self.isMCPBackend(for: stub.source) else {
+            irisLog(.debug, "Sentinel stub skip (source=\(stub.source) backend=mcp)", category: IRISLogger.agents)
             return
         }
         let signalId = UUID()
