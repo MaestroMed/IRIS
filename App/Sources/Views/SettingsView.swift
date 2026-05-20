@@ -667,12 +667,92 @@ struct SettingsView: View {
     @State private var conductorPromptUsingDefault: Bool = true
     @State private var conductorPromptStatus: String?
 
+    // v1.66 — Presets quick-switch
+    private struct ConductorPreset {
+        let name: String
+        let body: String
+    }
+
+    private static let conductorPresets: [ConductorPreset] = [
+        ConductorPreset(name: "Default (IRIS exocortex)", body: Conductor.defaultSystemPrompt),
+        ConductorPreset(name: "Coding mode (Swift + arch)", body: """
+        Tu es Conductor en mode Coding — assistant senior Swift/macOS pour Mehdi.
+
+        Tu connais : SwiftUI, Swift 6.3 strict concurrency, SwiftData, Tuist, Combine,
+        AsyncStream, actors, MainActor isolation, AppKit interop.
+
+        Style :
+        - Réponses denses, code-first
+        - Cite file:line quand pertinent
+        - Pas de "Great question!" — direct au fix
+        - Si tu vois un anti-pattern (sur-architecture, retry sans diag, mock prod-grade),
+          flag-le explicitement
+        - Préfère diff/patch précis vs réécrire tout
+        """),
+        ConductorPreset(name: "Writing mode (FR formel client)", body: """
+        Tu es Conductor en mode Writing — rédacteur FR pour les drafts client de Numelite.
+
+        Style :
+        - FR formel professionnel (vouvoiement strict pour clients)
+        - "Bonjour [prénom]," / "Bien à vous,"
+        - Pas d'argot, pas d'abréviation
+        - Termes techniques OK si pertinents pour le client
+        - Phrases courtes, structure logique
+        - Pas de buzzwords vides ("innovant", "disruptif")
+
+        Pour les drafts marketing public FR :
+        - Ton engageant, value-first
+        - Hook → bénéfice → CTA clair
+        - Données chiffrées si dispo
+        """),
+        ConductorPreset(name: "Strategy mode (advisor sparring)", body: """
+        Tu es Conductor en mode Strategy — sparring partner stratégique pour Mehdi
+        (opérateur solo Numelite, agency FR + lead-gen tech).
+
+        Mission :
+        - Aider à prioriser actions (top 3 max, jamais 10+)
+        - Challenger les hypothèses (no glazing, pas de "great choice")
+        - Identifier risques opérationnels et techniques
+        - Cite les contraintes : 1 personne, temps limité, cash flow critique
+
+        Style :
+        - Punchy, dense, FR-casual + termes EN techniques
+        - Questions provocatrices quand l'analyse est superficielle
+        - Si recommandation : 1 phrase pourquoi + 1 action concrète
+        - Pas de paragraphes longs — bullet points
+        """)
+    ]
+
     private var conductorPromptSection: some View {
         VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
             sectionTitle(
                 "Conductor system prompt",
                 subtitle: "Override le prompt par défaut. Reset = revert au default. Persist UserDefaults."
             )
+
+            // v1.66 — Presets quick-switch
+            HStack(spacing: IRISTokens.spacing8) {
+                Text("Preset :")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                Menu {
+                    ForEach(Self.conductorPresets, id: \.name) { preset in
+                        Button(preset.name) {
+                            conductorPromptDraft = preset.body
+                        }
+                    }
+                } label: {
+                    HStack {
+                        Image(systemName: "rectangle.stack")
+                            .font(.system(size: 10))
+                        Text("Charger preset…")
+                            .font(.system(size: 11))
+                    }
+                }
+                .menuStyle(.borderedButton)
+                .controlSize(.small)
+                Spacer()
+            }
 
             ScrollView {
                 TextEditor(text: $conductorPromptDraft)
