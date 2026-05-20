@@ -26,12 +26,34 @@ struct DashboardView: View {
                     ],
                     spacing: IRISTokens.spacing16
                 ) {
+                    // v1.71 — cards clickables qui navigent vers la vue dédiée
                     memoryCard
+                        .contentShape(Rectangle())
+                        .onTapGesture { appState.selection = .system(.memory) }
+                        .help("Cliquer → System > Memory")
                     signalsCard
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            // Naviguer vers Logs avec un hint sur signalEmitted (filtre user-applied)
+                            appState.selection = .system(.logs)
+                        }
+                        .help("Cliquer → System > Logs (filter manuel kind=signalEmitted)")
                     draftsCard
+                        .contentShape(Rectangle())
+                        .onTapGesture { appState.selection = .agent(.quill) }
+                        .help("Cliquer → Quill (drafts dans Inspector)")
                     auditsCard
+                        .contentShape(Rectangle())
+                        .onTapGesture { appState.selection = .agent(.auditor) }
+                        .help("Cliquer → Auditor")
                     costCard
+                        .contentShape(Rectangle())
+                        .onTapGesture { NSApplication.openSettings() }
+                        .help("Cliquer → Settings (cost report dans backup)")
                     portfolioCard
+                        .contentShape(Rectangle())
+                        .onTapGesture { appState.selection = .agent(.cartographer) }
+                        .help("Cliquer → Cartographer")
                 }
 
                 recentActivitySection
