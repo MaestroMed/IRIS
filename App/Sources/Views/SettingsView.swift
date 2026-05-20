@@ -1120,6 +1120,18 @@ struct SettingsView: View {
                             .font(.system(size: 9, design: .monospaced))
                             .foregroundStyle(.secondary)
                     }
+                    if let count = r.toolsCount {
+                        Text("\(count) tools")
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(IRISTokens.aquaTint)
+                    }
+                    if !r.toolPreview.isEmpty {
+                        Text(r.toolPreview.joined(separator: ", "))
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
                     if let err = r.errorMessage {
                         Text(err)
                             .font(.system(size: 9, design: .monospaced))

@@ -76,12 +76,13 @@ public final class MCPManager {
         public let serverName: String
         public let success: Bool
         public let serverInfo: String?  // ex: "claude-mcp-gmail v1.2.3"
-        public let toolsCount: Int?     // parsed depuis capabilities.tools
+        public let toolsCount: Int?     // count from tools/list
+        public let toolPreview: [String]  // v1.115 — first 3 tool names
         public let errorMessage: String?
     }
 
-    /// Spawn temporairement le server, envoie `initialize`, retourne result + stop.
-    /// Timeout 10s — si le server hang on abandonne.
+    /// Spawn temporairement le server, envoie `initialize` + `notifications/initialized`
+    /// + `tools/list`, retourne result + stop. Timeout 10s.
     public func testConnection(_ server: ServerConfig) async -> TestResult {
         let client = MCPClient(config: makeClientConfig(for: server))
         do {
@@ -92,6 +93,7 @@ public final class MCPManager {
                 success: false,
                 serverInfo: nil,
                 toolsCount: nil,
+                toolPreview: [],
                 errorMessage: "start: \(error)"
             )
         }
@@ -100,7 +102,7 @@ public final class MCPManager {
             Task { await client.stop() }
         }
 
-        let params: [String: Any] = [
+        let initParams: [String: Any] = [
             "protocolVersion": "2024-11-05",
             "capabilities": [String: Any](),
             "clientInfo": [
@@ -108,33 +110,57 @@ public final class MCPManager {
                 "version": IRISRuntimeInfo.appVersion
             ]
         ]
+
+        // Étape 1 — initialize
+        let initResult: [String: Any]
         do {
-            let resultData = try await client.callMethod("initialize", params: params, timeout: 10)
-            // Parse Data → dict côté MainActor (résultat Sendable car String/Bool/Int)
-            let result = (try? JSONSerialization.jsonObject(with: resultData) as? [String: Any]) ?? [:]
-            var serverInfo: String?
-            if let si = result["serverInfo"] as? [String: Any],
-               let name = si["name"] as? String {
-                let version = (si["version"] as? String) ?? "?"
-                serverInfo = "\(name) v\(version)"
-            }
-            let toolsCount = (result["capabilities"] as? [String: Any])?["tools"] != nil ? 1 : nil
-            return TestResult(
-                serverName: server.name,
-                success: true,
-                serverInfo: serverInfo,
-                toolsCount: toolsCount,
-                errorMessage: nil
-            )
+            let data = try await client.callMethod("initialize", params: initParams, timeout: 10)
+            initResult = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
         } catch {
             return TestResult(
                 serverName: server.name,
                 success: false,
                 serverInfo: nil,
                 toolsCount: nil,
-                errorMessage: "\(error)"
+                toolPreview: [],
+                errorMessage: "initialize: \(error)"
             )
         }
+
+        var serverInfo: String?
+        if let si = initResult["serverInfo"] as? [String: Any],
+           let name = si["name"] as? String {
+            let version = (si["version"] as? String) ?? "?"
+            serverInfo = "\(name) v\(version)"
+        }
+
+        // Étape 2 — notifications/initialized (fire-and-forget)
+        do {
+            try await client.notify("notifications/initialized")
+        } catch {
+            // Pas bloquant, on continue mais log
+            irisLog(.warning, "MCP \(server.name) notify initialized failed: \(error)",
+                    category: IRISLogger.agents)
+        }
+
+        // Étape 3 — tools/list (optionnel : certains servers n'ont pas de tools)
+        var toolsCount: Int?
+        var toolPreview: [String] = []
+        if let toolsData = try? await client.callMethod("tools/list", params: [:], timeout: 5),
+           let toolsResult = try? JSONSerialization.jsonObject(with: toolsData) as? [String: Any],
+           let tools = toolsResult["tools"] as? [[String: Any]] {
+            toolsCount = tools.count
+            toolPreview = tools.prefix(3).compactMap { $0["name"] as? String }
+        }
+
+        return TestResult(
+            serverName: server.name,
+            success: true,
+            serverInfo: serverInfo,
+            toolsCount: toolsCount,
+            toolPreview: toolPreview,
+            errorMessage: nil
+        )
     }
 
     /// Construit un MCPClient.Config à partir d'un ServerConfig.

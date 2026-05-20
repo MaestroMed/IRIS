@@ -142,6 +142,20 @@ public actor MCPClient {
         }
     }
 
+    /// v1.115 — Send fire-and-forget notification (no id, no response attendue).
+    /// Utilisé pour `notifications/initialized` après le handshake initialize.
+    public func notify(_ method: String, params: [String: Any] = [:]) throws {
+        guard process != nil, let stdin = stdinPipe else { throw MCPError.notStarted }
+        let notif: [String: Any] = [
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": params
+        ]
+        var data = try JSONSerialization.data(withJSONObject: notif, options: [])
+        data.append(0x0A)
+        try stdin.fileHandleForWriting.write(contentsOf: data)
+    }
+
     /// Termine le process + nettoie.
     public func stop() {
         readerTask?.cancel()
