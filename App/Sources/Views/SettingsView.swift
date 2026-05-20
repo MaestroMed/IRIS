@@ -58,6 +58,10 @@ struct SettingsView: View {
 
             Divider()
 
+            mcpServersSection  // v1.113
+
+            Divider()
+
             witnessBlocklistSection
 
             Divider()
@@ -1019,6 +1023,69 @@ struct SettingsView: View {
                 stubIntervalSeconds = Double(await Sentinel.shared.currentStubInterval)
                 githubIntervalSeconds = Double(await Sentinel.shared.currentGithubInterval)
                 fsIntervalSeconds = Double(await Sentinel.shared.currentFSInterval)
+            }
+        }
+    }
+
+    // MARK: — v1.113 MCP servers discovered (Claude Desktop config)
+
+    @State private var mcpServersTick: Int = 0
+
+    private var mcpServersSection: some View {
+        let mcp = MCPManager.shared
+        let servers = mcp.servers
+        return VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
+            HStack {
+                sectionTitle(
+                    "MCP servers (\(servers.count) découverts)",
+                    subtitle: "Lit ~/Library/Application Support/Claude/claude_desktop_config.json (config partagée avec Claude Desktop)."
+                )
+                Spacer()
+                Button {
+                    _ = MCPManager.shared.discover()
+                    mcpServersTick += 1
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 12))
+                }
+                .buttonStyle(.plain)
+                .help("Re-scan le fichier de config")
+            }
+            .id(mcpServersTick)
+
+            if let err = mcp.lastDiscoveryError, servers.isEmpty {
+                Text(err)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, IRISTokens.spacing8)
+            } else if servers.isEmpty {
+                Text("Aucun MCP server découvert. Configure d'abord Claude Desktop avec un mcpServers entry.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(servers) { server in
+                    HStack(spacing: 4) {
+                        Image(systemName: "server.rack")
+                            .font(.system(size: 11))
+                            .foregroundStyle(IRISTokens.aquaTint)
+                        Text(server.name)
+                            .font(.system(size: 12, weight: .medium))
+                        Spacer()
+                        Text("\(server.command) \(server.args.joined(separator: " "))")
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    .padding(.vertical, 3).padding(.horizontal, 6)
+                    .background(RoundedRectangle(cornerRadius: 4).fill(.thinMaterial))
+                }
+            }
+        }
+        .onAppear {
+            if MCPManager.shared.servers.isEmpty && MCPManager.shared.lastDiscoveryError == nil {
+                _ = MCPManager.shared.discover()
+                mcpServersTick += 1
             }
         }
     }
