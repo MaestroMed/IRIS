@@ -141,7 +141,10 @@ public actor Conductor {
 
     // MARK: — Live mode (Claude Opus)
 
-    private static let systemPrompt = """
+    /// v1.42 — System prompt par défaut, peut être overridé via UserDefaults.
+    private static let systemPromptOverrideKey = "iris.conductor.systemPromptOverride"
+
+    public static let defaultSystemPrompt = """
     Tu es Conductor — l'agent orchestrateur central d'IRIS, l'exocortex local desktop de Mehdi (opérateur solo Numelite).
 
     Ton rôle :
@@ -159,6 +162,29 @@ public actor Conductor {
 
     Si Mehdi te demande un truc qui requiert un autre agent pas encore actif, dis-le franchement.
     """
+
+    /// Computed : si UserDefaults contient un override non-vide, l'utilise. Sinon le defaultSystemPrompt.
+    private static var systemPrompt: String {
+        if let override = UserDefaults.standard.string(forKey: systemPromptOverrideKey),
+           !override.trimmingCharacters(in: .whitespaces).isEmpty {
+            return override
+        }
+        return defaultSystemPrompt
+    }
+
+    /// Public — lecture du system prompt actuellement utilisé (override OU default).
+    public static func currentSystemPrompt() -> String {
+        systemPrompt
+    }
+
+    /// Public — set override (nil = reset au default).
+    public static func setSystemPromptOverride(_ override: String?) {
+        if let override, !override.trimmingCharacters(in: .whitespaces).isEmpty {
+            UserDefaults.standard.set(override, forKey: systemPromptOverrideKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: systemPromptOverrideKey)
+        }
+    }
 
     private func respondWithClaude(_ text: String, eventId: UUID) async {
         // v1.6 — retrieve top-3 mémoires pertinentes via Scribe avant l'appel LLM

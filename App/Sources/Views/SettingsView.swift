@@ -44,6 +44,10 @@ struct SettingsView: View {
 
             sentinelIntervalsSection
 
+            Divider()
+
+            conductorPromptSection
+
             Spacer()
 
             footer
@@ -207,6 +211,82 @@ struct SettingsView: View {
             }
             .padding(.leading, IRISTokens.spacing16)
         }
+    }
+
+    // MARK: — v1.42 Conductor system prompt customizable
+
+    @State private var conductorPromptDraft: String = ""
+    @State private var conductorPromptUsingDefault: Bool = true
+    @State private var conductorPromptStatus: String?
+
+    private var conductorPromptSection: some View {
+        VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
+            sectionTitle(
+                "Conductor system prompt",
+                subtitle: "Override le prompt par défaut. Reset = revert au default. Persist UserDefaults."
+            )
+
+            ScrollView {
+                TextEditor(text: $conductorPromptDraft)
+                    .font(.system(size: 11, design: .monospaced))
+                    .frame(minHeight: 120, maxHeight: 200)
+                    .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
+            }
+            .frame(maxHeight: 220)
+
+            HStack(spacing: IRISTokens.spacing8) {
+                Button(action: saveConductorPrompt) {
+                    Label("Save override", systemImage: "checkmark.circle")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .tint(IRISTokens.irisAccent)
+                .disabled(conductorPromptDraft.trimmingCharacters(in: .whitespaces).isEmpty)
+
+                Button(action: resetConductorPrompt) {
+                    Label("Reset au default", systemImage: "arrow.uturn.backward")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(conductorPromptUsingDefault)
+
+                Spacer()
+
+                Text(conductorPromptUsingDefault ? "Default actif" : "Override actif")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(conductorPromptUsingDefault ? .secondary : IRISTokens.goldAccent)
+            }
+
+            if let status = conductorPromptStatus {
+                Text(status)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(status.hasPrefix("✅") ? .green : .red)
+            }
+        }
+        .onAppear {
+            loadConductorPrompt()
+        }
+    }
+
+    private func loadConductorPrompt() {
+        conductorPromptDraft = Conductor.currentSystemPrompt()
+        let override = UserDefaults.standard.string(forKey: "iris.conductor.systemPromptOverride") ?? ""
+        conductorPromptUsingDefault = override.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    private func saveConductorPrompt() {
+        Conductor.setSystemPromptOverride(conductorPromptDraft)
+        conductorPromptUsingDefault = false
+        conductorPromptStatus = "✅ Override saved. Active dès le prochain call."
+    }
+
+    private func resetConductorPrompt() {
+        Conductor.setSystemPromptOverride(nil)
+        conductorPromptDraft = Conductor.currentSystemPrompt()
+        conductorPromptUsingDefault = true
+        conductorPromptStatus = "✅ Reset OK — default prompt restauré."
     }
 
     // MARK: — v1.30 Sentinel intervals
