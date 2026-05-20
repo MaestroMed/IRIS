@@ -12,9 +12,11 @@ public actor Sentinel {
     private var timerTask: Task<Void, Never>?
     private var githubPollTask: Task<Void, Never>?
     private var fsPollTask: Task<Void, Never>?
+    private var mcpPollTask: Task<Void, Never>?  // v1.117
     private var pollIntervalSeconds: UInt64 = 60
     private var githubPollIntervalSeconds: UInt64 = 300  // 5 min
     private var fsPollIntervalSeconds: UInt64 = 60       // 1 min
+    private let mcpPollIntervalSeconds: UInt64 = 300     // v1.117 — 5 min
     private weak var modelContainer: ModelContainer?
     private static let githubAccount = "MaestroMed"
     private static let githubCacheKey = "iris.sentinel.githubCache"
@@ -76,8 +78,18 @@ public actor Sentinel {
             }
         }
 
+        // v1.117 — MCP poll loop : pour chaque source avec backend MCP, ping le server
+        // toutes les 5min pour prouver la wire end-to-end + initial tools discovery.
+        mcpPollTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 20 * 1_000_000_000)  // attend que MCPManager discover
+            while !Task.isCancelled {
+                await self?.pollMCPSources()
+                try? await Task.sleep(nanoseconds: (self?.mcpPollIntervalSeconds ?? 300) * 1_000_000_000)
+            }
+        }
+
         irisLog(.info,
-            "Sentinel started — stub=\(pollIntervalSeconds)s + GitHub=\(githubPollIntervalSeconds)s + FS=\(fsPollIntervalSeconds)s",
+            "Sentinel started — stub=\(pollIntervalSeconds)s + GitHub=\(githubPollIntervalSeconds)s + FS=\(fsPollIntervalSeconds)s + MCP=\(mcpPollIntervalSeconds)s",
             category: IRISLogger.agents
         )
     }
@@ -89,6 +101,94 @@ public actor Sentinel {
         githubPollTask = nil
         fsPollTask?.cancel()
         fsPollTask = nil
+        mcpPollTask?.cancel()
+        mcpPollTask = nil
+    }
+
+    // MARK: — v1.117 MCP poll loop
+
+    /// Pour chaque source configurée avec backend MCP, spawn temporairement le server,
+    /// initialize + tools/list, et émet un Signal "MCP <source> ok: N tools".
+    /// v1.118 enrichira avec real tool calling pour fetch les vrais data.
+    private func pollMCPSources() async {
+        for source in Self.knownSources {
+            guard let serverName = Self.mcpServerName(for: source) else { continue }
+            guard !Self.mutedSources.contains(source) else { continue }
+            guard !Self.isSnoozedNow(source: source) else { continue }
+            await pollMCPSource(source: source, serverName: serverName)
+        }
+    }
+
+    @MainActor
+    private static func resolveServerConfig(name: String) async -> MCPManager.ServerConfig? {
+        return MCPManager.shared.servers.first(where: { $0.name == name })
+    }
+
+    private func pollMCPSource(source: String, serverName: String) async {
+        // Récupère le ServerConfig depuis MainActor
+        guard let server = await Self.resolveServerConfig(name: serverName) else {
+            irisLog(.warning, "Sentinel MCP poll: server '\(serverName)' not found in MCPManager",
+                    category: IRISLogger.agents)
+            return
+        }
+
+        let clientConfig = await MainActor.run {
+            MCPManager.shared.makeClientConfig(for: server)
+        }
+        let client = MCPClient(config: clientConfig)
+
+        do {
+            try await client.start()
+        } catch {
+            irisLog(.warning, "Sentinel MCP poll \(source) start failed: \(error)",
+                    category: IRISLogger.agents)
+            return
+        }
+        defer { Task { await client.stop() } }
+
+        // Initialize handshake
+        let initParams: [String: Any] = [
+            "protocolVersion": "2024-11-05",
+            "capabilities": [String: Any](),
+            "clientInfo": ["name": "IRIS-Sentinel", "version": IRISRuntimeInfo.appVersion]
+        ]
+        do {
+            _ = try await client.callMethod("initialize", params: initParams, timeout: 10)
+        } catch {
+            irisLog(.warning, "Sentinel MCP poll \(source) initialize failed: \(error)",
+                    category: IRISLogger.agents)
+            return
+        }
+        try? await client.notify("notifications/initialized")
+
+        // tools/list
+        var toolNames: [String] = []
+        if let data = try? await client.callMethod("tools/list", params: [:], timeout: 5),
+           let result = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let tools = result["tools"] as? [[String: Any]] {
+            toolNames = tools.compactMap { $0["name"] as? String }
+        }
+
+        let summary = "MCP \(source) (\(serverName)) OK : \(toolNames.count) tools — \(toolNames.prefix(3).joined(separator: ", "))"
+        await EventBus.shared.publish(
+            .signalEmitted(from: .sentinel, importance: .low, summary: summary, source: source)
+        )
+        if let container = await modelContainer {
+            let summaryCopy = summary
+            let sourceCopy = source
+            await MainActor.run {
+                let signal = Signal(
+                    source: sourceCopy,
+                    importance: SignalImportance.low.rawValue,
+                    summary: summaryCopy
+                )
+                container.mainContext.insert(signal)
+                try? container.mainContext.save()
+            }
+        }
+
+        irisLog(.info, "Sentinel MCP poll \(source) → \(toolNames.count) tools",
+                category: IRISLogger.agents)
     }
 
     public func setInterval(_ seconds: UInt64) {
