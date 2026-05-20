@@ -123,9 +123,16 @@ public actor Conductor {
     private func respondWithClaude(_ text: String, eventId: UUID) async {
         // v1.6 — retrieve top-3 mémoires pertinentes via Scribe avant l'appel LLM
         let memoriesContext = await retrieveMemoryContext(query: text, topK: 3)
-        let enrichedSystemPrompt = memoriesContext.isEmpty
-            ? Self.systemPrompt
-            : Self.systemPrompt + "\n\n## Mémoires pertinentes (Scribe top-3 par similarité)\n\n" + memoriesContext
+        // v1.25 — récupère le contexte Witness le plus récent (frontmost app/project)
+        let witnessContext = await retrieveWitnessContext()
+
+        var enrichedSystemPrompt = Self.systemPrompt
+        if !witnessContext.isEmpty {
+            enrichedSystemPrompt += "\n\n## Contexte actuel Mehdi (Witness, < 60s)\n\n" + witnessContext
+        }
+        if !memoriesContext.isEmpty {
+            enrichedSystemPrompt += "\n\n## Mémoires pertinentes (Scribe top-3 par similarité)\n\n" + memoriesContext
+        }
 
         // v1.17 + v1.19 — streaming SSE + multi-turn history
         appendToHistory(Message(role: .user, content: text))
@@ -181,6 +188,27 @@ public actor Conductor {
     private func retrieveMemoryContext(query: String, topK: Int) async -> String {
         guard let container = modelContainer else { return "" }
         return await Self.fetchMemoryContext(container: container, query: query, topK: topK)
+    }
+
+    // MARK: — v1.25 Witness context
+
+    /// Récupère le dernier Signal source="screen" Witness (frontmost app/project) si récent (<60s).
+    private func retrieveWitnessContext() async -> String {
+        guard let container = modelContainer else { return "" }
+        return await Self.fetchWitnessContext(container: container)
+    }
+
+    @MainActor
+    private static func fetchWitnessContext(container: ModelContainer) async -> String {
+        let cutoff = Date().addingTimeInterval(-60)
+        var descriptor = FetchDescriptor<Signal>(
+            predicate: #Predicate { $0.source == "screen" && $0.emittedAt > cutoff },
+            sortBy: [SortDescriptor(\.emittedAt, order: .reverse)]
+        )
+        descriptor.fetchLimit = 1
+        let results = (try? container.mainContext.fetch(descriptor)) ?? []
+        guard let signal = results.first else { return "" }
+        return signal.summary
     }
 
     /// MainActor-isolated helper : accès au ModelContext + appel Scribe.retrieve + format String Sendable.
