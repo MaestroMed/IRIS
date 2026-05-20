@@ -60,6 +60,44 @@ public actor Witness {
         timerTask == nil
     }
 
+    // MARK: — v1.58 Blocklist (apps sensibles : Mail, Slack, 1Password, etc.)
+
+    private static let blocklistKey = "iris.witness.blockedBundleIds"
+
+    /// Bundle IDs ignorés lors de la capture frontmost. Persisté UserDefaults.
+    public static var blockedBundleIds: Set<String> {
+        let raw = UserDefaults.standard.stringArray(forKey: blocklistKey) ?? []
+        return Set(raw)
+    }
+
+    public static func setBlocked(_ ids: Set<String>) {
+        UserDefaults.standard.set(Array(ids), forKey: blocklistKey)
+    }
+
+    public static func addBlocked(_ id: String) {
+        var ids = blockedBundleIds
+        ids.insert(id.trimmingCharacters(in: .whitespaces))
+        setBlocked(ids)
+    }
+
+    public static func removeBlocked(_ id: String) {
+        var ids = blockedBundleIds
+        ids.remove(id)
+        setBlocked(ids)
+    }
+
+    /// Bundle IDs courants suggérés à blocker (apps sensibles).
+    public static let suggestedBlocklist: [(bundleId: String, name: String)] = [
+        ("com.apple.mail", "Mail"),
+        ("com.tinyspeck.slackmacgap", "Slack"),
+        ("com.agilebits.onepassword7", "1Password"),
+        ("com.1password.1password", "1Password 8"),
+        ("com.apple.MobileSMS", "Messages"),
+        ("com.hnc.Discord", "Discord"),
+        ("com.apple.facetime", "FaceTime"),
+        ("com.apple.AddressBook", "Contacts")
+    ]
+
     // MARK: — Capture frontmost
 
     private func captureFrontmost() async {
@@ -68,6 +106,12 @@ public actor Witness {
 
         // Ignore IRIS lui-même (pas intéressant à signaler)
         guard snapshot.bundleId != "app.iris.macos" else {
+            lastFrontmostBundleId = snapshot.bundleId
+            return
+        }
+
+        // v1.58 — Ignore bundle IDs blocklistés par Mehdi (apps sensibles)
+        guard !Self.blockedBundleIds.contains(snapshot.bundleId) else {
             lastFrontmostBundleId = snapshot.bundleId
             return
         }

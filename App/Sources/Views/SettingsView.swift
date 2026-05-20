@@ -58,6 +58,10 @@ struct SettingsView: View {
 
             Divider()
 
+            witnessBlocklistSection
+
+            Divider()
+
             dataFoldersSection
 
             Divider()
@@ -333,6 +337,99 @@ struct SettingsView: View {
     }
 
     // MARK: — v1.40 Danger zone (reset all)
+
+    // MARK: — v1.58 Witness blocklist
+
+    @State private var witnessBlocklistTick: Int = 0  // force re-render
+    @State private var witnessBlocklistDraft: String = ""
+
+    private var witnessBlocklistSection: some View {
+        let blocked = Witness.blockedBundleIds
+        return VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
+            sectionTitle(
+                "Witness blocklist (\(blocked.count))",
+                subtitle: "Bundle IDs ignorés lors de la capture frontmost (apps sensibles : Mail, Slack, 1Password)."
+            )
+            .id(witnessBlocklistTick)
+
+            // Liste courante
+            if blocked.isEmpty {
+                Text("Aucune app blocklistée — Witness capture tout.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            } else {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: 4)], alignment: .leading, spacing: 4) {
+                    ForEach(Array(blocked).sorted(), id: \.self) { bundleId in
+                        blockedChip(bundleId)
+                    }
+                }
+            }
+
+            // Suggérés
+            Text("SUGGESTIONS")
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .padding(.top, IRISTokens.spacing4)
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 4)], alignment: .leading, spacing: 4) {
+                ForEach(Witness.suggestedBlocklist, id: \.bundleId) { item in
+                    let isBlocked = blocked.contains(item.bundleId)
+                    Button {
+                        if isBlocked {
+                            Witness.removeBlocked(item.bundleId)
+                        } else {
+                            Witness.addBlocked(item.bundleId)
+                        }
+                        witnessBlocklistTick += 1
+                    } label: {
+                        Text(item.name)
+                            .font(.system(size: 10))
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .background((isBlocked ? Color.red : IRISTokens.aquaTint).opacity(0.15))
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            // Custom add
+            HStack(spacing: IRISTokens.spacing8) {
+                TextField("bundle ID custom (ex: com.example.app)", text: $witnessBlocklistDraft)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 11, design: .monospaced))
+                    .controlSize(.small)
+                Button("Ajouter") {
+                    let id = witnessBlocklistDraft.trimmingCharacters(in: .whitespaces)
+                    guard !id.isEmpty else { return }
+                    Witness.addBlocked(id)
+                    witnessBlocklistDraft = ""
+                    witnessBlocklistTick += 1
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(witnessBlocklistDraft.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+    }
+
+    private func blockedChip(_ bundleId: String) -> some View {
+        HStack(spacing: 4) {
+            Text(bundleId)
+                .font(.system(size: 10, design: .monospaced))
+            Button {
+                Witness.removeBlocked(bundleId)
+                witnessBlocklistTick += 1
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 6).padding(.vertical, 2)
+        .background(Color.red.opacity(0.12))
+        .clipShape(Capsule())
+    }
 
     // MARK: — v1.52 Data folders shortcuts
 
