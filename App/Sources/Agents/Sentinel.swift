@@ -11,11 +11,17 @@ public actor Sentinel {
 
     private var timerTask: Task<Void, Never>?
     private var githubPollTask: Task<Void, Never>?
+    private var fsPollTask: Task<Void, Never>?
     private var pollIntervalSeconds: UInt64 = 60
     private var githubPollIntervalSeconds: UInt64 = 300  // 5 min
+    private var fsPollIntervalSeconds: UInt64 = 60       // 1 min
     private weak var modelContainer: ModelContainer?
     private static let githubAccount = "MaestroMed"
     private static let githubCacheKey = "iris.sentinel.githubCache"
+    private static let fsCacheKey = "iris.sentinel.fsCache"
+    private static let fsSkipPatterns = ["node_modules", ".next", ".build", "Derived", ".git",
+                                         "DerivedData", "dist", "build", ".turbo", ".swiftpm",
+                                         "Pods", "vendor", "__pycache__"]
 
     /// Templates de signaux fictifs pour démo / dev. Chacun a un poids d'importance.
     private static let stubSignals: [StubSignal] = [
@@ -58,8 +64,19 @@ public actor Sentinel {
             }
         }
 
+        // v1.2.B — FS watcher : poll mtime des projets actifs toutes les 60s
+        fsPollTask = Task { [weak self] in
+            // Premier poll après 15s pour init le cache sans signal
+            try? await Task.sleep(nanoseconds: 15 * 1_000_000_000)
+            await self?.initFSCache()
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: (self?.fsPollIntervalSeconds ?? 60) * 1_000_000_000)
+                await self?.pollFSDeltas()
+            }
+        }
+
         irisLog(.info,
-            "Sentinel started — stub mode interval=\(pollIntervalSeconds)s + GitHub poll interval=\(githubPollIntervalSeconds)s",
+            "Sentinel started — stub=\(pollIntervalSeconds)s + GitHub=\(githubPollIntervalSeconds)s + FS=\(fsPollIntervalSeconds)s",
             category: IRISLogger.agents
         )
     }
@@ -69,6 +86,8 @@ public actor Sentinel {
         timerTask = nil
         githubPollTask?.cancel()
         githubPollTask = nil
+        fsPollTask?.cancel()
+        fsPollTask = nil
     }
 
     public func setInterval(_ seconds: UInt64) {
@@ -223,6 +242,123 @@ public actor Sentinel {
     private func persistGitHubCache(_ map: [String: Date]) async {
         if let data = try? JSONEncoder().encode(map) {
             UserDefaults.standard.set(data, forKey: Self.githubCacheKey)
+        }
+    }
+
+    // MARK: — v1.2.B FS watcher
+
+    private func initFSCache() async {
+        let current = await scanActiveProjectMtimes()
+        guard !current.isEmpty else { return }
+        await persistFSCache(current)
+        irisLog(.info, "Sentinel FS cache initialized — \(current.count) projets actifs trackés",
+                category: IRISLogger.agents)
+    }
+
+    private func pollFSDeltas() async {
+        let cached = await loadFSCache()
+        let current = await scanActiveProjectMtimes()
+        guard !current.isEmpty else { return }
+
+        var deltas: [(project: String, oldMtime: Date?, newMtime: Date)] = []
+        for (project, mtime) in current {
+            let oldMtime = cached[project]
+            if oldMtime == nil || (oldMtime ?? .distantPast) < mtime {
+                deltas.append((project, oldMtime, mtime))
+            }
+        }
+
+        if !deltas.isEmpty {
+            irisLog(.debug, "Sentinel FS deltas: \(deltas.count)", category: IRISLogger.agents)
+        }
+
+        // Batched : si > 5 deltas, regroupe en 1 signal pour éviter spam node_modules install etc.
+        if deltas.count > 5 {
+            let projects = deltas.map(\.project).joined(separator: ", ")
+            await EventBus.shared.publish(
+                .signalEmitted(
+                    from: .sentinel,
+                    importance: .low,
+                    summary: "\(deltas.count) projets touchés (\(projects.prefix(80))...)",
+                    source: "fs-batch"
+                )
+            )
+        } else {
+            for delta in deltas {
+                guard delta.oldMtime != nil else { continue }
+                let timeAgo = Date().timeIntervalSince(delta.newMtime)
+                let importance: SignalImportance = timeAgo < 30 ? .low : .trivial
+                let summary = "Fichier modifié dans `\(delta.project)` (\(formatTimeAgo(timeAgo)))"
+
+                await EventBus.shared.publish(
+                    .signalEmitted(
+                        from: .sentinel,
+                        importance: importance,
+                        summary: summary,
+                        source: "fs"
+                    )
+                )
+
+                if let container = await modelContainer {
+                    let projectName = delta.project
+                    let summaryCopy = summary
+                    await MainActor.run {
+                        let signal = Signal(
+                            source: "fs",
+                            importance: importance.rawValue,
+                            summary: summaryCopy,
+                            projectScope: projectName
+                        )
+                        container.mainContext.insert(signal)
+                        try? container.mainContext.save()
+                    }
+                }
+            }
+        }
+
+        await persistFSCache(current)
+    }
+
+    /// Scan mtime des projets actifs depuis ProjectRecord SwiftData.
+    /// Retourne [codename: mtime du dir top-level].
+    private func scanActiveProjectMtimes() async -> [String: Date] {
+        guard let container = await modelContainer else { return [:] }
+        let projectPaths = await Self.fetchActiveProjectPaths(container: container)
+        var result: [String: Date] = [:]
+        for (codename, path) in projectPaths {
+            guard let path else { continue }
+            // Skip si pattern à ignorer
+            if Self.fsSkipPatterns.contains(where: { path.contains("/\($0)/") }) { continue }
+            let url = URL(fileURLWithPath: path)
+            if let attrs = try? url.resourceValues(forKeys: [.contentModificationDateKey]),
+               let mtime = attrs.contentModificationDate {
+                result[codename] = mtime
+            }
+        }
+        return result
+    }
+
+    /// Extrait juste codename + localPath (Sendable) pour traverser actor isolation
+    /// (ProjectRecord @Model n'est pas Sendable).
+    @MainActor
+    private static func fetchActiveProjectPaths(container: ModelContainer) async -> [(String, String?)] {
+        let descriptor = FetchDescriptor<ProjectRecord>(
+            predicate: #Predicate { $0.status == "active" }
+        )
+        let projects = (try? container.mainContext.fetch(descriptor)) ?? []
+        return projects.map { ($0.codename, $0.localPath) }
+    }
+
+    private func loadFSCache() async -> [String: Date] {
+        guard let data = UserDefaults.standard.data(forKey: Self.fsCacheKey),
+              let raw = try? JSONDecoder().decode([String: Date].self, from: data)
+        else { return [:] }
+        return raw
+    }
+
+    private func persistFSCache(_ map: [String: Date]) async {
+        if let data = try? JSONEncoder().encode(map) {
+            UserDefaults.standard.set(data, forKey: Self.fsCacheKey)
         }
     }
 

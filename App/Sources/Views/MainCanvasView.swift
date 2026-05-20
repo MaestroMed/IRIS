@@ -1,11 +1,20 @@
 import SwiftUI
+import SwiftData
 
-// IRIS v0.0.5 — main canvas central avec Conductor live (TextField + transcript).
+// IRIS v0.0.5 + v1.7 — main canvas central avec Conductor live (TextField + transcript).
 // Si un agent est sélectionné dans la sidebar (autre que Conductor), affiche placeholder spécifique.
 // Sinon, affiche la conversation Conductor.
+// v1.7 : footer compteurs live (Memory + Signal + Draft + ProjectRecord + AuditReport).
 
 struct MainCanvasView: View {
     @Environment(IRISAppState.self) private var appState
+    @Environment(\.modelContext) private var modelContext
+
+    @Query private var allMemories: [Memory]
+    @Query private var allSignalsCount: [Signal]
+    @Query private var allDraftsCount: [Draft]
+    @Query private var allProjectsCount: [ProjectRecord]
+    @Query private var allAuditsCount: [AuditReport]
 
     var body: some View {
         ZStack {
@@ -17,11 +26,48 @@ struct MainCanvasView: View {
                 Divider()
 
                 content
+
+                Divider()
+
+                footerStats
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .navigationTitle("")
         .toolbarBackground(.hidden, for: .windowToolbar)
+    }
+
+    // MARK: — v1.7 Footer compteurs live
+
+    private var footerStats: some View {
+        HStack(spacing: IRISTokens.spacing16) {
+            statBadge(label: "memories", count: allMemories.count, icon: "books.vertical", color: IRISTokens.irisAccent)
+            statBadge(label: "signals", count: allSignalsCount.count, icon: "eye.circle", color: IRISTokens.aquaTint)
+            statBadge(label: "drafts", count: allDraftsCount.count, icon: "pencil.and.scribble", color: IRISTokens.irisAccent)
+            statBadge(label: "projects", count: allProjectsCount.count, icon: "map", color: IRISTokens.goldAccent)
+            statBadge(label: "audits", count: allAuditsCount.count, icon: "checkmark.shield", color: .green)
+            Spacer()
+            Text("IRIS v1.7 · 10 agents")
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, IRISTokens.spacing16)
+        .padding(.vertical, IRISTokens.spacing8)
+        .background(.thinMaterial)
+    }
+
+    private func statBadge(label: String, count: Int, icon: String, color: Color) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.system(size: 10))
+                .foregroundStyle(color)
+            Text("\(count)")
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundStyle(.primary)
+            Text(label)
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+        }
     }
 
     // MARK: — Header (titre + agent actif + cost)
