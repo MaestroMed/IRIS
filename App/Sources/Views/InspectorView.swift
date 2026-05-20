@@ -195,25 +195,46 @@ struct InspectorView: View {
                 .font(.system(size: 11, design: .monospaced))
                 .controlSize(.small)
 
-            Button {
-                let name = scaffoldProjectName.trimmingCharacters(in: .whitespaces)
-                guard !name.isEmpty else { return }
-                Task {
-                    await Builder.shared.scaffold(
-                        skillName: scaffoldSelectedSkill,
-                        projectName: name,
-                        targetDirectory: nil
-                    )
+            HStack(spacing: IRISTokens.spacing8) {
+                Button {
+                    let name = scaffoldProjectName.trimmingCharacters(in: .whitespaces)
+                    guard !name.isEmpty else { return }
+                    Task {
+                        await Builder.shared.scaffold(
+                            skillName: scaffoldSelectedSkill,
+                            projectName: name,
+                            targetDirectory: nil
+                        )
+                    }
+                    scaffoldProjectName = ""
+                } label: {
+                    Label("Scaffold", systemImage: "hammer")
+                        .font(.system(size: 11))
                 }
-                scaffoldProjectName = ""
-            } label: {
-                Label("Scaffold", systemImage: "hammer")
-                    .font(.system(size: 11))
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(scaffoldProjectName.trimmingCharacters(in: .whitespaces).isEmpty)
+
+                Button {
+                    let name = scaffoldProjectName.trimmingCharacters(in: .whitespaces)
+                    guard !name.isEmpty else { return }
+                    Task {
+                        await Builder.shared.scaffoldWithGitPush(
+                            skillName: scaffoldSelectedSkill,
+                            projectName: name
+                        )
+                    }
+                    scaffoldProjectName = ""
+                } label: {
+                    Label("Scaffold + Push", systemImage: "arrow.up.circle.fill")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .tint(IRISTokens.irisAccent)
+                .disabled(scaffoldProjectName.trimmingCharacters(in: .whitespaces).isEmpty)
+                .help("Scaffold + git init + commit + gh repo create + push (action git nécessite approval)")
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
-            .tint(IRISTokens.irisAccent)
-            .disabled(scaffoldProjectName.trimmingCharacters(in: .whitespaces).isEmpty)
 
             Divider().padding(.vertical, 2)
 

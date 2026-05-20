@@ -11,6 +11,10 @@ public actor Builder {
 
     private weak var modelContainer: ModelContainer?
 
+    /// v1.3 — pending git actions waiting for user approval, mapped by actionId.
+    private var pendingGitActions: [UUID: GitContext] = [:]
+    private var subscriptionTask: Task<Void, Never>?
+
     /// v1.1 — délégué au SkillRegistry. Liste filtrée par enabled state.
     @MainActor
     public static var availableSkills: [SkillRegistryAdapter] {
@@ -27,10 +31,37 @@ public actor Builder {
         public let summary: String
     }
 
+    /// v1.3 — Context d'une action git en attente d'approval.
+    private struct GitContext: Sendable {
+        let projectName: String
+        let dir: String
+        let ghOwner: String  // ex "MaestroMed"
+    }
+
     private init() {}
 
     public func start(modelContainer: ModelContainer) async {
         self.modelContainer = modelContainer
+
+        // v1.3 — subscribe au bus pour intercepter actionApproved sur nos pending git actions
+        guard subscriptionTask == nil else { return }
+        let stream = await EventBus.shared.subscribe()
+        subscriptionTask = Task { [weak self] in
+            for await event in stream {
+                guard let self else { return }
+                if case .actionApproved(let actionId, _) = event {
+                    await self.handleGitApproval(actionId: actionId)
+                }
+                if case .actionRejected(let actionId, _) = event {
+                    await self.handleGitRejection(actionId: actionId)
+                }
+            }
+        }
+    }
+
+    public func stop() {
+        subscriptionTask?.cancel()
+        subscriptionTask = nil
     }
 
     /// Lance un scaffold (v0.8 mock : crée dossier cible + descripteur).
@@ -153,5 +184,141 @@ public actor Builder {
         let success: Bool
         let filesCreated: Int
         let message: String
+    }
+
+    // MARK: — v1.3 Scaffold + git push workflow
+
+    /// Lance un scaffold ET prépare le push GitHub. L'utilisateur doit approve l'action git dans l'UI.
+    /// Mock scaffold est appliqué localement immédiatement. Le push GitHub attend approval.
+    public func scaffoldWithGitPush(
+        skillName: String,
+        projectName: String,
+        ghOwner: String = "MaestroMed"
+    ) async {
+        let dir = "\(NSHomeDirectory())/Developer/\(projectName)"
+        irisLog(.info, "Builder scaffoldWithGitPush \(skillName) → \(dir)", category: IRISLogger.agents)
+
+        // 1. Scaffold local (re-use de l'existant)
+        let result = await performMockScaffold(skill: skillName, project: projectName, targetDir: dir)
+        if !result.success {
+            await EventBus.shared.publish(
+                .signalEmitted(from: .builder, importance: .high,
+                               summary: "⚠️ Scaffold échoué : \(result.message)", source: "builder")
+            )
+            return
+        }
+
+        // 2. git init local (réversible, on peut delete le dossier si user reject)
+        let gitInitOk = await runProcess(executable: "/usr/bin/env", args: ["git", "init", "-q"], cwd: dir)
+        guard gitInitOk else {
+            await EventBus.shared.publish(.signalEmitted(from: .builder, importance: .high,
+                                                         summary: "⚠️ git init failed pour \(projectName)",
+                                                         source: "builder"))
+            return
+        }
+
+        // 3. Propose actionRequested pour push GitHub (irréversible une fois publiée)
+        let actionId = UUID()
+        pendingGitActions[actionId] = GitContext(projectName: projectName, dir: dir, ghOwner: ghOwner)
+
+        await EventBus.shared.publish(
+            .actionRequested(
+                actionId: actionId,
+                agent: .builder,
+                summary: "Push GitHub \(ghOwner)/\(projectName) (scaffold via \(skillName))",
+                isReversible: false  // une fois pushé public, irréversible
+            )
+        )
+
+        irisLog(.notice,
+            "Builder proposed git push action \(actionId.uuidString.prefix(8)) for \(projectName) — waiting approval",
+            category: IRISLogger.agents
+        )
+    }
+
+    private func handleGitApproval(actionId: UUID) async {
+        guard let ctx = pendingGitActions.removeValue(forKey: actionId) else { return }
+        irisLog(.notice, "Builder executing git push for \(ctx.projectName)", category: IRISLogger.agents)
+
+        // Suite : git add . → git commit → gh repo create + push. Short-circuit manuel
+        // car async expressions ne peuvent pas être à droite de && (autoclosure non-async).
+        let addOk = await runProcess(executable: "/usr/bin/env", args: ["git", "add", "."], cwd: ctx.dir)
+
+        var commitOk = false
+        if addOk {
+            commitOk = await runProcess(
+                executable: "/usr/bin/env",
+                args: ["git", "commit", "-q", "-m", "IRIS scaffold: \(ctx.projectName)"],
+                cwd: ctx.dir
+            )
+        }
+
+        // gh repo create --source=. --public --push (Mehdi peut bump --private via UI v1.3.1+)
+        var ghCreateOk = false
+        if commitOk {
+            ghCreateOk = await runProcess(
+                executable: "/usr/bin/env",
+                args: ["gh", "repo", "create", "\(ctx.ghOwner)/\(ctx.projectName)",
+                       "--source=.", "--public", "--push", "--description", "IRIS scaffold"],
+                cwd: ctx.dir
+            )
+        }
+
+        let success = ghCreateOk
+        let result = success
+            ? "✅ Repo \(ctx.ghOwner)/\(ctx.projectName) créé + pushé"
+            : "⚠️ git workflow échoué — vérifie gh auth + repo existant"
+
+        // Persist ActionLog
+        if let container = await modelContainer {
+            let projectName = ctx.projectName
+            let ghOwner = ctx.ghOwner
+            let dir = ctx.dir
+            await MainActor.run {
+                let log = ActionLog(
+                    agentId: AgentID.builder.rawValue,
+                    actionType: "git.scaffold_push",
+                    paramsJSON: "{\"actionId\":\"\(actionId.uuidString)\",\"project\":\"\(projectName)\",\"owner\":\"\(ghOwner)\",\"dir\":\"\(dir)\"}",
+                    resultJSON: "{\"success\":\(success)}",
+                    success: success,
+                    reversible: false,
+                    executedByUserApproval: true
+                )
+                container.mainContext.insert(log)
+                try? container.mainContext.save()
+            }
+        }
+
+        await EventBus.shared.publish(
+            .actionExecuted(actionId: actionId, success: success, result: result)
+        )
+
+        irisLog(success ? .notice : .error,
+                "Builder git push done success=\(success) for \(ctx.projectName)",
+                category: IRISLogger.agents)
+    }
+
+    private func handleGitRejection(actionId: UUID) async {
+        guard let ctx = pendingGitActions.removeValue(forKey: actionId) else { return }
+        irisLog(.info, "Builder git push rejected for \(ctx.projectName) — local scaffold preserved at \(ctx.dir)",
+                category: IRISLogger.agents)
+        // On garde le scaffold local (utile pour itérations sans push). User peut clean manuellement.
+    }
+
+    nonisolated private func runProcess(executable: String, args: [String], cwd: String) async -> Bool {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = args
+        process.currentDirectoryURL = URL(fileURLWithPath: cwd)
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+        do {
+            try process.run()
+            process.waitUntilExit()
+            return process.terminationStatus == 0
+        } catch {
+            return false
+        }
     }
 }
