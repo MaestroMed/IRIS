@@ -55,6 +55,15 @@ struct DashboardView: View {
                     .font(.system(size: 16))
                     .foregroundStyle(.secondary)
                 Spacer()
+                // v1.37 — refresh Cartographer manual
+                Button {
+                    Task { await Cartographer.shared.refresh() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 13))
+                }
+                .buttonStyle(.plain)
+                .help("Refresh Cartographer (re-scan ~/Developer + gh repo list)")
                 Text(Date(), format: .dateTime.weekday(.wide).day().month(.wide).year())
                     .font(IRISTokens.monoFont)
                     .foregroundStyle(.secondary)

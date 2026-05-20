@@ -71,10 +71,68 @@ struct InspectorView: View {
             advisorSection
         case .witness:
             witnessSection
+        case .conductor:
+            conductorSection  // v1.38
         case .some(let other):
             simpleAgentSection(other)
         case .none:
             EmptyView()
+        }
+    }
+
+    // MARK: — v1.38 Conductor session stats
+
+    private var conductorSection: some View {
+        let messageCount = appState.transcript.count
+        let opusCost = appState.costByModel["claude-opus-4-7"] ?? 0
+        let userMessages = appState.transcript.filter {
+            if case .user = $0.role { return true } else { return false }
+        }.count
+        let agentResponses = appState.transcript.filter {
+            if case .agent(.conductor) = $0.role { return true } else { return false }
+        }.count
+
+        return VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
+            sectionHeader("Conductor", count: messageCount, accent: IRISTokens.irisAccent)
+
+            VStack(alignment: .leading, spacing: 4) {
+                conductorStatRow(label: "Messages user", value: "\(userMessages)", color: IRISTokens.aquaTint)
+                conductorStatRow(label: "Réponses Conductor", value: "\(agentResponses)", color: IRISTokens.irisAccent)
+                Divider().padding(.vertical, 2)
+                conductorStatRow(label: "Cost Opus session", value: "$\(String(format: "%.4f", opusCost))", color: IRISTokens.goldAccent)
+                conductorStatRow(label: "API key", value: appState.hasAnthropicKey ? "✓ active" : "⚠️ mock", color: appState.hasAnthropicKey ? .green : IRISTokens.goldAccent)
+            }
+            .padding(.vertical, IRISTokens.spacing4)
+
+            Divider().padding(.vertical, 2)
+
+            HStack(spacing: IRISTokens.spacing8) {
+                Button {
+                    Task {
+                        await Conductor.shared.resetHistory()
+                        appState.clearTranscript()
+                    }
+                } label: {
+                    Label("Nouvelle conversation", systemImage: "arrow.counterclockwise")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(appState.transcript.isEmpty)
+                Spacer()
+            }
+        }
+    }
+
+    private func conductorStatRow(label: String, value: String, color: Color) -> some View {
+        HStack {
+            Text(label)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+            Spacer()
+            Text(value)
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .foregroundStyle(color)
         }
     }
 
