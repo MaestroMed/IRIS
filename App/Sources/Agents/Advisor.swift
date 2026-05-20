@@ -12,13 +12,13 @@ public actor Advisor {
 
     private weak var modelContainer: ModelContainer?
     private var dailyBriefingTask: Task<Void, Never>?
-    private var onCost: ((Double) -> Void)?
+    private var onCost: CostSink?
 
     private init() {}
 
     public func start(
         modelContainer: ModelContainer,
-        onCost: @escaping @Sendable (Double) -> Void
+        onCost: @escaping CostSink
     ) async {
         self.modelContainer = modelContainer
         self.onCost = onCost
@@ -180,7 +180,7 @@ public actor Advisor {
 
             let content = response.firstTextContent ?? "[Advisor : réponse vide]"
             let cost = response.usage.estimatedCostUSD(model: .opus47)
-            onCost?(cost)
+            onCost?(cost, ClaudeModel.opus47.rawValue)
 
             await EventBus.shared.publish(
                 .agentResponse(from: .advisor, content: content, eventId: UUID())

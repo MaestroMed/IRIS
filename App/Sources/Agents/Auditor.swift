@@ -11,13 +11,13 @@ public actor Auditor {
 
     private weak var modelContainer: ModelContainer?
     private var subscriptionTask: Task<Void, Never>?
-    private var onCost: (@Sendable (Double) -> Void)?
+    private var onCost: CostSink?
 
     private init() {}
 
     public func start(
         modelContainer: ModelContainer,
-        onCost: @escaping @Sendable (Double) -> Void = { _ in }
+        onCost: @escaping CostSink = { _, _ in }
     ) async {
         self.modelContainer = modelContainer
         self.onCost = onCost
@@ -128,7 +128,7 @@ public actor Auditor {
             cacheSystem: true,
             onUsage: { usage in
                 let cost = usage.estimatedCostUSD(model: .sonnet46)
-                costCallback?(cost)
+                costCallback?(cost, ClaudeModel.sonnet46.rawValue)
             }
         )
 
@@ -183,7 +183,7 @@ public actor Auditor {
         irisLog(.notice, "Auditor finished \(codename) — verdict=\(verdict)", category: IRISLogger.agents)
     }
 
-    private var onCostCallback: (@Sendable (Double) -> Void)? {
+    private var onCostCallback: CostSink? {
         onCost
     }
 

@@ -149,6 +149,24 @@ struct DashboardView: View {
                         .font(.system(size: 16, weight: .semibold, design: .monospaced))
                         .foregroundStyle(appState.sessionCostUSD > 0.5 ? IRISTokens.goldAccent : .primary)
                 }
+
+                // v1.24 — Breakdown par modèle
+                if !appState.costByModel.isEmpty {
+                    Divider().padding(.vertical, 2)
+                    ForEach(appState.costByModel.sorted(by: { $0.value > $1.value }), id: \.key) { model, amount in
+                        HStack {
+                            Text(modelShortName(model))
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundStyle(modelColor(model))
+                            Spacer()
+                            Text("$\(String(format: "%.5f", amount))")
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    Divider().padding(.vertical, 2)
+                }
+
                 HStack {
                     Text("API key Anthropic")
                         .font(.system(size: 10))
@@ -165,6 +183,21 @@ struct DashboardView: View {
                 }
             }
         }
+    }
+
+    private func modelShortName(_ raw: String) -> String {
+        if raw.contains("opus") { return "Opus 4.7" }
+        if raw.contains("sonnet") { return "Sonnet 4.6" }
+        if raw.contains("haiku") { return "Haiku 4.5" }
+        if raw.contains("gemini") { return "Gemini Flash" }
+        return raw
+    }
+
+    private func modelColor(_ raw: String) -> Color {
+        if raw.contains("opus") { return IRISTokens.irisAccent }
+        if raw.contains("sonnet") { return IRISTokens.aquaTint }
+        if raw.contains("haiku") { return .secondary }
+        return .secondary
     }
 
     private var portfolioCard: some View {

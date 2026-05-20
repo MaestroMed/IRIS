@@ -12,14 +12,14 @@ public actor Quill {
     public static let shared = Quill()
 
     private var subscriptionTask: Task<Void, Never>?
-    private var onCost: ((Double) -> Void)?
+    private var onCost: CostSink?
     private weak var modelContainer: ModelContainer?
 
     private init() {}
 
     public func start(
         modelContainer: ModelContainer,
-        onCost: @escaping @Sendable (Double) -> Void
+        onCost: @escaping CostSink
     ) async {
         self.modelContainer = modelContainer
         self.onCost = onCost
@@ -97,7 +97,7 @@ public actor Quill {
 
             let content = response.firstTextContent ?? "{}"
             let cost = response.usage.estimatedCostUSD(model: .sonnet46)
-            onCost?(cost)
+            onCost?(cost, ClaudeModel.sonnet46.rawValue)
 
             // Parse JSON (best-effort — si malformé, on fallback en texte brut comme body)
             let parsed = Self.parseDraftJSON(content) ?? .init(

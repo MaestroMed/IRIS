@@ -112,9 +112,10 @@ struct IRISApp: App {
         }
 
         // 3. Conductor démarre + écoute userInput + Scribe integration (v1.6)
-        let costSink: @Sendable (Double) -> Void = { cost in
+        // v1.24 — CostSink enrichi (amount, model) pour breakdown par modèle
+        let costSink: CostSink = { amount, model in
             Task { @MainActor in
-                appState.sessionCostUSD += cost
+                appState.addCost(amount, model: model)
             }
         }
         await Conductor.shared.start(modelContainer: modelContainer, onCost: costSink)

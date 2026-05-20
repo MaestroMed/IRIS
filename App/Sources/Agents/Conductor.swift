@@ -15,7 +15,7 @@ public actor Conductor {
     public static let shared = Conductor()
 
     private var subscriptionTask: Task<Void, Never>?
-    private var onCost: (@Sendable (Double) -> Void)?
+    private var onCost: CostSink?
     private weak var modelContainer: ModelContainer?
 
     /// v1.19 — history derniers échanges (alternance user/assistant) pour multi-turn dialog.
@@ -42,7 +42,7 @@ public actor Conductor {
     /// Démarre l'écoute du bus. À appeler une seule fois au launch (depuis IRISApp).
     public func start(
         modelContainer: ModelContainer? = nil,
-        onCost: @escaping @Sendable (Double) -> Void
+        onCost: @escaping CostSink
     ) async {
         self.modelContainer = modelContainer
         self.onCost = onCost
@@ -148,7 +148,7 @@ public actor Conductor {
             cacheSystem: true,
             onUsage: { usage in
                 let cost = usage.estimatedCostUSD(model: .opus47)
-                costCallback?(cost)
+                costCallback?(cost, ClaudeModel.opus47.rawValue)
             }
         )
 

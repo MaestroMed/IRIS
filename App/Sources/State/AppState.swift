@@ -2,6 +2,9 @@ import Foundation
 import Observation
 import SwiftUI
 
+/// v1.24 — typealias pour cost callbacks enrichis avec model name.
+public typealias CostSink = @Sendable (_ amount: Double, _ model: String) -> Void
+
 // IRIS v0.0.5 — état global app. @Observable (Swift 6) injecté via @Environment.
 // Étend v0.0.2 avec : transcript (échanges user ↔ conductor), currentInput, isProcessing, lastError.
 // v0.6+ — sera étendu avec drafts/audit stores, signals queue, etc.
@@ -33,6 +36,15 @@ public final class IRISAppState {
 
     /// Coût cumulé session (USD estimé via AnthropicClient usage tokens).
     public var sessionCostUSD: Double = 0
+
+    /// v1.24 — Cost breakdown par modèle (ex ["claude-opus-4-7": 0.0532, "claude-sonnet-4-6": 0.0123]).
+    public var costByModel: [String: Double] = [:]
+
+    /// Helper unique : update sessionCostUSD + costByModel[model].
+    public func addCost(_ amount: Double, model: String) {
+        sessionCostUSD += amount
+        costByModel[model, default: 0] += amount
+    }
 
     /// Actions en attente d'approbation user (proposées par Envoy après draftReady).
     public var pendingActions: [PendingActionUI] = []
