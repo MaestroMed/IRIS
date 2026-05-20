@@ -1047,6 +1047,61 @@ struct SettingsView: View {
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundStyle(.secondary)
             }
+
+            Divider().padding(.vertical, IRISTokens.spacing4)
+
+            // v1.67 — Auto-backup scheduler
+            autoBackupRow
+        }
+    }
+
+    // v1.67 — Auto-backup toggle + manual trigger
+    @State private var autoBackupEnabled: Bool = false
+    @State private var autoBackupTick: Int = 0  // force re-render après backup now
+
+    private var autoBackupRow: some View {
+        let last = BackupScheduler.lastBackupAt
+        let lastStr: String = {
+            guard let last else { return "jamais" }
+            let formatter = RelativeDateTimeFormatter()
+            return formatter.localizedString(for: last, relativeTo: .now)
+        }()
+        return HStack(spacing: IRISTokens.spacing8) {
+            Toggle(isOn: $autoBackupEnabled) {
+                Text("Auto-backup 24h").font(.system(size: 11))
+            }
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            .onChange(of: autoBackupEnabled) { _, newValue in
+                BackupScheduler.setEnabled(newValue)
+            }
+
+            Text("dernier : \(lastStr)")
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .id(autoBackupTick)
+
+            Spacer()
+
+            Button {
+                Task {
+                    if let url = await BackupScheduler.shared.backupNow() {
+                        backupStatus = "✅ Backup auto-folder : \(url.lastPathComponent)"
+                    } else {
+                        backupStatus = "⚠️ Backup now échoué."
+                    }
+                    autoBackupTick += 1
+                }
+            } label: {
+                Label("Backup now", systemImage: "clock.arrow.circlepath")
+                    .font(.system(size: 11))
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .help("Force un backup vers \(BackupScheduler.backupDir.path)")
+        }
+        .onAppear {
+            autoBackupEnabled = BackupScheduler.isEnabled
         }
     }
 

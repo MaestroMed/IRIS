@@ -161,7 +161,10 @@ struct IRISApp: App {
         // 11. Witness v1.5.A — observe NSWorkspace frontmost app (debounce 10s)
         await Witness.shared.start(modelContainer: modelContainer)
 
-        irisLog(.info, "IRIS bootstrapped — 10 agents live (Conductor + Sentinel + Scribe + Quill + Envoy + Cartographer + Auditor + Builder + Advisor + Witness)",
+        // 12. v1.67 — BackupScheduler : auto-backup JSON 24h (opt-in via Settings)
+        await BackupScheduler.shared.start(modelContainer: modelContainer)
+
+        irisLog(.info, "IRIS bootstrapped — 10 agents live + BackupScheduler",
                 category: IRISLogger.ui)
     }
 }
