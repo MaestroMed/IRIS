@@ -795,12 +795,86 @@ struct SettingsView: View {
             Text("Restart IRIS pour appliquer aux timers en cours.")
                 .font(.system(size: 9, design: .monospaced))
                 .foregroundStyle(.secondary)
+
+            Divider().padding(.vertical, IRISTokens.spacing4)
+
+            // v1.65 — Inject manual signal (test Quill flow)
+            manualSignalInjector
         }
         .onAppear {
             Task {
                 stubIntervalSeconds = Double(await Sentinel.shared.currentStubInterval)
                 githubIntervalSeconds = Double(await Sentinel.shared.currentGithubInterval)
                 fsIntervalSeconds = Double(await Sentinel.shared.currentFSInterval)
+            }
+        }
+    }
+
+    // MARK: — v1.65 Manual signal injector
+
+    @State private var injectSource: String = "gmail"
+    @State private var injectImportance: Int = 4
+    @State private var injectSummary: String = ""
+    @State private var injectProject: String = ""
+
+    private var manualSignalInjector: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("INJECT MANUAL SIGNAL")
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .foregroundStyle(.secondary)
+            HStack(spacing: 4) {
+                Picker("", selection: $injectSource) {
+                    Text("gmail").tag("gmail")
+                    Text("github").tag("github")
+                    Text("calendar").tag("calendar")
+                    Text("fs").tag("fs")
+                    Text("manual").tag("manual")
+                }
+                .labelsHidden()
+                .controlSize(.small)
+                .frame(maxWidth: 100)
+
+                Picker("", selection: $injectImportance) {
+                    Text("trivial (1)").tag(1)
+                    Text("low (2)").tag(2)
+                    Text("medium (3)").tag(3)
+                    Text("high (4)").tag(4)
+                    Text("critical (5)").tag(5)
+                }
+                .labelsHidden()
+                .controlSize(.small)
+                .frame(maxWidth: 110)
+
+                TextField("project (opt)", text: $injectProject)
+                    .textFieldStyle(.roundedBorder)
+                    .controlSize(.small)
+                    .frame(maxWidth: 120)
+            }
+
+            HStack(spacing: 4) {
+                TextField("summary du signal (sera utilisé par Quill si importance >= 4)", text: $injectSummary)
+                    .textFieldStyle(.roundedBorder)
+                    .controlSize(.small)
+                Button("Inject") {
+                    let summary = injectSummary.trimmingCharacters(in: .whitespaces)
+                    guard !summary.isEmpty else { return }
+                    let importance = SignalImportance(rawValue: injectImportance) ?? .medium
+                    let project = injectProject.trimmingCharacters(in: .whitespaces)
+                    Task {
+                        await Sentinel.shared.injectManualSignal(
+                            source: injectSource,
+                            importance: importance,
+                            summary: summary,
+                            projectScope: project.isEmpty ? nil : project
+                        )
+                    }
+                    injectSummary = ""
+                    backupStatus = "📡 Signal injecté : [\(injectSource)] importance=\(importance.rawValue)."
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .tint(IRISTokens.aquaTint)
+                .disabled(injectSummary.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
     }

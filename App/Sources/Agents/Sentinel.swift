@@ -130,6 +130,39 @@ public actor Sentinel {
         await emitStubSignal()
     }
 
+    /// v1.65 — Inject un signal custom (source/importance/summary par Mehdi).
+    /// Émet sur bus + persiste Signal SwiftData. Utile pour tester Quill avec
+    /// un input contrôlé (e.g. simuler signal client critical).
+    public func injectManualSignal(
+        source: String,
+        importance: SignalImportance,
+        summary: String,
+        projectScope: String? = nil
+    ) async {
+        let signalId = UUID()
+        await EventBus.shared.publish(
+            .signalEmitted(from: .sentinel, importance: importance, summary: summary, source: source)
+        )
+        if let container = await modelContainer {
+            await MainActor.run {
+                let signal = Signal(
+                    id: signalId,
+                    emittedAt: .now,
+                    source: source,
+                    importance: importance.rawValue,
+                    summary: summary,
+                    projectScope: projectScope
+                )
+                container.mainContext.insert(signal)
+                try? container.mainContext.save()
+            }
+        }
+        irisLog(.notice,
+            "Sentinel manual signal injected: [\(source)] importance=\(importance.rawValue) — \(summary)",
+            category: IRISLogger.agents
+        )
+    }
+
     /// Force un poll GitHub immédiat (compare cache + emit deltas s'il y en a).
     public func triggerGithubNow() async {
         await pollGitHubDeltas()
