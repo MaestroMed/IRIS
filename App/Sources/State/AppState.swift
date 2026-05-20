@@ -41,9 +41,40 @@ public final class IRISAppState {
     public var costByModel: [String: Double] = [:]
 
     /// Helper unique : update sessionCostUSD + costByModel[model].
+    /// v1.72 — Trigger costLimitAlert si on franchit le seuil configuré.
     public func addCost(_ amount: Double, model: String) {
+        let previous = sessionCostUSD
         sessionCostUSD += amount
         costByModel[model, default: 0] += amount
+
+        let limit = IRISAppState.costLimitUSD
+        if limit > 0, previous < limit, sessionCostUSD >= limit {
+            // Crossing point — notify
+            costLimitTriggered = true
+            let title = "IRIS — cost limit atteint"
+            let body = "Session cost $\(String(format: "%.4f", sessionCostUSD)) ≥ limite $\(String(format: "%.2f", limit))"
+            Task {
+                await IRISNotifications.push(title: title, body: body)
+            }
+        }
+    }
+
+    // v1.72 — Cost limit
+    public var costLimitTriggered: Bool = false
+
+    private static let costLimitKey = "iris.cost.sessionLimitUSD"
+
+    public static var costLimitUSD: Double {
+        let raw = UserDefaults.standard.double(forKey: costLimitKey)
+        return raw > 0 ? raw : 1.0  // default $1
+    }
+
+    public static func setCostLimit(_ value: Double) {
+        UserDefaults.standard.set(max(0.01, value), forKey: costLimitKey)
+    }
+
+    public func resetCostLimitFlag() {
+        costLimitTriggered = false
     }
 
     /// Actions en attente d'approbation user (proposées par Envoy après draftReady).

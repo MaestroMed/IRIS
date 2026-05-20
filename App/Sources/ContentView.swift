@@ -64,11 +64,21 @@ struct ContentView: View {
                     )
                 }
 
-                // Cost session
+                // Cost session (v1.72 — red si limit dépassé)
                 Text("$\(String(format: "%.4f", appState.sessionCostUSD))")
                     .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(appState.sessionCostUSD > 0.5 ? IRISTokens.goldAccent : .secondary)
-                    .help("Coût session cumulé (Anthropic API)")
+                    .foregroundStyle(
+                        appState.costLimitTriggered ? .red :
+                        (appState.sessionCostUSD > 0.5 ? IRISTokens.goldAccent : .secondary)
+                    )
+                    .help(
+                        appState.costLimitTriggered
+                            ? "Cost limit dépassé (\(String(format: "%.2f", IRISAppState.costLimitUSD))$). Click pour reset alerte."
+                            : "Coût session cumulé (Anthropic API)"
+                    )
+                    .onTapGesture {
+                        if appState.costLimitTriggered { appState.resetCostLimitFlag() }
+                    }
 
                 // API key status
                 Image(systemName: appState.hasAnthropicKey ? "key.fill" : "key.slash")

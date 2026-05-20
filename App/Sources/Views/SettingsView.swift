@@ -230,6 +230,7 @@ struct SettingsView: View {
     @State private var quillModelSelection: String = ""
     @State private var advisorModelSelection: String = ""
     @State private var conductorMaxTokens: Double = 2048  // v1.61
+    @State private var costLimitUSD: Double = 1.0          // v1.72
 
     private var modelsRoutingSection: some View {
         VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
@@ -335,6 +336,22 @@ struct SettingsView: View {
             }
             .padding(.leading, IRISTokens.spacing16)
 
+            // v1.72 — Cost limit slider (notif macOS si dépassé)
+            HStack {
+                Text("Session cost limit (alerte)")
+                    .font(.system(size: 11))
+                Slider(value: $costLimitUSD, in: 0.1...10, step: 0.1)
+                    .frame(maxWidth: 200)
+                Text("$\(String(format: "%.2f", costLimitUSD))")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 60, alignment: .trailing)
+                    .onChange(of: costLimitUSD) { _, newValue in
+                        IRISAppState.setCostLimit(newValue)
+                    }
+            }
+            .padding(.leading, IRISTokens.spacing16)
+
             Divider().padding(.vertical, 2)
 
             VStack(alignment: .leading, spacing: 4) {
@@ -351,6 +368,7 @@ struct SettingsView: View {
             quillModelSelection = Quill.currentModel.rawValue
             advisorModelSelection = Advisor.currentModel.rawValue
             conductorMaxTokens = Double(Conductor.currentMaxTokens)  // v1.61
+            costLimitUSD = IRISAppState.costLimitUSD                     // v1.72
         }
     }
 
