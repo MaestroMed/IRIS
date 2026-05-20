@@ -431,13 +431,15 @@ struct SettingsView: View {
         .clipShape(Capsule())
     }
 
-    // MARK: — v1.52 Data folders shortcuts
+    // MARK: — v1.52 Data folders shortcuts + v1.59 EventLog purge
+
+    @State private var purgeDays: Double = 30
 
     private var dataFoldersSection: some View {
         VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
             sectionTitle(
                 "Données & memory",
-                subtitle: "Accès rapide aux dossiers utilisés par IRIS (édition manuelle des memories possible)."
+                subtitle: "Accès rapide aux dossiers IRIS + purge logs anciens (réduit taille SwiftData)."
             )
 
             HStack(spacing: IRISTokens.spacing8) {
@@ -463,6 +465,40 @@ struct SettingsView: View {
 
                 Spacer()
             }
+
+            Divider().padding(.vertical, IRISTokens.spacing4)
+
+            // v1.59 — EventLog purge
+            HStack(spacing: IRISTokens.spacing8) {
+                Text("Purger logs >")
+                    .font(.system(size: 11))
+                Slider(value: $purgeDays, in: 7...90, step: 1)
+                    .frame(maxWidth: 160)
+                Text("\(Int(purgeDays)) jours")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 70, alignment: .leading)
+                Button {
+                    purgeOldEventLogs(days: Int(purgeDays))
+                } label: {
+                    Label("Purger", systemImage: "trash")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .tint(IRISTokens.goldAccent)
+                Spacer()
+            }
+        }
+    }
+
+    private func purgeOldEventLogs(days: Int) {
+        let container = modelContext.container
+        do {
+            let count = try BackupService.purgeEventLogsOlderThan(days: days, container: container)
+            backupStatus = "🗑️ Purgé \(count) EventLog > \(days)j."
+        } catch {
+            backupStatus = "⚠️ Purge échouée : \(error.localizedDescription)"
         }
     }
 

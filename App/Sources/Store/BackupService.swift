@@ -417,6 +417,26 @@ public enum BackupService {
         return url
     }
 
+    // MARK: — v1.59 EventLog cleanup (purge old records)
+
+    /// Supprime tous les EventLog dont timestamp < (now - days). Retourne le nombre supprimé.
+    /// Utile pour limiter la taille de la base SwiftData (un EventLog par chunk SSE = volumineux).
+    @MainActor
+    public static func purgeEventLogsOlderThan(days: Int, container: ModelContainer) throws -> Int {
+        let cutoff = Date().addingTimeInterval(-Double(days) * 86400)
+        let context = container.mainContext
+        let descriptor = FetchDescriptor<EventLog>(
+            predicate: #Predicate { $0.timestamp < cutoff }
+        )
+        let old = try context.fetch(descriptor)
+        for log in old {
+            context.delete(log)
+        }
+        try context.save()
+        irisLog(.info, "Purged \(old.count) EventLog entries older than \(days)d", category: IRISLogger.store)
+        return old.count
+    }
+
     @MainActor
     public static func importMINDExport(container: ModelContainer, from url: URL) throws -> Int {
         let data = try Data(contentsOf: url)
