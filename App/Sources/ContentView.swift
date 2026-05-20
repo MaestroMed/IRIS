@@ -5,6 +5,7 @@ import SwiftData
 
 struct ContentView: View {
     @State private var appState = IRISAppState()
+    @State private var showCommandPalette = false  // v1.46
 
     @Query(sort: \Signal.emittedAt, order: .reverse) private var allSignals: [Signal]
     @Query private var pendingDraftsQuery: [Draft]
@@ -27,6 +28,13 @@ struct ContentView: View {
             if let agentId = notif.object as? AgentID {
                 appState.selection = .agent(agentId)
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: IRISCommands.openCommandPaletteNotif)) { _ in
+            showCommandPalette = true
+        }
+        .sheet(isPresented: $showCommandPalette) {
+            CommandPaletteView()
+                .environment(appState)
         }
     }
 

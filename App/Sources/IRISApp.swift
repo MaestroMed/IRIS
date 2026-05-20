@@ -58,6 +58,14 @@ struct IRISApp: App {
             }
 
             CommandMenu("Actions") {
+                // v1.46 — Command Palette Cmd+K
+                Button("Command Palette…") {
+                    IRISCommands.openCommandPalette()
+                }
+                .keyboardShortcut("k", modifiers: .command)
+
+                Divider()
+
                 Button("Refresh Cartographer") {
                     Task { await Cartographer.shared.refresh() }
                 }
@@ -162,9 +170,15 @@ struct IRISApp: App {
 
 enum IRISCommands {
     static let selectAgentNotif = Notification.Name("iris.command.selectAgent")
+    static let openCommandPaletteNotif = Notification.Name("iris.command.openPalette")  // v1.46
 
     static func selectAgent(_ id: AgentID) {
         NotificationCenter.default.post(name: selectAgentNotif, object: id)
+    }
+
+    /// v1.46 — Active la Command Palette (Cmd+K).
+    static func openCommandPalette() {
+        NotificationCenter.default.post(name: openCommandPaletteNotif, object: nil)
     }
 
     @MainActor
