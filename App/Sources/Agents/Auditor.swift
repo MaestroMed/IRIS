@@ -29,6 +29,22 @@ public actor Auditor {
         subscriptionTask = nil
     }
 
+    // MARK: — v1.49 Model picker (Sonnet/Opus/Haiku)
+
+    private static let modelKey = "iris.auditor.model"
+
+    public static var currentModel: ClaudeModel {
+        if let raw = UserDefaults.standard.string(forKey: modelKey),
+           let model = ClaudeModel(rawValue: raw) {
+            return model
+        }
+        return .sonnet46
+    }
+
+    public static func setModel(_ model: ClaudeModel) {
+        UserDefaults.standard.set(model.rawValue, forKey: modelKey)
+    }
+
     /// Lance un audit. v1.18 : vrai audit via Claude Sonnet si API key, sinon fallback mock v0.7.
     public func auditProject(codename: String) async {
         irisLog(.info, "Auditor starting audit for \(codename)", category: IRISLogger.agents)
@@ -118,17 +134,19 @@ public actor Auditor {
         let projectInfo = await fetchProjectInfo(codename: codename)
         let userPrompt = Self.buildAuditPrompt(codename: codename, info: projectInfo)
 
+        // v1.49 — model depuis UserDefaults
+        let auditModel = Self.currentModel
         var accumulated = ""
         let costCallback = onCostCallback
         let stream = AnthropicClient.shared.streamMessage(
-            model: .sonnet46,
+            model: auditModel,
             system: Self.realAuditSystemPrompt,
             messages: [Message(role: .user, content: userPrompt)],
             maxTokens: 2048,
             cacheSystem: true,
             onUsage: { usage in
-                let cost = usage.estimatedCostUSD(model: .sonnet46)
-                costCallback?(cost, ClaudeModel.sonnet46.rawValue)
+                let cost = usage.estimatedCostUSD(model: auditModel)
+                costCallback?(cost, auditModel.rawValue)
             }
         )
 
@@ -155,7 +173,7 @@ public actor Auditor {
                     headline: parsed.headline,
                     findingsJSON: parsed.findingsJSON,
                     topActionsJSON: parsed.actionsJSON,
-                    modelUsed: ClaudeModel.sonnet46.rawValue,
+                    modelUsed: auditModel.rawValue,
                     executedSkill: "damage-control-api",
                     costUSD: 0,  // cost tracké via onCost callback global, pas attribué ici
                     durationSeconds: duration

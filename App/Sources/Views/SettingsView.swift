@@ -56,6 +56,10 @@ struct SettingsView: View {
 
             notificationsSection
 
+            Divider()
+
+            dangerZoneSection
+
             Spacer()
 
             footer
@@ -208,6 +212,7 @@ struct SettingsView: View {
     }
 
     @State private var conductorModelSelection: String = ""
+    @State private var auditorModelSelection: String = ""
 
     private var modelsRoutingSection: some View {
         VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
@@ -234,6 +239,27 @@ struct SettingsView: View {
             }
             .padding(.leading, IRISTokens.spacing16)
 
+            // v1.49 — Auditor model picker
+            HStack {
+                Text("Auditor model")
+                    .font(.system(size: 11))
+                Spacer()
+                Picker("", selection: $auditorModelSelection) {
+                    Text("Sonnet 4.6 (recommandé)").tag(ClaudeModel.sonnet46.rawValue)
+                    Text("Opus 4.7 (qualité +)").tag(ClaudeModel.opus47.rawValue)
+                    Text("Haiku 4.5 (cheap)").tag(ClaudeModel.haiku45.rawValue)
+                }
+                .labelsHidden()
+                .controlSize(.small)
+                .frame(maxWidth: 280)
+                .onChange(of: auditorModelSelection) { _, newValue in
+                    if let model = ClaudeModel(rawValue: newValue) {
+                        Auditor.setModel(model)
+                    }
+                }
+            }
+            .padding(.leading, IRISTokens.spacing16)
+
             Divider().padding(.vertical, 2)
 
             VStack(alignment: .leading, spacing: 4) {
@@ -246,7 +272,51 @@ struct SettingsView: View {
         }
         .onAppear {
             conductorModelSelection = Conductor.currentModel.rawValue
+            auditorModelSelection = Auditor.currentModel.rawValue
         }
+    }
+
+    // MARK: — v1.40 Danger zone (reset all)
+
+    private var dangerZoneSection: some View {
+        VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
+            sectionTitle(
+                "⚠️ Danger zone",
+                subtitle: "Reset complet — supprime UserDefaults iris.* + Keychain Anthropic. Action irréversible."
+            )
+
+            Button(role: .destructive) {
+                let alert = NSAlert()
+                alert.messageText = "Reset complet IRIS ?"
+                alert.informativeText = "Cela supprime : API key Anthropic, config skills, sentinel intervals, sidebar visibility, system prompt, model pickers. Les données SwiftData (memories, signals, drafts, audits) restent. Continuer ?"
+                alert.alertStyle = .warning
+                alert.addButton(withTitle: "Reset")
+                alert.addButton(withTitle: "Annuler")
+                if alert.runModal() == .alertFirstButtonReturn {
+                    resetAllSettings()
+                }
+            } label: {
+                Label("Reset all settings", systemImage: "exclamationmark.triangle.fill")
+                    .font(.system(size: 11))
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .tint(.red)
+        }
+    }
+
+    private func resetAllSettings() {
+        // Clear UserDefaults iris.*
+        let dict = UserDefaults.standard.dictionaryRepresentation()
+        for key in dict.keys where key.hasPrefix("iris.") {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+        // Clear Keychain Anthropic
+        _ = IRISKeychain.shared.deleteAnthropicAPIKey()
+        // Refresh UI state
+        apiKeyDraft = ""
+        appState.refreshKeyPresence()
+        backupStatus = "✅ Reset complet effectué — restart IRIS pour effet plein."
     }
 
     // MARK: — v1.44 Notifications natives macOS
