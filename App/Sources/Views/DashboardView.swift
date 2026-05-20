@@ -186,6 +186,8 @@ struct DashboardView: View {
         let signals24h = allSignals.filter { $0.emittedAt >= oneDayAgo }
         // v1.75 — Sparkline 24 buckets horaires
         let buckets = Self.hourlyBuckets(signals: signals24h)
+        // v1.95 — Breakdown par importance
+        let importanceBreakdown = Self.importanceBreakdown(signals: signals24h)
         return dashboardCard(title: "Signals 24h", count: signals24h.count, icon: "eye.circle", color: IRISTokens.aquaTint) {
             let groups = Dictionary(grouping: signals24h, by: \.source)
             let breakdown = groups.map { ($0.key, $0.value.count) }
@@ -197,9 +199,46 @@ struct DashboardView: View {
                 } else {
                     sparkline(buckets: buckets)
                         .frame(height: 32)
+                    // v1.95 — Importance stack mini-bar (segments colorés)
+                    importanceStackBar(importanceBreakdown)
+                        .frame(height: 6)
                     ForEach(breakdown.prefix(5), id: \.0) { item in
                         statBar(label: item.0, value: item.1, total: signals24h.count, color: IRISTokens.aquaTint)
                     }
+                }
+            }
+        }
+    }
+
+    // v1.95 — Compteurs par importance (1..5)
+    private static func importanceBreakdown(signals: [Signal]) -> [(Int, Int)] {
+        var counts: [Int: Int] = [:]
+        for s in signals {
+            counts[s.importance, default: 0] += 1
+        }
+        return (1...5).map { ($0, counts[$0] ?? 0) }
+    }
+
+    private func importanceColor(_ importance: Int) -> Color {
+        switch importance {
+        case 5: return .red
+        case 4: return IRISTokens.goldAccent
+        case 3: return IRISTokens.irisAccent
+        case 2: return IRISTokens.aquaTint
+        default: return .secondary.opacity(0.7)
+        }
+    }
+
+    private func importanceStackBar(_ breakdown: [(Int, Int)]) -> some View {
+        let total = max(1, breakdown.reduce(0) { $0 + $1.1 })
+        return GeometryReader { geo in
+            HStack(spacing: 1) {
+                ForEach(breakdown, id: \.0) { item in
+                    let ratio = CGFloat(item.1) / CGFloat(total)
+                    Rectangle()
+                        .fill(importanceColor(item.0))
+                        .frame(width: max(0, geo.size.width * ratio))
+                        .help("importance \(item.0): \(item.1)")
                 }
             }
         }

@@ -1170,6 +1170,16 @@ struct SettingsView: View {
                 .controlSize(.small)
                 .help("Export Markdown des coûts (audits + drafts historiques + session)")
 
+                // v1.96 — Quick export all (backup JSON + MD + cost + skills config)
+                Button(action: exportAllArtifacts) {
+                    Label("Export all", systemImage: "archivebox.fill")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .tint(IRISTokens.goldAccent)
+                .help("Backup JSON + Markdown + Cost report + Skills config en 1 click")
+
                 Spacer()
             }
 
@@ -1277,6 +1287,49 @@ struct SettingsView: View {
         } catch {
             backupStatus = "⚠️ Export MD échoué : \(error.localizedDescription)"
         }
+    }
+
+    // v1.96 — Quick export all : backup JSON + MD + cost + skills config (timestamped dir)
+    private func exportAllArtifacts() {
+        let isoNow = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
+        let baseDir = URL(fileURLWithPath: NSHomeDirectory())
+            .appendingPathComponent("iris-export-\(isoNow)")
+        let fm = FileManager.default
+        try? fm.createDirectory(at: baseDir, withIntermediateDirectories: true)
+
+        var pieces: [String] = []
+        let container = modelContext.container
+        do {
+            let jsonURL = try BackupService.exportAll(container: container, to: baseDir)
+            pieces.append(jsonURL.lastPathComponent)
+        } catch {
+            backupStatus = "⚠️ Export all : JSON échoué — \(error.localizedDescription)"
+            return
+        }
+        do {
+            let mdURL = try BackupService.exportAsMarkdown(container: container, to: baseDir)
+            pieces.append(mdURL.lastPathComponent)
+        } catch {
+            irisLog(.warning, "Quick export — MD failed: \(error.localizedDescription)", category: IRISLogger.store)
+        }
+        do {
+            let costURL = try BackupService.exportCostReport(
+                container: container,
+                sessionCostByModel: appState.costByModel,
+                to: baseDir
+            )
+            pieces.append(costURL.lastPathComponent)
+        } catch {
+            irisLog(.warning, "Quick export — cost failed: \(error.localizedDescription)", category: IRISLogger.store)
+        }
+        if let configData = SkillRegistry.shared.exportConfig() {
+            let skillsURL = baseDir.appendingPathComponent("skills-config.json")
+            try? configData.write(to: skillsURL)
+            pieces.append("skills-config.json")
+        }
+
+        NSWorkspace.shared.activateFileViewerSelecting([baseDir])
+        backupStatus = "✅ Export all → \(baseDir.lastPathComponent) (\(pieces.count) fichiers)"
     }
 
     // v1.69 — Cost report export

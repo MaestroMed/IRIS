@@ -14,6 +14,7 @@ struct InspectorView: View {
     @Query(sort: \Signal.emittedAt, order: .reverse) private var allSignals: [Signal]
     @Query(sort: \ProjectRecord.lastPushAt, order: .reverse) private var allProjects: [ProjectRecord]
     @Query(sort: \AuditReport.createdAt, order: .reverse) private var allAudits: [AuditReport]
+    @Query(sort: \ActionLog.executedAt, order: .reverse) private var allActionLogs: [ActionLog]  // v1.97
     // v1.32 — derniers briefings Advisor depuis EventLog (kind=agentResponse, fromAgent=advisor)
     @Query(
         filter: #Predicate<EventLog> { $0.kind == "agentResponse" && $0.fromAgent == "advisor" },
@@ -876,6 +877,43 @@ struct InspectorView: View {
                 if id == .sentinel {
                     sentinelSnoozeBadges
                 }
+
+                // v1.97 — ActionLog history (5 derniers par agent)
+                actionLogHistorySection(for: id)
+            }
+        }
+    }
+
+    // v1.97 — Affiche les 5 dernières ActionLog pour un agent donné
+    @ViewBuilder
+    private func actionLogHistorySection(for id: AgentID) -> some View {
+        let recent = allActionLogs.filter { $0.agentId == id.rawValue }.prefix(5)
+        if !recent.isEmpty {
+            Divider().padding(.vertical, 2)
+            Text("RECENT ACTIONS (\(recent.count))")
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .foregroundStyle(.secondary)
+            ForEach(Array(recent)) { action in
+                HStack(spacing: 4) {
+                    Image(systemName: action.success ? "checkmark.circle" : "xmark.circle")
+                        .font(.system(size: 9))
+                        .foregroundStyle(action.success ? .green : .red)
+                    Text(action.actionType)
+                        .font(.system(size: 10, weight: .medium))
+                    Spacer()
+                    if action.executedByUserApproval {
+                        Image(systemName: "person.fill.checkmark")
+                            .font(.system(size: 8))
+                            .foregroundStyle(.secondary)
+                            .help("Exécuté avec approval user")
+                    }
+                    Text(action.executedAt, format: .dateTime.day().month(.abbreviated).hour().minute())
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 2)
+                .padding(.horizontal, 4)
+                .background(RoundedRectangle(cornerRadius: 4).fill(.thinMaterial))
             }
         }
     }
