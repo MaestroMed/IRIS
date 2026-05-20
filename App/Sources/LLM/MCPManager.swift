@@ -70,6 +70,73 @@ public final class MCPManager {
         return servers.count
     }
 
+    // MARK: — v1.114 Test connection (initialize round-trip)
+
+    public struct TestResult: Sendable {
+        public let serverName: String
+        public let success: Bool
+        public let serverInfo: String?  // ex: "claude-mcp-gmail v1.2.3"
+        public let toolsCount: Int?     // parsed depuis capabilities.tools
+        public let errorMessage: String?
+    }
+
+    /// Spawn temporairement le server, envoie `initialize`, retourne result + stop.
+    /// Timeout 10s — si le server hang on abandonne.
+    public func testConnection(_ server: ServerConfig) async -> TestResult {
+        let client = MCPClient(config: makeClientConfig(for: server))
+        do {
+            try await client.start()
+        } catch {
+            return TestResult(
+                serverName: server.name,
+                success: false,
+                serverInfo: nil,
+                toolsCount: nil,
+                errorMessage: "start: \(error)"
+            )
+        }
+
+        defer {
+            Task { await client.stop() }
+        }
+
+        let params: [String: Any] = [
+            "protocolVersion": "2024-11-05",
+            "capabilities": [String: Any](),
+            "clientInfo": [
+                "name": "IRIS",
+                "version": IRISRuntimeInfo.appVersion
+            ]
+        ]
+        do {
+            let resultData = try await client.callMethod("initialize", params: params, timeout: 10)
+            // Parse Data → dict côté MainActor (résultat Sendable car String/Bool/Int)
+            let result = (try? JSONSerialization.jsonObject(with: resultData) as? [String: Any]) ?? [:]
+            var serverInfo: String?
+            if let si = result["serverInfo"] as? [String: Any],
+               let name = si["name"] as? String {
+                let version = (si["version"] as? String) ?? "?"
+                serverInfo = "\(name) v\(version)"
+            }
+            let toolsCount = (result["capabilities"] as? [String: Any])?["tools"] != nil ? 1 : nil
+            return TestResult(
+                serverName: server.name,
+                success: true,
+                serverInfo: serverInfo,
+                toolsCount: toolsCount,
+                errorMessage: nil
+            )
+        } catch {
+            return TestResult(
+                serverName: server.name,
+                success: false,
+                serverInfo: nil,
+                toolsCount: nil,
+                errorMessage: "\(error)"
+            )
+        }
+    }
+
     /// Construit un MCPClient.Config à partir d'un ServerConfig.
     /// Résout `command` en URL absolue : si chemin absolu → tel quel, sinon résout via /usr/bin/env.
     public func makeClientConfig(for server: ServerConfig) -> MCPClient.Config {

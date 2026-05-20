@@ -1064,21 +1064,7 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(servers) { server in
-                    HStack(spacing: 4) {
-                        Image(systemName: "server.rack")
-                            .font(.system(size: 11))
-                            .foregroundStyle(IRISTokens.aquaTint)
-                        Text(server.name)
-                            .font(.system(size: 12, weight: .medium))
-                        Spacer()
-                        Text("\(server.command) \(server.args.joined(separator: " "))")
-                            .font(.system(size: 9, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
-                    .padding(.vertical, 3).padding(.horizontal, 6)
-                    .background(RoundedRectangle(cornerRadius: 4).fill(.thinMaterial))
+                    mcpServerRow(server)
                 }
             }
         }
@@ -1087,6 +1073,73 @@ struct SettingsView: View {
                 _ = MCPManager.shared.discover()
                 mcpServersTick += 1
             }
+        }
+    }
+
+    // v1.114 — Per-server row avec test connection
+    @State private var mcpTestResults: [String: MCPManager.TestResult] = [:]
+    @State private var mcpTestingServer: String? = nil
+
+    private func mcpServerRow(_ server: MCPManager.ServerConfig) -> some View {
+        let result = mcpTestResults[server.name]
+        let isTesting = (mcpTestingServer == server.name)
+        return VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 4) {
+                Image(systemName: "server.rack")
+                    .font(.system(size: 11))
+                    .foregroundStyle(IRISTokens.aquaTint)
+                Text(server.name)
+                    .font(.system(size: 12, weight: .medium))
+                Spacer()
+                Text("\(server.command) \(server.args.joined(separator: " "))")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                if isTesting {
+                    ProgressView().controlSize(.mini)
+                } else {
+                    Button {
+                        runMCPTest(server)
+                    } label: {
+                        Image(systemName: "play.circle")
+                            .font(.system(size: 11))
+                            .foregroundStyle(IRISTokens.irisAccent)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Test connection (spawn server + initialize)")
+                }
+            }
+            if let r = result {
+                HStack(spacing: 4) {
+                    Image(systemName: r.success ? "checkmark.circle.fill" : "xmark.circle.fill")
+                        .font(.system(size: 9))
+                        .foregroundStyle(r.success ? .green : .red)
+                    if let info = r.serverInfo {
+                        Text(info)
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
+                    if let err = r.errorMessage {
+                        Text(err)
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(.red.opacity(0.8))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                }
+            }
+        }
+        .padding(.vertical, 3).padding(.horizontal, 6)
+        .background(RoundedRectangle(cornerRadius: 4).fill(.thinMaterial))
+    }
+
+    private func runMCPTest(_ server: MCPManager.ServerConfig) {
+        mcpTestingServer = server.name
+        Task {
+            let result = await MCPManager.shared.testConnection(server)
+            mcpTestResults[server.name] = result
+            mcpTestingServer = nil
         }
     }
 

@@ -49,7 +49,7 @@ public actor MCPClient {
     private var stdoutPipe: Pipe?
     private var stderrPipe: Pipe?
     private var nextId: Int = 1
-    private var pendingResponses: [Int: CheckedContinuation<[String: Any], Error>] = [:]
+    private var pendingResponses: [Int: CheckedContinuation<Data, Error>] = [:]
     private var readerTask: Task<Void, Never>?
 
     public init(config: Config) {
@@ -94,7 +94,9 @@ public actor MCPClient {
     }
 
     /// Send JSON-RPC method + attend la response (timeout 30s).
-    public func callMethod(_ method: String, params: [String: Any] = [:], timeout: TimeInterval = 30) async throws -> [String: Any] {
+    /// Retourne le raw JSON body de la response (Data, Sendable). Caller parse.
+    /// `params` est encodé via JSONSerialization donc accepte [String:Any] localement.
+    public func callMethod(_ method: String, params: [String: Any] = [:], timeout: TimeInterval = 30) async throws -> Data {
         guard process != nil, let stdin = stdinPipe else { throw MCPError.notStarted }
 
         let id = nextId
@@ -205,8 +207,14 @@ public actor MCPClient {
             let code = (error["code"] as? Int) ?? -1
             let msg = (error["message"] as? String) ?? "(no message)"
             cont.resume(throwing: MCPError.apiError(code: code, message: msg))
-        } else if let result = json["result"] as? [String: Any] {
-            cont.resume(returning: result)
+        } else if let result = json["result"] {
+            // Re-serialize juste le `result` portion pour le passer comme Data (Sendable).
+            do {
+                let resultData = try JSONSerialization.data(withJSONObject: result, options: [])
+                cont.resume(returning: resultData)
+            } catch {
+                cont.resume(throwing: MCPError.decodeFailed("re-encode result: \(error.localizedDescription)"))
+            }
         } else {
             cont.resume(throwing: MCPError.decodeFailed("missing result/error in response"))
         }
