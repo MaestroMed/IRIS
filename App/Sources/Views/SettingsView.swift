@@ -58,6 +58,10 @@ struct SettingsView: View {
 
             Divider()
 
+            dataFoldersSection
+
+            Divider()
+
             dangerZoneSection
 
             Spacer()
@@ -323,6 +327,52 @@ struct SettingsView: View {
     }
 
     // MARK: — v1.40 Danger zone (reset all)
+
+    // MARK: — v1.52 Data folders shortcuts
+
+    private var dataFoldersSection: some View {
+        VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
+            sectionTitle(
+                "Données & memory",
+                subtitle: "Accès rapide aux dossiers utilisés par IRIS (édition manuelle des memories possible)."
+            )
+
+            HStack(spacing: IRISTokens.spacing8) {
+                Button {
+                    revealInFinder(path: ("~/.claude/projects/-Users-mehdinafaa-Iris/memory" as NSString).expandingTildeInPath)
+                } label: {
+                    Label("Memory folder…", systemImage: "folder")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("Ouvre ~/.claude/projects/-Users-mehdinafaa-Iris/memory dans Finder")
+
+                Button {
+                    revealInFinder(path: ("~/.claude/skills" as NSString).expandingTildeInPath)
+                } label: {
+                    Label("Skills folder…", systemImage: "wrench.and.screwdriver")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("Ouvre ~/.claude/skills dans Finder")
+
+                Spacer()
+            }
+        }
+    }
+
+    private func revealInFinder(path: String) {
+        let url = URL(fileURLWithPath: path)
+        if FileManager.default.fileExists(atPath: path) {
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        } else {
+            // Si le dossier n'existe pas encore, ouvre le parent
+            let parent = url.deletingLastPathComponent()
+            NSWorkspace.shared.open(parent)
+        }
+    }
 
     private var dangerZoneSection: some View {
         VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
