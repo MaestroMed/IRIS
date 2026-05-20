@@ -592,6 +592,18 @@ struct InspectorView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Copier draft dans le clipboard")
+                // v1.51 — Open in Mail.app via mailto:
+                if draft.channel == "email" {
+                    Button {
+                        openInMailApp(draft: draft)
+                    } label: {
+                        Image(systemName: "paperplane")
+                            .font(.system(size: 10))
+                            .foregroundStyle(IRISTokens.irisAccent)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Ouvrir dans Mail.app (mailto:)")
+                }
                 statusBadge(draft.status)
             }
             HStack(spacing: IRISTokens.spacing8) {
@@ -727,6 +739,25 @@ struct InspectorView: View {
             .foregroundStyle(color)
             .padding(.horizontal, 5).padding(.vertical, 1)
             .background(color.opacity(0.15)).clipShape(Capsule())
+    }
+
+    // MARK: — v1.51 Mail.app handoff
+
+    private func openInMailApp(draft: Draft) {
+        let subject = draft.subject ?? "Draft IRIS"
+        let body = draft.content
+
+        var components = URLComponents()
+        components.scheme = "mailto"
+        components.path = ""
+        components.queryItems = [
+            URLQueryItem(name: "subject", value: subject),
+            URLQueryItem(name: "body", value: body)
+        ]
+
+        if let url = components.url {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     private func importanceDot(_ importance: Int) -> some View {
