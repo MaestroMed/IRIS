@@ -27,6 +27,10 @@ struct SettingsView: View {
 
             Divider()
 
+            skillMarketplaceSection
+
+            Divider()
+
             modelsRoutingSection
 
             Spacer()
@@ -91,6 +95,77 @@ struct SettingsView: View {
             }
 
             statusBanner
+        }
+    }
+
+    private var skillMarketplaceSection: some View {
+        let registry = SkillRegistry.shared
+        return VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
+            sectionTitle(
+                "Skill marketplace (\(registry.enabledNames.count)/\(registry.allSkills.count) actifs)",
+                subtitle: "Toggle pour activer/désactiver. Builder utilise uniquement les skills actifs."
+            )
+
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 4) {
+                    ForEach(SkillSource.allCasesOrdered, id: \.self) { source in
+                        let skillsForSource = registry.allSkills.filter { $0.source == source }
+                        if !skillsForSource.isEmpty {
+                            Text(source.displayName.uppercased())
+                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                                .padding(.top, IRISTokens.spacing8)
+                                .padding(.horizontal, IRISTokens.spacing4)
+                            ForEach(skillsForSource) { skill in
+                                skillRow(skill, registry: registry)
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, IRISTokens.spacing4)
+            }
+            .frame(maxHeight: 240)
+        }
+    }
+
+    private func skillRow(_ skill: SkillEntry, registry: SkillRegistry) -> some View {
+        HStack(alignment: .top, spacing: IRISTokens.spacing8) {
+            Toggle("", isOn: Binding(
+                get: { registry.isEnabled(skill.name) },
+                set: { _ in registry.toggle(skill.name) }
+            ))
+            .labelsHidden()
+            .toggleStyle(.switch)
+            .controlSize(.small)
+
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 4) {
+                    Text(skill.name)
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    Text(skill.priority.rawValue)
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(priorityColor(skill.priority))
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(priorityColor(skill.priority).opacity(0.12))
+                        .clipShape(Capsule())
+                }
+                Text(skill.summary)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(2)
+            }
+            Spacer()
+        }
+        .padding(.vertical, 3)
+    }
+
+    private func priorityColor(_ priority: SkillPriority) -> Color {
+        switch priority {
+        case .high: return IRISTokens.irisAccent
+        case .medium: return IRISTokens.aquaTint
+        case .low: return .secondary
         }
     }
 

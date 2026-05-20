@@ -10,28 +10,20 @@ public actor Builder {
     public static let shared = Builder()
 
     private weak var modelContainer: ModelContainer?
-    public static let availableSkills: [SkillDescriptor] = [
-        .init(name: "lead-gen-local-services-fr", priority: .high, summary: "Site vitrine + devis multi-step + RGPD + SEO local FR"),
-        .init(name: "doc-first-project-scaffolding", priority: .high, summary: "Suite .md systématique (ARCHITECTURE/FEATURES/SEO_STRATEGY/QUESTIONNAIRE/...)"),
-        .init(name: "spec-driven-build-with-claude-md", priority: .high, summary: "CLAUDE.md exhaustif (30-130k) source de vérité projet"),
-        .init(name: "programmatic-seo-local-combos", priority: .high, summary: "Pages [service]×[zone] générées (40-500 pages)"),
-        .init(name: "backoffice-custom-cms-crm-rbac", priority: .high, summary: "Admin custom + CommandPalette + MediaPicker + 2FA"),
-        .init(name: "nextjs-stack-baseline-2026", priority: .medium, summary: "Stack opinionated Next.js 15 + TS + Tailwind v4 + Supabase/Drizzle"),
-        .init(name: "monorepo-turbo-with-claude-agents", priority: .medium, summary: "Turborepo + apps/packages + AGENTS.md + .claude/"),
-        .init(name: "booking-marketplace-calcom-or-custom", priority: .medium, summary: "Cal.com embed ou booking custom + pricing engine + dispatch"),
-        .init(name: "ai-pipeline-orchestrator", priority: .medium, summary: "Pipeline AI multi-étapes (Sentinel→Harvester→Clipper→Analyzer)"),
-        .init(name: "viral-content-pipeline-long-to-short", priority: .low, summary: "Long-form → 9:16 clips + virality scoring + karaoke subs"),
-        .init(name: "configurateur-3d-r3f-product", priority: .low, summary: "R3F + Three.js + glb + matériaux PBR + snapshot devis"),
-    ]
 
-    public enum Priority: String, Sendable {
-        case high, medium, low
+    /// v1.1 — délégué au SkillRegistry. Liste filtrée par enabled state.
+    @MainActor
+    public static var availableSkills: [SkillRegistryAdapter] {
+        SkillRegistry.shared.enabledFactorySkills.map { entry in
+            SkillRegistryAdapter(name: entry.name, priorityRaw: entry.priority.rawValue, summary: entry.summary)
+        }
     }
 
-    public struct SkillDescriptor: Sendable, Identifiable, Hashable {
+    /// Adapter Sendable pour traverser isolation (SkillEntry est MainActor-bound via SkillRegistry).
+    public struct SkillRegistryAdapter: Sendable, Identifiable, Hashable {
         public var id: String { name }
         public let name: String
-        public let priority: Priority
+        public let priorityRaw: String
         public let summary: String
     }
 
