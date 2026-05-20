@@ -253,6 +253,22 @@ public actor Conductor {
         UserDefaults.standard.set(model.rawValue, forKey: modelKey)
     }
 
+    // MARK: — v1.61 maxTokens picker
+
+    private static let maxTokensKey = "iris.conductor.maxTokens"
+    private static let defaultMaxTokens = 2048
+
+    /// Plafond tokens output Conductor. Persist UserDefaults. Default 2048.
+    public static var currentMaxTokens: Int {
+        let raw = UserDefaults.standard.integer(forKey: maxTokensKey)
+        return raw > 0 ? raw : defaultMaxTokens
+    }
+
+    public static func setMaxTokens(_ value: Int) {
+        let bounded = max(512, min(8192, value))
+        UserDefaults.standard.set(bounded, forKey: maxTokensKey)
+    }
+
     private func respondWithClaude(_ text: String, eventId: UUID) async {
         // v1.6 — retrieve top-3 mémoires pertinentes via Scribe avant l'appel LLM
         let memoriesContext = await retrieveMemoryContext(query: text, topK: 3)
@@ -279,7 +295,7 @@ public actor Conductor {
             model: currentModel,
             system: enrichedSystemPrompt,
             messages: history,  // v1.19 : envoie tout l'history (alternance user/assistant)
-            maxTokens: 2048,
+            maxTokens: Self.currentMaxTokens,  // v1.61 — user-configurable
             cacheSystem: true,
             onUsage: { usage in
                 let cost = usage.estimatedCostUSD(model: currentModel)
