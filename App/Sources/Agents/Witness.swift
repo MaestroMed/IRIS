@@ -1,6 +1,9 @@
 import Foundation
 import AppKit
 import SwiftData
+import CoreGraphics
+import ImageIO  // v1.108 — PNG encoding via CGImageDestination
+import ScreenCaptureKit  // v1.108 — replaces CGWindowListCreateImage (deprecated macOS 14+)
 
 /// Witness v1.5.A — observe l'app frontmost de Mehdi via NSWorkspace.
 /// Pas de screenshot vision encore (v1.6+ avec Gemini Flash-Lite + Screen Recording permission).
@@ -65,6 +68,68 @@ public actor Witness {
         lastFrontmostBundleId = nil  // reset debounce
         lastFrontmostAt = .distantPast
         await captureFrontmost()
+    }
+
+    // MARK: — v1.108 Screenshot capture (frontmost window only)
+
+    /// Capture la frontmost window de l'app focus en PNG. Requiert Screen Recording TCC permission.
+    /// Retourne nil si pas de window OU si TCC denied (CGWindowListCreateImage retourne nil).
+    /// Note : privacy-conscious — capture seulement la window focus, pas l'écran entier.
+    public func captureFrontmostWindowPNG() async -> Data? {
+        return await Self.fetchFrontmostWindowPNG()
+    }
+
+    /// Capture frontmost window via ScreenCaptureKit (macOS 14+).
+    /// SCShareableContent.current throws si TCC denied — on catch et retourne nil.
+    private static func fetchFrontmostWindowPNG() async -> Data? {
+        let pid: pid_t = await MainActor.run { NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0 }
+        guard pid != 0 else { return nil }
+
+        // List windows shareable (throws si user a denié Screen Recording)
+        let content: SCShareableContent
+        do {
+            content = try await SCShareableContent.current
+        } catch {
+            irisLog(.warning, "Witness vision : SCShareableContent denied — \(error.localizedDescription)",
+                    category: IRISLogger.agents)
+            return nil
+        }
+
+        // Cherche la première window owned by frontmost app (skip background / off-screen)
+        let target = content.windows.first { window in
+            guard let app = window.owningApplication else { return false }
+            return app.processID == pid && window.isOnScreen && window.windowLayer == 0
+        }
+        guard let targetWindow = target else { return nil }
+
+        // Config capture : dimensions natives, format BGRA (le défaut SCKit)
+        let config = SCStreamConfiguration()
+        config.width = Int(targetWindow.frame.width)
+        config.height = Int(targetWindow.frame.height)
+        config.showsCursor = false  // pas besoin du curseur
+
+        let filter = SCContentFilter(desktopIndependentWindow: targetWindow)
+
+        let cgImage: CGImage
+        do {
+            cgImage = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
+        } catch {
+            irisLog(.warning, "Witness vision : captureImage failed — \(error.localizedDescription)",
+                    category: IRISLogger.agents)
+            return nil
+        }
+
+        // Encode en PNG via ImageIO
+        let mutableData = NSMutableData()
+        guard let dest = CGImageDestinationCreateWithData(
+            mutableData,
+            "public.png" as CFString,
+            1,
+            nil
+        ) else { return nil }
+        CGImageDestinationAddImage(dest, cgImage, nil)
+        guard CGImageDestinationFinalize(dest) else { return nil }
+        return mutableData as Data
     }
 
     // MARK: — v1.58 Blocklist (apps sensibles : Mail, Slack, 1Password, etc.)
