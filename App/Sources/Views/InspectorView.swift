@@ -12,6 +12,12 @@ struct InspectorView: View {
     @Query(sort: \Signal.emittedAt, order: .reverse) private var allSignals: [Signal]
     @Query(sort: \ProjectRecord.lastPushAt, order: .reverse) private var allProjects: [ProjectRecord]
     @Query(sort: \AuditReport.createdAt, order: .reverse) private var allAudits: [AuditReport]
+    // v1.32 — derniers briefings Advisor depuis EventLog (kind=agentResponse, fromAgent=advisor)
+    @Query(
+        filter: #Predicate<EventLog> { $0.kind == "agentResponse" && $0.fromAgent == "advisor" },
+        sort: \EventLog.timestamp,
+        order: .reverse
+    ) private var advisorBriefings: [EventLog]
 
     @State private var scaffoldProjectName: String = ""
     @State private var scaffoldSelectedSkill: String = "doc-first-project-scaffolding"
@@ -323,30 +329,72 @@ struct InspectorView: View {
     // MARK: — Advisor
 
     private var advisorSection: some View {
-        VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
-            sectionHeader("Advisor", count: 0, accent: IRISTokens.irisAccent)
+        let recent = Array(advisorBriefings.prefix(3))
+        let opusCost = appState.costByModel["claude-opus-4-7"] ?? 0
+        return VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
+            sectionHeader("Advisor", count: recent.count, accent: IRISTokens.irisAccent)
 
-            Button {
-                Task { await Advisor.shared.runBriefing(kind: .manual) }
-            } label: {
-                Label("Brief now (manuel)", systemImage: "sunrise")
-                    .font(.system(size: 11))
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
-            .tint(IRISTokens.irisAccent)
+            HStack(spacing: IRISTokens.spacing8) {
+                Button {
+                    Task { await Advisor.shared.runBriefing(kind: .manual) }
+                } label: {
+                    Label("Brief now", systemImage: "sunrise")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .tint(IRISTokens.irisAccent)
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Briefing scheduled : 8h00 chaque matin")
-                    .font(.system(size: 11))
+                Spacer()
+
+                Text("Opus session: $\(String(format: "%.4f", opusCost))")
+                    .font(.system(size: 9, design: .monospaced))
                     .foregroundStyle(.secondary)
-                Text("Le briefing apparaîtra dans le transcript Conductor + Logs panel.")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(.top, IRISTokens.spacing4)
+
+            Text("Briefing scheduled : 8h00 chaque matin")
+                .font(.system(size: 10)).foregroundStyle(.secondary)
+
+            // v1.32 — derniers briefings
+            if !recent.isEmpty {
+                Divider().padding(.vertical, 2)
+                Text("DERNIERS BRIEFINGS")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                ForEach(recent) { event in
+                    advisorBriefingRow(event)
+                }
+            }
         }
+    }
+
+    private func advisorBriefingRow(_ event: EventLog) -> some View {
+        // Extract preview de content depuis payloadJSON
+        let preview = extractContent(event.payloadJSON).prefix(120)
+        return VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Image(systemName: "sunrise.fill")
+                    .font(.system(size: 9))
+                    .foregroundStyle(IRISTokens.goldAccent)
+                Text(event.timestamp, format: .dateTime.day().month().hour().minute())
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+            Text(String(preview))
+                .font(.system(size: 10))
+                .foregroundStyle(.primary.opacity(0.8))
+                .lineLimit(3)
+        }
+        .padding(.vertical, 3)
+        .padding(.horizontal, 6)
+        .background(RoundedRectangle(cornerRadius: 6).fill(.thinMaterial))
+    }
+
+    private func extractContent(_ payloadJSON: String) -> String {
+        guard let data = payloadJSON.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let content = json["content"] as? String else { return "(no content)" }
+        return content
     }
 
     // MARK: — Simple agent (Conductor / Sentinel / Scribe / Quill / Envoy / Witness)
@@ -496,6 +544,11 @@ struct InspectorView: View {
                             .font(.system(size: 9, design: .monospaced)).foregroundStyle(IRISTokens.irisAccent)
                     }
                     Spacer()
+                    if signal.acknowledged {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 8))
+                            .foregroundStyle(.secondary)
+                    }
                     Text(signal.emittedAt, format: .dateTime.hour().minute().second())
                         .font(.system(size: 9, design: .monospaced)).foregroundStyle(.secondary)
                 }
@@ -504,6 +557,14 @@ struct InspectorView: View {
             }
         }
         .padding(.vertical, 4)
+        .opacity(signal.acknowledged ? 0.5 : 1.0)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            // v1.33 — toggle acknowledged state
+            signal.acknowledged.toggle()
+            try? modelContext.save()
+        }
+        .help(signal.acknowledged ? "Click pour un-acknowledge" : "Click pour acknowledge")
     }
 
     // MARK: — Helpers visuels
