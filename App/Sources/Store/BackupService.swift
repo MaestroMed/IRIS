@@ -417,6 +417,89 @@ public enum BackupService {
         return url
     }
 
+    // MARK: — v1.69 Cost report export
+
+    /// Génère un report Markdown des coûts (audits + drafts persistés + session in-memory).
+    /// `sessionCostByModel` accepte le snapshot live de AppState.costByModel.
+    @MainActor
+    public static func exportCostReport(
+        container: ModelContainer,
+        sessionCostByModel: [String: Double],
+        to dir: URL? = nil
+    ) throws -> URL {
+        let isoFormatter = ISO8601DateFormatter()
+        let now = Date()
+        let context = container.mainContext
+
+        let audits = (try? context.fetch(FetchDescriptor<AuditReport>())) ?? []
+        let drafts = (try? context.fetch(FetchDescriptor<Draft>())) ?? []
+
+        // Aggregation par modèle
+        var auditByModel: [String: (count: Int, cost: Double)] = [:]
+        for a in audits {
+            auditByModel[a.modelUsed, default: (0, 0)].count += 1
+            auditByModel[a.modelUsed, default: (0, 0)].cost += a.costUSD
+        }
+        var draftByModel: [String: (count: Int, cost: Double)] = [:]
+        for d in drafts {
+            draftByModel[d.modelUsed, default: (0, 0)].count += 1
+            draftByModel[d.modelUsed, default: (0, 0)].cost += d.costUSD
+        }
+
+        let auditsTotal = audits.reduce(0.0) { $0 + $1.costUSD }
+        let draftsTotal = drafts.reduce(0.0) { $0 + $1.costUSD }
+        let sessionTotal = sessionCostByModel.values.reduce(0, +)
+        let grandTotal = auditsTotal + draftsTotal + sessionTotal
+
+        var md = "# IRIS Cost Report — \(isoFormatter.string(from: now))\n\n"
+        md += "Synthèse des coûts Anthropic API (audits + drafts persistés + session in-memory).\n\n"
+        md += "**Grand total (historique + session)** : `$\(String(format: "%.4f", grandTotal))`\n\n"
+
+        md += "## 1. Audits historiques (\(audits.count))\n\n"
+        md += "Total : `$\(String(format: "%.4f", auditsTotal))`\n\n"
+        if auditByModel.isEmpty {
+            md += "_Aucun audit persisté._\n\n"
+        } else {
+            md += "| Modèle | Count | Total $ |\n|---|---|---|\n"
+            for (model, agg) in auditByModel.sorted(by: { $0.value.cost > $1.value.cost }) {
+                md += "| `\(model)` | \(agg.count) | $\(String(format: "%.4f", agg.cost)) |\n"
+            }
+            md += "\n"
+        }
+
+        md += "## 2. Drafts historiques (\(drafts.count))\n\n"
+        md += "Total : `$\(String(format: "%.4f", draftsTotal))`\n\n"
+        if draftByModel.isEmpty {
+            md += "_Aucun draft persisté._\n\n"
+        } else {
+            md += "| Modèle | Count | Total $ |\n|---|---|---|\n"
+            for (model, agg) in draftByModel.sorted(by: { $0.value.cost > $1.value.cost }) {
+                md += "| `\(model)` | \(agg.count) | $\(String(format: "%.4f", agg.cost)) |\n"
+            }
+            md += "\n"
+        }
+
+        md += "## 3. Session en cours (in-memory, perd au relaunch)\n\n"
+        md += "Total : `$\(String(format: "%.4f", sessionTotal))`\n\n"
+        if sessionCostByModel.isEmpty {
+            md += "_Aucun coût session._\n\n"
+        } else {
+            md += "| Modèle | Total $ |\n|---|---|\n"
+            for (model, cost) in sessionCostByModel.sorted(by: { $0.value > $1.value }) {
+                md += "| `\(model)` | $\(String(format: "%.4f", cost)) |\n"
+            }
+            md += "\n"
+        }
+
+        md += "---\n\n*Exported by IRIS v\(backupVersion) at \(isoFormatter.string(from: now))*\n"
+
+        let dateStr = isoFormatter.string(from: now).replacingOccurrences(of: ":", with: "-")
+        let targetDir = dir ?? URL(fileURLWithPath: NSHomeDirectory())
+        let url = targetDir.appendingPathComponent("iris-cost-report-\(dateStr).md")
+        try md.write(to: url, atomically: true, encoding: .utf8)
+        return url
+    }
+
     // MARK: — v1.59 EventLog cleanup (purge old records)
 
     /// Supprime tous les EventLog dont timestamp < (now - days). Retourne le nombre supprimé.

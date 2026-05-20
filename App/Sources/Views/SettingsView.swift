@@ -1033,6 +1033,15 @@ struct SettingsView: View {
                 .controlSize(.small)
                 .help("Export human-readable Markdown (memories + audits + projects + signaux 24h)")
 
+                // v1.69 — Cost report export
+                Button(action: exportCostReport) {
+                    Label("Cost report", systemImage: "dollarsign.square")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("Export Markdown des coûts (audits + drafts historiques + session)")
+
                 Spacer()
             }
 
@@ -1139,6 +1148,20 @@ struct SettingsView: View {
             backupStatus = "✅ Markdown exporté vers \(url.path) (\(humanByteSize(at: url)))"
         } catch {
             backupStatus = "⚠️ Export MD échoué : \(error.localizedDescription)"
+        }
+    }
+
+    // v1.69 — Cost report export
+    private func exportCostReport() {
+        do {
+            let container = modelContext.container
+            let url = try BackupService.exportCostReport(
+                container: container,
+                sessionCostByModel: appState.costByModel
+            )
+            backupStatus = "💵 Cost report : \(url.path) (\(humanByteSize(at: url)))"
+        } catch {
+            backupStatus = "⚠️ Cost report échoué : \(error.localizedDescription)"
         }
     }
 
