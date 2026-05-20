@@ -15,6 +15,7 @@ struct InspectorView: View {
     @Query(sort: \ProjectRecord.lastPushAt, order: .reverse) private var allProjects: [ProjectRecord]
     @Query(sort: \AuditReport.createdAt, order: .reverse) private var allAudits: [AuditReport]
     @Query(sort: \ActionLog.executedAt, order: .reverse) private var allActionLogs: [ActionLog]  // v1.97
+    @Query private var allMemoriesForScribe: [Memory]  // v1.105
     // v1.32 — derniers briefings Advisor depuis EventLog (kind=agentResponse, fromAgent=advisor)
     @Query(
         filter: #Predicate<EventLog> { $0.kind == "agentResponse" && $0.fromAgent == "advisor" },
@@ -190,8 +191,132 @@ struct InspectorView: View {
             conductorSection  // v1.38
         case .quill:
             quillSection  // v1.101
+        case .envoy:
+            envoySection  // v1.104
+        case .scribe:
+            scribeSection  // v1.105
         default:
             simpleAgentSection(id)
+        }
+    }
+
+    // v1.104 — Envoy dedicated section : pending actions + executed history
+    private var envoySection: some View {
+        let envoyActions = allActionLogs.filter { $0.agentId == AgentID.envoy.rawValue }
+        let total = envoyActions.count
+        let successful = envoyActions.filter { $0.success }.count
+        let approved = envoyActions.filter { $0.executedByUserApproval }.count
+        return VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
+            sectionHeader("Envoy", count: total, accent: IRISTokens.irisAccent, pinnable: .envoy)
+
+            HStack(spacing: 4) {
+                Image(systemName: AgentID.envoy.descriptor.symbol)
+                    .foregroundStyle(IRISTokens.irisAccent)
+                Text(AgentID.envoy.descriptor.alias)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("\(appState.pendingActions.count) pending")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(appState.pendingActions.isEmpty ? .secondary : IRISTokens.goldAccent)
+            }
+
+            Text("Listen draftReady → propose actionRequested → wait approval → execute.")
+                .font(.system(size: 10))
+                .foregroundStyle(.primary.opacity(0.8))
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 4) {
+                statPill(label: "exec", value: "\(total)", color: .secondary)
+                statPill(label: "ok", value: "\(successful)", color: .green)
+                statPill(label: "approved", value: "\(approved)", color: IRISTokens.aquaTint)
+            }
+
+            if !envoyActions.isEmpty {
+                Divider().padding(.vertical, 2)
+                Text("HISTORIQUE EXÉCUTIONS")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                ForEach(Array(envoyActions.prefix(8))) { action in
+                    envoyActionRow(action)
+                }
+            }
+        }
+    }
+
+    private func envoyActionRow(_ action: ActionLog) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: action.success ? "checkmark.circle.fill" : "xmark.circle.fill")
+                .font(.system(size: 10))
+                .foregroundStyle(action.success ? .green : .red)
+            Text(action.actionType)
+                .font(.system(size: 11, weight: .medium))
+            Spacer()
+            if action.reversible {
+                Image(systemName: "arrow.uturn.left.circle")
+                    .font(.system(size: 9))
+                    .foregroundStyle(IRISTokens.aquaTint)
+                    .help("Réversible")
+            }
+            Text(action.executedAt, format: .dateTime.day().month(.abbreviated).hour().minute())
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 3).padding(.horizontal, 6)
+        .background(RoundedRectangle(cornerRadius: 4).fill(.thinMaterial))
+    }
+
+    // v1.105 — Scribe dedicated section : memory breakdown by type + latest stored
+    private var scribeSection: some View {
+        let types = Dictionary(grouping: allMemoriesForScribe, by: \.type)
+            .map { ($0.key, $0.value.count) }
+            .sorted { $0.1 > $1.1 }
+        let totalMemories = allMemoriesForScribe.count
+        return VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
+            sectionHeader("Scribe", count: totalMemories, accent: IRISTokens.irisAccent, pinnable: .scribe)
+
+            HStack(spacing: 4) {
+                Image(systemName: AgentID.scribe.descriptor.symbol)
+                    .foregroundStyle(IRISTokens.irisAccent)
+                Text(AgentID.scribe.descriptor.alias)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button {
+                    appState.selection = .system(.memory)
+                } label: {
+                    Image(systemName: "books.vertical")
+                        .font(.system(size: 10))
+                        .foregroundStyle(IRISTokens.aquaTint)
+                }
+                .buttonStyle(.plain)
+                .help("Ouvrir System > Memory pour browse + retrieval")
+            }
+
+            Text("NLEmbedding semantic retrieval. Auto-store conversations Conductor, manual via UI.")
+                .font(.system(size: 10))
+                .foregroundStyle(.primary.opacity(0.8))
+                .fixedSize(horizontal: false, vertical: true)
+
+            if !types.isEmpty {
+                Divider().padding(.vertical, 2)
+                Text("BREAKDOWN PAR TYPE")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                ForEach(types.prefix(6), id: \.0) { item in
+                    HStack {
+                        Text(item.0)
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        Text("\(item.1)")
+                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 2).padding(.horizontal, 6)
+                    .background(RoundedRectangle(cornerRadius: 4).fill(.thinMaterial))
+                }
+            }
         }
     }
 

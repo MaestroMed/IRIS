@@ -233,6 +233,7 @@ struct SettingsView: View {
     @State private var costLimitUSD: Double = 1.0          // v1.72
     @State private var auditorMonthlyAuto: Bool = false    // v1.93
     @State private var advisorHour: Int = 8                // v1.103
+    @State private var conductorHistoryPairs: Double = 10  // v1.106
 
     private var modelsRoutingSection: some View {
         VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
@@ -382,6 +383,22 @@ struct SettingsView: View {
             }
             .padding(.leading, IRISTokens.spacing16)
 
+            // v1.106 — Conductor history depth slider
+            HStack {
+                Text("Conductor history depth (paires)")
+                    .font(.system(size: 11))
+                Slider(value: $conductorHistoryPairs, in: 2...30, step: 1)
+                    .frame(maxWidth: 200)
+                Text("\(Int(conductorHistoryPairs))")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 60, alignment: .trailing)
+                    .onChange(of: conductorHistoryPairs) { _, newValue in
+                        Conductor.setMaxHistoryPairs(Int(newValue))
+                    }
+            }
+            .padding(.leading, IRISTokens.spacing16)
+
             // v1.72 — Cost limit slider (notif macOS si dépassé)
             HStack {
                 Text("Session cost limit (alerte)")
@@ -414,6 +431,7 @@ struct SettingsView: View {
             quillModelSelection = Quill.currentModel.rawValue
             advisorModelSelection = Advisor.currentModel.rawValue
             conductorMaxTokens = Double(Conductor.currentMaxTokens)  // v1.61
+            conductorHistoryPairs = Double(Conductor.currentMaxHistoryPairs)  // v1.106
             costLimitUSD = IRISAppState.costLimitUSD                     // v1.72
             auditorMonthlyAuto = Auditor.monthlyAutoEnabled              // v1.93
             advisorHour = Advisor.scheduledHour                          // v1.103

@@ -22,9 +22,23 @@ public actor Conductor {
     private var currentResponseTask: Task<Void, Never>?
 
     /// v1.19 — history derniers échanges (alternance user/assistant) pour multi-turn dialog.
-    /// Max 10 paires = 20 messages pour éviter explosion context.
+    /// v1.106 — Max paires configurable via Settings (default 10).
     private var conversationHistory: [Message] = []
-    private let maxHistoryPairs = 10
+    private var maxHistoryPairs: Int { Self.currentMaxHistoryPairs }
+
+    private static let maxHistoryPairsKey = "iris.conductor.maxHistoryPairs"
+    private static let defaultMaxHistoryPairs = 10
+
+    /// Max paires user/assistant gardées en history pour multi-turn.
+    public static var currentMaxHistoryPairs: Int {
+        let raw = UserDefaults.standard.integer(forKey: maxHistoryPairsKey)
+        return raw > 0 ? raw : defaultMaxHistoryPairs
+    }
+
+    public static func setMaxHistoryPairs(_ value: Int) {
+        let bounded = max(2, min(30, value))
+        UserDefaults.standard.set(bounded, forKey: maxHistoryPairsKey)
+    }
 
     private init() {}
 
