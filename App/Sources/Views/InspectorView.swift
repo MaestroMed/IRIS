@@ -25,6 +25,8 @@ struct InspectorView: View {
     @State private var scaffoldSelectedSkill: String = "doc-first-project-scaffolding"
     @State private var auditPickedProject: String = ""
     @State private var expandedAuditIds: Set<UUID> = []  // v1.62
+    @State private var editingDraftId: UUID? = nil       // v1.63
+    @State private var draftEditBuffer: String = ""
 
     var body: some View {
         ScrollView {
@@ -667,13 +669,32 @@ struct InspectorView: View {
     }
 
     private func draftRow(_ draft: Draft) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+        let isEditing = editingDraftId == draft.id
+        return VStack(alignment: .leading, spacing: 2) {
             HStack {
                 Image(systemName: channelIcon(draft.channel))
                     .font(.system(size: 11)).foregroundStyle(IRISTokens.irisAccent)
                 Text(draft.subject ?? String(draft.content.prefix(50)))
                     .font(.system(size: 12, weight: .medium)).lineLimit(1)
                 Spacer()
+                // v1.63 — Edit inline
+                Button {
+                    if isEditing {
+                        // Save
+                        draft.content = draftEditBuffer
+                        try? modelContext.save()
+                        editingDraftId = nil
+                    } else {
+                        draftEditBuffer = draft.content
+                        editingDraftId = draft.id
+                    }
+                } label: {
+                    Image(systemName: isEditing ? "checkmark.circle" : "pencil")
+                        .font(.system(size: 10))
+                        .foregroundStyle(isEditing ? .green : .secondary)
+                }
+                .buttonStyle(.plain)
+                .help(isEditing ? "Sauvegarder modifs" : "Éditer le contenu")
                 // v1.34 — Copy to clipboard
                 Button {
                     let pasteboard = NSPasteboard.general
@@ -704,8 +725,30 @@ struct InspectorView: View {
                     .buttonStyle(.plain)
                     .help("Ouvrir dans Mail.app (mailto:)")
                 }
+                // v1.63 — Delete
+                Button {
+                    if editingDraftId == draft.id { editingDraftId = nil }
+                    modelContext.delete(draft)
+                    try? modelContext.save()
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.red.opacity(0.7))
+                }
+                .buttonStyle(.plain)
+                .help("Supprimer ce draft")
                 statusBadge(draft.status)
             }
+
+            // v1.63 — Inline editor
+            if isEditing {
+                TextEditor(text: $draftEditBuffer)
+                    .font(.system(size: 11, design: .monospaced))
+                    .frame(minHeight: 80, maxHeight: 200)
+                    .background(RoundedRectangle(cornerRadius: 4).fill(Color.black.opacity(0.05)))
+                    .padding(.top, 2)
+            }
+
             HStack(spacing: IRISTokens.spacing8) {
                 Text(draft.tone).font(.system(size: 9, design: .monospaced)).foregroundStyle(.secondary)
                 Text(draft.createdAt, format: .dateTime.hour().minute().second())
