@@ -182,6 +182,7 @@ public enum SidebarSection: String, CaseIterable, Hashable, Identifiable, Sendab
 public enum SystemDestination: String, CaseIterable, Hashable, Identifiable, Sendable {
     case logs
     case stats
+    case memory  // v1.56 — browse Memory records + ad-hoc retrieval
 
     public var id: String { rawValue }
 
@@ -189,6 +190,7 @@ public enum SystemDestination: String, CaseIterable, Hashable, Identifiable, Sen
         switch self {
         case .logs: return "Logs"
         case .stats: return "Stats"
+        case .memory: return "Memory"
         }
     }
 
@@ -196,6 +198,7 @@ public enum SystemDestination: String, CaseIterable, Hashable, Identifiable, Sen
         switch self {
         case .logs: return "list.bullet.rectangle"
         case .stats: return "chart.bar.fill"
+        case .memory: return "books.vertical"
         }
     }
 }

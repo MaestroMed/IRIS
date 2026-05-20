@@ -329,6 +329,9 @@ struct MainCanvasView: View {
         case .stats:
             // v1.36 — stats Bus events par kind sur 3 fenêtres temporelles
             BusStatsView()
+        case .memory:
+            // v1.56 — browse Memory + ad-hoc retrieval Scribe
+            MemoryBrowserView()
         }
     }
 }
