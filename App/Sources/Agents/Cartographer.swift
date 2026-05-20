@@ -34,18 +34,27 @@ public actor Cartographer {
     }
 
     public func refresh() async {
-        irisLog(.info, "Cartographer refresh start", category: IRISLogger.agents)
+        await refresh(localOnly: false)
+    }
+
+    /// v1.94 — Refresh complet ou local-only (skip gh repo list, plus rapide).
+    public func refresh(localOnly: Bool) async {
+        irisLog(.info, "Cartographer refresh start (localOnly=\(localOnly))", category: IRISLogger.agents)
 
         let localProjects = scanLocalProjects()
-        let githubMeta = await fetchGitHubMetadata()
+        let githubMeta: [String: GitHubProject] = localOnly ? [:] : await fetchGitHubMetadata()
 
         await persist(local: localProjects, github: githubMeta)
+
+        let summary = localOnly
+            ? "Carte projets rafraîchie (local-only) : \(localProjects.count) locaux"
+            : "Carte projets rafraîchie : \(localProjects.count) locaux, \(githubMeta.count) GitHub"
 
         await EventBus.shared.publish(
             .signalEmitted(
                 from: .cartographer,
                 importance: .low,
-                summary: "Carte projets rafraîchie : \(localProjects.count) locaux, \(githubMeta.count) GitHub",
+                summary: summary,
                 source: "cartographer"
             )
         )

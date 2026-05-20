@@ -231,6 +231,7 @@ struct SettingsView: View {
     @State private var advisorModelSelection: String = ""
     @State private var conductorMaxTokens: Double = 2048  // v1.61
     @State private var costLimitUSD: Double = 1.0          // v1.72
+    @State private var auditorMonthlyAuto: Bool = false    // v1.93
 
     private var modelsRoutingSection: some View {
         VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
@@ -320,6 +321,30 @@ struct SettingsView: View {
             }
             .padding(.leading, IRISTokens.spacing16)
 
+            // v1.93 — Auditor monthly auto-audit toggle
+            HStack {
+                Toggle(isOn: $auditorMonthlyAuto) {
+                    Text("Auditor monthly auto-audit (active projects)")
+                        .font(.system(size: 11))
+                }
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .onChange(of: auditorMonthlyAuto) { _, newValue in
+                    Auditor.setMonthlyAutoEnabled(newValue)
+                }
+                Spacer()
+                if let last = Auditor.monthlyLastAt {
+                    Text("dernier : \(RelativeDateTimeFormatter().localizedString(for: last, relativeTo: .now))")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("jamais")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.leading, IRISTokens.spacing16)
+
             // v1.61 — Conductor maxTokens slider
             HStack {
                 Text("Conductor max output tokens")
@@ -369,6 +394,7 @@ struct SettingsView: View {
             advisorModelSelection = Advisor.currentModel.rawValue
             conductorMaxTokens = Double(Conductor.currentMaxTokens)  // v1.61
             costLimitUSD = IRISAppState.costLimitUSD                     // v1.72
+            auditorMonthlyAuto = Auditor.monthlyAutoEnabled              // v1.93
         }
     }
 

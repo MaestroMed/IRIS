@@ -382,6 +382,17 @@ struct InspectorView: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
 
+                // v1.94 — Local-only refresh (skip GitHub poll, faster)
+                Button {
+                    Task { await Cartographer.shared.refresh(localOnly: true) }
+                } label: {
+                    Label("Local only", systemImage: "internaldrive")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("Re-scan ~/Developer seulement (skip gh repo list)")
+
                 Spacer()
 
                 if !availableStatuses.isEmpty {

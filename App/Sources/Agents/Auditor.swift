@@ -11,6 +11,7 @@ public actor Auditor {
 
     private weak var modelContainer: ModelContainer?
     private var subscriptionTask: Task<Void, Never>?
+    private var monthlyAuditTask: Task<Void, Never>?  // v1.93
     private var onCost: CostSink?
 
     private init() {}
@@ -21,12 +22,73 @@ public actor Auditor {
     ) async {
         self.modelContainer = modelContainer
         self.onCost = onCost
-        // v0.7 : audit on-demand uniquement (pas de schedule). v1.0+ : audit mensuel par projet actif.
+        // v1.93 — Démarre la boucle monthly auto-audit si activée
+        startMonthlyAuditLoopIfEnabled()
     }
 
     public func stop() {
         subscriptionTask?.cancel()
         subscriptionTask = nil
+        monthlyAuditTask?.cancel()
+        monthlyAuditTask = nil
+    }
+
+    // MARK: — v1.93 Monthly auto-audit (active projects, opt-in)
+
+    private static let monthlyEnabledKey = "iris.auditor.monthlyAutoEnabled"
+    private static let monthlyLastAtKey = "iris.auditor.monthlyLastAt"
+
+    public static var monthlyAutoEnabled: Bool {
+        UserDefaults.standard.bool(forKey: monthlyEnabledKey)
+    }
+
+    public static func setMonthlyAutoEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: monthlyEnabledKey)
+    }
+
+    public static var monthlyLastAt: Date? {
+        UserDefaults.standard.object(forKey: monthlyLastAtKey) as? Date
+    }
+
+    private func startMonthlyAuditLoopIfEnabled() {
+        guard monthlyAuditTask == nil else { return }
+        monthlyAuditTask = Task { [weak self] in
+            // Premier check 5min après start (laisse le bootstrap finir)
+            try? await Task.sleep(nanoseconds: 300 * 1_000_000_000)
+            while !Task.isCancelled {
+                await self?.runMonthlyAuditIfDue()
+                // Re-check toutes les 6h
+                try? await Task.sleep(nanoseconds: 6 * 3600 * 1_000_000_000)
+            }
+        }
+    }
+
+    private func runMonthlyAuditIfDue() async {
+        guard Self.monthlyAutoEnabled, let container = modelContainer else { return }
+        let last = Self.monthlyLastAt ?? .distantPast
+        let elapsed = Date().timeIntervalSince(last)
+        guard elapsed > 30 * 86400 else { return }  // > 30 days
+
+        // Fetch active projects
+        let codenames = await Self.fetchActiveCodenames(container: container)
+        guard !codenames.isEmpty else { return }
+
+        irisLog(.notice, "Auditor monthly auto-audit run — \(codenames.count) projects", category: IRISLogger.agents)
+        for codename in codenames {
+            await auditProject(codename: codename)
+            // Pause 30s entre audits pour respecter rate limits Anthropic
+            try? await Task.sleep(nanoseconds: 30 * 1_000_000_000)
+        }
+        UserDefaults.standard.set(Date(), forKey: Self.monthlyLastAtKey)
+    }
+
+    @MainActor
+    private static func fetchActiveCodenames(container: ModelContainer) async -> [String] {
+        let descriptor = FetchDescriptor<ProjectRecord>(
+            predicate: #Predicate { $0.status == "active" }
+        )
+        let projects = (try? container.mainContext.fetch(descriptor)) ?? []
+        return projects.map(\.codename)
     }
 
     // MARK: — v1.49 Model picker (Sonnet/Opus/Haiku)

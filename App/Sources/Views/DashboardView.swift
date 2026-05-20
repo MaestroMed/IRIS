@@ -14,6 +14,13 @@ struct DashboardView: View {
     @Query private var allProjects: [ProjectRecord]
     @Query(sort: \ActionLog.executedAt, order: .reverse) private var allActions: [ActionLog]
 
+    // v1.92 — Dernier briefing Advisor (EventLog kind=agentResponse fromAgent=advisor)
+    @Query(
+        filter: #Predicate<EventLog> { $0.kind == "agentResponse" && $0.fromAgent == "advisor" },
+        sort: \EventLog.timestamp,
+        order: .reverse
+    ) private var advisorBriefings: [EventLog]
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: IRISTokens.spacing24) {
@@ -56,12 +63,75 @@ struct DashboardView: View {
                         .help("Cliquer → Cartographer")
                 }
 
+                // v1.92 — Snippet du dernier briefing Advisor
+                if let latest = advisorBriefings.first {
+                    advisorBriefingCard(latest)
+                }
+
                 recentActivitySection
 
                 Spacer()
             }
             .padding(IRISTokens.spacing24)
         }
+    }
+
+    // v1.92 — Card snippet briefing Advisor (top markdown rendering)
+    private func advisorBriefingCard(_ event: EventLog) -> some View {
+        let content = Self.extractContent(event.payloadJSON)
+        // Take les 400 premiers chars (≈ ☀ header + 1-2 priorités)
+        let snippet = String(content.prefix(400))
+        return VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
+            HStack {
+                Image(systemName: "sunrise.fill")
+                    .foregroundStyle(IRISTokens.goldAccent)
+                Text("LATEST ADVISOR BRIEFING")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .tracking(1.4)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(event.timestamp, format: .dateTime.day().month(.abbreviated).hour().minute())
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                Button {
+                    Task { await Advisor.shared.runBriefing(kind: .manual) }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 11))
+                        .foregroundStyle(IRISTokens.goldAccent)
+                }
+                .buttonStyle(.plain)
+                .help("Re-générer le briefing (Brief now)")
+            }
+            Divider().opacity(0.3)
+            if let attr = try? AttributedString(markdown: snippet, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
+                Text(attr)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.primary.opacity(0.85))
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text(snippet)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.primary.opacity(0.85))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if content.count > 400 {
+                Text("… [+\(content.count - 400) chars · open Advisor pour briefing complet]")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(IRISTokens.spacing16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusMedium).fill(.regularMaterial))
+        .overlay(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusMedium).strokeBorder(IRISTokens.goldAccent.opacity(0.2), lineWidth: 0.5))
+    }
+
+    private static func extractContent(_ payloadJSON: String) -> String {
+        guard let data = payloadJSON.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let content = json["content"] as? String else { return "(no content)" }
+        return content
     }
 
     // MARK: — Header
