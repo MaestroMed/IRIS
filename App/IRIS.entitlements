@@ -2,17 +2,15 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- v0.6 — sandbox désactivé pour dev rapide. Cartographer scan ~/Developer/* sans NSOpenPanel friction.
+	     v1.0 hardening : re-activer sandbox + NSOpenPanel one-shot pour ~/Developer access. -->
 	<key>com.apple.security.app-sandbox</key>
-	<true/>
-	<key>com.apple.security.files.user-selected.read-write</key>
-	<true/>
+	<false/>
 	<key>com.apple.security.network.client</key>
 	<true/>
-	<!-- v0.0.1 — entitlements minimaux. Sandbox actif + accès fichiers user-selected + réseau client. -->
-	<!-- À ajouter aux phases suivantes : -->
-	<!-- v0.3 (MCP spawn) : com.apple.security.cs.allow-unsigned-executable-memory si JIT requis -->
-	<!-- v0.4 (SwiftData CloudKit) : com.apple.developer.icloud-container-identifiers + com.apple.developer.icloud-services -->
-	<!-- v1.5 (Witness screen) : NSScreenCaptureUsageDescription via Info.plist -->
-	<!-- v1.7 (Witness webcam) : com.apple.security.device.camera + NSCameraUsageDescription -->
+	<!-- v0.6 (Cartographer Process spawn `gh` CLI) : besoin de permettre l'exécution de binaires externes.
+	     Sans sandbox, c'est implicite. Avec sandbox, il faudra com.apple.security.inherit + signed gh binary. -->
+	<key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+	<true/>
 </dict>
 </plist>

@@ -81,7 +81,14 @@ struct IRISApp: App {
         // 6. Sentinel démarre — stub signaux fictifs toutes les 60s (v0.3.5+ : vrai MCP Gmail)
         await Sentinel.shared.start(modelContainer: modelContainer, intervalSeconds: 60)
 
-        irisLog(.info, "IRIS bootstrapped — Conductor + Quill + Envoy + Sentinel live", category: IRISLogger.ui)
+        // 7. Cartographer démarre — scan ~/Developer + gh repo list MaestroMed (refresh 6h)
+        await Cartographer.shared.start(modelContainer: modelContainer)
+
+        // 8. Auditor démarre — on-demand audit via UI (v0.7 mock)
+        await Auditor.shared.start(modelContainer: modelContainer)
+
+        irisLog(.info, "IRIS bootstrapped — Conductor + Quill + Envoy + Sentinel + Cartographer + Auditor live",
+                category: IRISLogger.ui)
     }
 }
 
