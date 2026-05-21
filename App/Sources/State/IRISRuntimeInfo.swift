@@ -4,10 +4,11 @@ import Foundation
 /// Affiché dans Settings (info section).
 public enum IRISRuntimeInfo {
     /// Version IRIS courante (mise à jour manuellement à chaque release majeure).
-    /// v1.125 — Phase A (Witness Vision) + Phase B (MCP real) + Phase C (Auditor
-    /// real reads project files + recursive src scan + fingerprint cache) closed.
-    /// IRIS lit, écoute, regarde — exocortex complet sur les 3 axes data.
-    public static let appVersion = "1.125"
+    /// v1.129 — Phase A (Witness Vision) + B (MCP real) + C (Auditor real) + D
+    /// (Builder real scaffold : reads SKILL.md, hydrates CLAUDE.md, stack-specific
+    /// .gitignore, git init + initial commit). Exocortex complet 4 axes :
+    /// regarde / écoute / lit / écrit.
+    public static let appVersion = "1.129"
 
     /// Timestamp du bootstrap IRIS (set par IRISApp.bootstrap au launch).
     public nonisolated(unsafe) static var bootstrapAt: Date?

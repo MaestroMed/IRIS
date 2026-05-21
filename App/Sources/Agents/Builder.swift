@@ -220,23 +220,29 @@ public actor Builder {
             }
         }
 
-        // 4. git init (Process)
-        let gitInit = Process()
-        gitInit.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        gitInit.arguments = ["git", "init"]
-        gitInit.currentDirectoryURL = url
-        gitInit.standardOutput = Pipe()
-        gitInit.standardError = Pipe()
+        // 4. git init + initial commit (Process)
+        Self.runGitCommand(args: ["init"], in: url)
+        Self.runGitCommand(args: ["add", "."], in: url)
+        Self.runGitCommand(args: ["commit", "-m", "Initial scaffold via IRIS Builder (\(skill))"], in: url)
+
+        return ScaffoldResult(success: true, filesCreated: filesCreated, message: "real scaffold OK — \(skill) hydrated into CLAUDE.md + initial commit")
+    }
+
+    /// v1.129 — Helper git command non-bloquant (log warning si fail).
+    nonisolated private static func runGitCommand(args: [String], in dir: URL) {
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        proc.arguments = ["git"] + args
+        proc.currentDirectoryURL = dir
+        proc.standardOutput = Pipe()
+        proc.standardError = Pipe()
         do {
-            try gitInit.run()
-            gitInit.waitUntilExit()
+            try proc.run()
+            proc.waitUntilExit()
         } catch {
-            // Pas bloquant : si git absent, on continue mais log
-            irisLog(.warning, "Builder git init failed (non-fatal): \(error.localizedDescription)",
+            irisLog(.warning, "Builder git \(args.joined(separator: " ")) failed (non-fatal): \(error.localizedDescription)",
                     category: IRISLogger.agents)
         }
-
-        return ScaffoldResult(success: true, filesCreated: filesCreated, message: "real scaffold OK — \(skill) hydrated into CLAUDE.md")
     }
 
     // MARK: — Mock scaffold filesystem
