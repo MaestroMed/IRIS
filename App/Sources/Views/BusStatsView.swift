@@ -11,6 +11,7 @@ import AppKit
 /// v1.193 — Stats footer (total + avg/h + earliest event date).
 /// v1.202 — Past hour delta % vs previous hour badge (arrow up/down).
 /// v1.207 — Today vs yesterday comparison card (counts + delta %).
+/// v1.214 — Top 3 busiest hours past 24h card with mini bars.
 
 struct BusStatsView: View {
     @Query(sort: \EventLog.timestamp, order: .reverse) private var allEvents: [EventLog]
@@ -137,6 +138,55 @@ struct BusStatsView: View {
         .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
     }
 
+    private var topBusiestHours: [(hour: Int, count: Int)] {
+        let _ = refreshTick
+        let cutoff = Date().addingTimeInterval(-86400)
+        let recent = allEvents.filter { $0.timestamp >= cutoff }
+        let groups = Dictionary(grouping: recent, by: { Calendar.current.component(.hour, from: $0.timestamp) })
+            .mapValues { $0.count }
+        return groups
+            .sorted { $0.value > $1.value }
+            .prefix(3)
+            .map { (hour: $0.key, count: $0.value) }
+    }
+
+    @ViewBuilder
+    private var topHoursCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("TOP 3 BUSIEST HOURS (24H)")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .tracking(1.4)
+                .foregroundStyle(.secondary)
+            if topBusiestHours.isEmpty {
+                Text("Aucune activité dans les 24h.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(Array(topBusiestHours.enumerated()), id: \.offset) { idx, item in
+                    HStack(spacing: 8) {
+                        Text("#\(idx+1)")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundStyle(IRISTokens.goldAccent)
+                            .frame(width: 24, alignment: .leading)
+                        Text(String(format: "%02d:00 - %02d:59", item.hour, item.hour))
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        Text("\(item.count) events")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(IRISTokens.aquaTint)
+                        Rectangle()
+                            .fill(IRISTokens.aquaTint.opacity(0.5))
+                            .frame(width: max(20, CGFloat(item.count) / CGFloat(max(1, topBusiestHours.first?.count ?? 1)) * 80), height: 4)
+                            .cornerRadius(2)
+                    }
+                }
+            }
+        }
+        .padding(IRISTokens.spacing16)
+        .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
+    }
+
     private var totalStats: (total: Int, avgPerHour: Double, earliest: Date?) {
         let total = allEvents.count
         let earliest = allEvents.min { $0.timestamp < $1.timestamp }?.timestamp
@@ -227,6 +277,8 @@ struct BusStatsView: View {
                 topKindBanner
 
                 todayVsYesterdayCard
+
+                topHoursCard
 
                 cardSection(title: "Dernière heure", total: lastHour.count, events: lastHour, accent: IRISTokens.irisAccent)
                 cardSection(title: "Dernières 24h", total: lastDay.count, events: lastDay, accent: IRISTokens.aquaTint)

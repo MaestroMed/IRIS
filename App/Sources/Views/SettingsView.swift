@@ -9,6 +9,7 @@ import AppKit
 /// v1.190 — Re-seed memories from disk button (calls MemorySeeder).
 /// v1.196 — Open ~/Developer folder button (Cartographer scan target).
 /// v1.205 — About IRIS section (version, boot, uptime, commit, github link).
+/// v1.212 — Witness blocklist viewer + per-row unblock button.
 struct SettingsView: View {
     @Environment(IRISAppState.self) private var appState
     @Environment(\.modelContext) private var modelContext
@@ -19,6 +20,13 @@ struct SettingsView: View {
     @State private var savedMessage: String?
     @State private var backupStatus: String?
     @AppStorage("witnessPaused") private var witnessPaused: Bool = false  // v1.187
+    @State private var blocklistRefreshTick: Int = 0  // v1.212 — force re-render after unblock
+
+    // v1.212 — Read live from UserDefaults, tied to blocklistRefreshTick for reactivity.
+    private var blockedIds: [String] {
+        let _ = blocklistRefreshTick
+        return UserDefaults.standard.stringArray(forKey: "iris.witness.blockedBundleIds") ?? []
+    }
 
     // v1.171 — Storage summary @Query directives
     @Query private var allEventLogs: [EventLog]
@@ -884,7 +892,59 @@ struct SettingsView: View {
                 .controlSize(.small)
                 .tint(witnessPaused ? .green : .red.opacity(0.8))
             }
+
+            // v1.212 — Witness blocklist viewer (per-row unblock)
+            witnessBlocklistViewerSection
         }
+    }
+
+    // MARK: — v1.212 Witness blocklist viewer
+
+    private var witnessBlocklistViewerSection: some View {
+        let ids = blockedIds
+        return VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
+            HStack {
+                Image(systemName: "nosign")
+                    .foregroundStyle(.red.opacity(0.8))
+                Text("Witness blocklist")
+                    .font(.system(size: 14, weight: .light, design: .serif))
+                Spacer()
+                Text("\(ids.count) bloqués")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+
+            if ids.isEmpty {
+                Text("Aucune app bloquée.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 4)
+            } else {
+                ForEach(ids, id: \.self) { bundleId in
+                    HStack(spacing: 8) {
+                        Image(systemName: "app.dashed")
+                            .foregroundStyle(.secondary.opacity(0.7))
+                            .font(.system(size: 12))
+                        Text(bundleId)
+                            .font(.system(size: 11, design: .monospaced))
+                            .lineLimit(1)
+                        Spacer()
+                        Button { unblockApp(bundleId) } label: {
+                            Text("Unblock").font(.system(size: 10))
+                        }
+                        .controlSize(.small)
+                        .tint(.green)
+                    }
+                }
+            }
+        }
+        .padding(IRISTokens.spacing8)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private func unblockApp(_ bundleId: String) {
+        Witness.removeBlocked(bundleId)
+        blocklistRefreshTick += 1
     }
 
     // v1.174 — Reveal the SwiftData store location in Finder

@@ -11,6 +11,7 @@ import AppKit
 /// v1.199 — Drafts past 7d badge (gold calendar.badge.clock) in Quill section header.
 /// v1.204 — Cartographer section search field (codename/path/repo).
 /// v1.209 — Auditor cost-today badge (gold dollar) in Auditor section header.
+/// v1.213 — Audit-now button per Cartographer project row (Auditor.runAudit).
 
 struct InspectorView: View {
     @Environment(IRISAppState.self) private var appState
@@ -899,10 +900,26 @@ struct InspectorView: View {
             }
             .buttonStyle(.plain)
             .help(project.status == "archived" ? "Désarchiver (→ active)" : "Archiver le projet")
+            // v1.213 — Audit-now quick action
+            Button {
+                triggerAudit(project)
+            } label: {
+                Image(systemName: "checkmark.shield")
+                    .font(.system(size: 10))
+                    .foregroundStyle(IRISTokens.aquaTint.opacity(0.7))
+            }
+            .buttonStyle(.plain)
+            .help("Lancer un audit Auditor sur ce projet")
         }
         .padding(.vertical, 4)
         .padding(.horizontal, 6)
         .background(RoundedRectangle(cornerRadius: 6).fill(.thinMaterial))
+    }
+
+    // v1.213 — Fire-and-forget audit trigger from Cartographer row.
+    private func triggerAudit(_ project: ProjectRecord) {
+        guard !project.codename.isEmpty else { return }
+        Task { await Auditor.shared.auditProject(codename: project.codename, force: true) }
     }
 
     // MARK: — Auditor
