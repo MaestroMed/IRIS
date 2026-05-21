@@ -11,6 +11,7 @@ import AppKit
 /// v1.205 — About IRIS section (version, boot, uptime, commit, github link).
 /// v1.212 — Witness blocklist viewer + per-row unblock button.
 /// v1.220 — Witness vision capture toggle (@AppStorage witnessVisionEnabled).
+/// v1.226 — Keyboard shortcuts cheatsheet augmented (Cmd+L, Cmd+F logs, Cmd+1..5 palette).
 struct SettingsView: View {
     @Environment(IRISAppState.self) private var appState
     @Environment(\.modelContext) private var modelContext
@@ -674,8 +675,17 @@ struct SettingsView: View {
                 ),
                 ("Actions",
                  [("Cmd+Shift+R", "Refresh Cartographer"),
+                  ("Cmd+R", "Refresh Cartographer (raccourci court)"),    // v1.8
                   ("Cmd+Shift+B", "Brief Advisor maintenant"),
+                  ("Cmd+B", "Brief Advisor (raccourci court)"),           // v1.8
                   ("Cmd+Shift+A", "Audit projet sélectionné")]
+                ),
+                ("Command palette",                                       // v1.178
+                 [("Cmd+1..5", "Exécuter quick action 1-5 (top 5 résultats)")]
+                ),
+                ("Logs",                                                  // v1.197 / v1.219
+                 [("Cmd+L", "Clear filters (in Logs view)"),
+                  ("Cmd+F", "Focus search field (in Logs view)")]
                 ),
                 ("Système",
                  [("Cmd+,", "Settings"),

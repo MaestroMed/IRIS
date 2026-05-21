@@ -13,6 +13,7 @@ import AppKit
 /// v1.207 — Today vs yesterday comparison card (counts + delta %).
 /// v1.214 — Top 3 busiest hours past 24h card with mini bars.
 /// v1.217 — Active sessions badge (unique correlationIds past 1h).
+/// v1.225 — 24h heatmap card (one cell per hour, aqua intensity).
 
 struct BusStatsView: View {
     @Query(sort: \EventLog.timestamp, order: .reverse) private var allEvents: [EventLog]
@@ -216,6 +217,41 @@ struct BusStatsView: View {
         .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
     }
 
+    private var heatmap24h: [(hour: Int, count: Int)] {
+        let _ = refreshTick
+        let cutoff = Date().addingTimeInterval(-86400)
+        let recent = allEvents.filter { $0.timestamp >= cutoff }
+        let groups = Dictionary(grouping: recent, by: { Calendar.current.component(.hour, from: $0.timestamp) })
+            .mapValues { $0.count }
+        return (0..<24).map { hour in (hour: hour, count: groups[hour] ?? 0) }
+    }
+
+    @ViewBuilder
+    private var heatmap24hCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("24H HEATMAP")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .tracking(1.4)
+                .foregroundStyle(.secondary)
+            let maxCount = heatmap24h.map(\.count).max() ?? 1
+            HStack(spacing: 2) {
+                ForEach(heatmap24h, id: \.hour) { item in
+                    VStack(spacing: 2) {
+                        Rectangle()
+                            .fill(IRISTokens.aquaTint.opacity(maxCount > 0 ? 0.15 + (Double(item.count) / Double(maxCount)) * 0.85 : 0.1))
+                            .frame(height: 32)
+                            .cornerRadius(2)
+                        Text(String(format: "%02d", item.hour))
+                            .font(.system(size: 8, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+        .padding(IRISTokens.spacing16)
+        .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
+    }
+
     private var totalStats: (total: Int, avgPerHour: Double, earliest: Date?) {
         let total = allEvents.count
         let earliest = allEvents.min { $0.timestamp < $1.timestamp }?.timestamp
@@ -308,6 +344,8 @@ struct BusStatsView: View {
                 todayVsYesterdayCard
 
                 topHoursCard
+
+                heatmap24hCard
 
                 cardSection(title: "Dernière heure", total: lastHour.count, events: lastHour, accent: IRISTokens.irisAccent)
                 cardSection(title: "Dernières 24h", total: lastDay.count, events: lastDay, accent: IRISTokens.aquaTint)

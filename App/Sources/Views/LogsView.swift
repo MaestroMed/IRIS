@@ -11,6 +11,7 @@ import SwiftData
 // v1.203 — CSV export filtered events button (next to Export MD).
 // v1.206 — Past hour quick filter toggle (60min window).
 // v1.219 — Cmd+F keyboard shortcut focuses search TextField.
+// v1.224 — Paste UUID TextField for direct correlation chain filter.
 
 struct LogsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -33,6 +34,9 @@ struct LogsView: View {
 
     // v1.219 — Cmd+F focuses search TextField
     @FocusState private var searchFieldFocused: Bool
+
+    // v1.224 — Paste UUID buffer for direct correlation chain filter
+    @State private var correlationPaste: String = ""
 
     private static let kindOrder = [
         "userInput", "agentDispatched", "agentResponse",
@@ -222,6 +226,20 @@ struct LogsView: View {
                     .font(.system(size: 9, weight: .semibold, design: .monospaced))
                     .foregroundStyle(.secondary.opacity(0.5))
             }
+
+            // v1.224 — Paste UUID inline TextField → set filterCorrelationId on Enter
+            TextField("Paste UUID", text: $correlationPaste)
+                .textFieldStyle(.roundedBorder)
+                .controlSize(.small)
+                .frame(maxWidth: 90)
+                .onSubmit {
+                    let trimmed = correlationPaste.trimmingCharacters(in: .whitespaces)
+                    if let uuid = UUID(uuidString: trimmed) {
+                        filterCorrelationId = uuid
+                        correlationPaste = ""
+                    }
+                }
+                .help("Paste un correlation UUID + Enter pour filter sur cette chaîne")
 
             // v1.70 — Correlation badge si actif
             if let cid = filterCorrelationId {
