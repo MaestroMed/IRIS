@@ -14,6 +14,7 @@ import AppKit
 /// v1.213 — Audit-now button per Cartographer project row (Auditor.runAudit).
 /// v1.218 — Auditor verdict counts past 30d badge (green/yellow/red dots + counts).
 /// v1.223 — Bulk "Audit all" button in Cartographer header (sequential 2s delay).
+/// v1.228 — Per-draft model tag (Opus/Sonnet/Haiku capsule color-coded).
 
 struct InspectorView: View {
     @Environment(IRISAppState.self) private var appState
@@ -1895,6 +1896,15 @@ struct InspectorView: View {
 
             HStack(spacing: IRISTokens.spacing8) {
                 Text(draft.tone).font(.system(size: 9, design: .monospaced)).foregroundStyle(.secondary)
+                // v1.228 — Model tag (color-coded by family)
+                if !draft.modelUsed.isEmpty {
+                    Text(modelShortName(draft.modelUsed))
+                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                        .foregroundStyle(modelColor(draft.modelUsed))
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(Capsule().fill(modelColor(draft.modelUsed).opacity(0.12)))
+                }
                 Text(draft.createdAt, format: .dateTime.hour().minute().second())
                     .font(.system(size: 9, design: .monospaced)).foregroundStyle(.secondary)
                 Spacer()
@@ -1904,6 +1914,24 @@ struct InspectorView: View {
         }
         .padding(.vertical, 4).padding(.horizontal, IRISTokens.spacing8)
         .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
+    }
+
+    // v1.228 — Short label for model family tag
+    private func modelShortName(_ model: String) -> String {
+        let lower = model.lowercased()
+        if lower.contains("opus") { return "Opus" }
+        if lower.contains("sonnet") { return "Sonnet" }
+        if lower.contains("haiku") { return "Haiku" }
+        return String(model.prefix(10))
+    }
+
+    // v1.228 — Color-coded model family tint
+    private func modelColor(_ model: String) -> Color {
+        let lower = model.lowercased()
+        if lower.contains("opus") { return IRISTokens.irisAccent }
+        if lower.contains("sonnet") { return IRISTokens.aquaTint }
+        if lower.contains("haiku") { return IRISTokens.goldAccent }
+        return .secondary
     }
 
     private var signalsSection: some View {

@@ -12,6 +12,7 @@ import SwiftData
 /// v1.210 — Recent activity feed card (last 5 events).
 /// v1.216 — Avg response time by agent card (dispatched→response delay).
 /// v1.222 — Auditor cost today card (total + per-model breakdown).
+/// v1.229 — Live "+N past 5min" event count badge (aqua circle pulse hint).
 
 struct DashboardView: View {
     @Environment(IRISAppState.self) private var appState
@@ -837,6 +838,32 @@ struct DashboardView: View {
         MCPManager.shared.servers.count
     }
 
+    // v1.229 — Live count of EventLog entries in past 5 minutes (300s)
+    private var eventsPast5Min: Int {
+        let cutoff = Date().addingTimeInterval(-300)
+        return allEvents.filter { $0.timestamp >= cutoff }.count
+    }
+
+    @ViewBuilder
+    private var live5MinBadge: some View {
+        HStack(spacing: 4) {
+            if eventsPast5Min > 0 {
+                Circle().fill(IRISTokens.aquaTint).frame(width: 6, height: 6)
+            } else {
+                Circle().fill(.secondary.opacity(0.4)).frame(width: 6, height: 6)
+            }
+            Text("+\(eventsPast5Min)")
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundStyle(eventsPast5Min > 0 ? IRISTokens.aquaTint : .secondary)
+            Text("past 5min")
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(.secondary.opacity(0.7))
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(Capsule().fill(.thinMaterial))
+    }
+
     private var systemStatusBanner: some View {
         HStack(spacing: IRISTokens.spacing24) {
             Image(systemName: "checkmark.seal.fill")
@@ -879,6 +906,8 @@ struct DashboardView: View {
                     .font(.system(size: 9, design: .monospaced))
                     .foregroundStyle(.secondary)
             }
+            // v1.229 — Live "+N past 5min" event count badge
+            live5MinBadge
             Spacer()
         }
         .padding(IRISTokens.spacing8)

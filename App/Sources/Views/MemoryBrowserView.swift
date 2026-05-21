@@ -13,6 +13,7 @@ import AppKit
 /// v1.208 — Per-row copy content button with 2s checkmark feedback.
 /// v1.215 — Pin all of currently-filtered type bulk action (gold pin.fill button).
 /// v1.221 — Divider with "UNPINNED" label between pinned and unpinned groups in mainList.
+/// v1.227 — Bulk add-tag to filtered memories.
 /// Permet à Mehdi d'inspecter ce que Scribe sait, et de tester les requêtes de similarité.
 enum MemorySortMode: String, CaseIterable { case newest, oldest, type, name }
 
@@ -30,6 +31,8 @@ struct MemoryBrowserView: View {
     @State private var isRetrieving: Bool = false
     @State private var exportStatus: String?  // v1.167
     @State private var copyStatus: [UUID: Bool] = [:]  // v1.208
+    @State private var bulkTagInput: String = ""  // v1.227
+    @State private var bulkTagStatus: String?  // v1.227
 
     private var availableTypes: [String] {
         Array(Set(allMemories.map(\.type))).sorted()
@@ -114,6 +117,28 @@ struct MemoryBrowserView: View {
             memory.tagsCSV = tags.joined(separator: ", ")
         }
         try? modelContext.save()
+    }
+
+    // MARK: — v1.227 Bulk add-tag to filtered
+
+    private func addTagToFiltered(_ tag: String) {
+        guard !tag.isEmpty else { return }
+        let count = filtered.count
+        for memory in filtered {
+            var tags = memory.tagsCSV
+                .split(separator: ",")
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+            if !tags.contains(tag) {
+                tags.append(tag)
+            }
+            memory.tagsCSV = tags.joined(separator: ", ")
+        }
+        try? modelContext.save()
+        bulkTagStatus = "✅ Tag '\(tag)' ajouté à \(count) memories"
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+            bulkTagStatus = nil
+        }
     }
 
     /// v1.84 — Liste des tags uniques (split CSV) pour suggestions
@@ -252,6 +277,36 @@ struct MemoryBrowserView: View {
             .controlSize(.small)
             .tint(pinnedOnly ? IRISTokens.goldAccent : .secondary)
             .help(pinnedOnly ? "Désactiver le filtre pinned" : "Afficher uniquement les memories pinned (tag 'pinned')")
+
+            // v1.227 — Bulk add-tag to filtered
+            HStack(spacing: 4) {
+                TextField("Bulk tag", text: $bulkTagInput)
+                    .textFieldStyle(.roundedBorder)
+                    .controlSize(.small)
+                    .frame(maxWidth: 80)
+                    .onSubmit {
+                        let trimmed = bulkTagInput.trimmingCharacters(in: .whitespaces)
+                        addTagToFiltered(trimmed)
+                        bulkTagInput = ""
+                    }
+                Button {
+                    let trimmed = bulkTagInput.trimmingCharacters(in: .whitespaces)
+                    addTagToFiltered(trimmed)
+                    bulkTagInput = ""
+                } label: {
+                    Image(systemName: "tag.fill").font(.system(size: 9))
+                }
+                .controlSize(.small)
+                .tint(IRISTokens.aquaTint)
+                .disabled(bulkTagInput.trimmingCharacters(in: .whitespaces).isEmpty)
+                .help("Ajouter ce tag à toutes les memories visibles (\(filtered.count))")
+                if let status = bulkTagStatus {
+                    Text(status)
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(status.hasPrefix("✅") ? .green : .red)
+                        .lineLimit(1)
+                }
+            }
 
             // v1.198 — Sort by Picker
             Picker("Sort", selection: $sortMode) {
