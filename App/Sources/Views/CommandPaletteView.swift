@@ -5,12 +5,14 @@ import SwiftUI
 /// v1.178 — Cmd+1..5 keyboard shortcuts on first 5 visible rows.
 /// v1.183 — Clear-recents button in RECENT section header.
 /// v1.188 — Action count hint subtitle (total + filtered + active search).
+/// v1.211 — Favorites star toggle (yellow), favorites sort first.
 struct CommandPaletteView: View {
     @Environment(IRISAppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
 
     @State private var search: String = ""
     @AppStorage("recentPaletteActionIds") private var recentIdsCSV: String = ""
+    @AppStorage("paletteFavoriteIds") private var favoriteIdsCSV: String = ""
 
     struct PaletteAction: Identifiable {
         let id: String
@@ -187,11 +189,18 @@ struct CommandPaletteView: View {
     }
 
     var filtered: [PaletteAction] {
-        if search.isEmpty { return allActions }
-        let lowSearch = search.lowercased()
-        return allActions.filter {
-            $0.title.lowercased().contains(lowSearch) || $0.subtitle.lowercased().contains(lowSearch)
+        let result: [PaletteAction]
+        if search.isEmpty {
+            result = allActions
+        } else {
+            let lowSearch = search.lowercased()
+            result = allActions.filter {
+                $0.title.lowercased().contains(lowSearch) || $0.subtitle.lowercased().contains(lowSearch)
+            }
         }
+        let favs = result.filter { isFavorite($0.id) }
+        let nonFavs = result.filter { !isFavorite($0.id) }
+        return favs + nonFavs
     }
 
     var body: some View {
@@ -299,9 +308,29 @@ struct CommandPaletteView: View {
         recentIdsCSV = list.joined(separator: ",")
     }
 
+    private func isFavorite(_ id: String) -> Bool {
+        favoriteIdsCSV
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .contains(id)
+    }
+
+    private func toggleFavorite(_ id: String) {
+        var list = favoriteIdsCSV
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        if let idx = list.firstIndex(of: id) {
+            list.remove(at: idx)
+        } else {
+            list.append(id)
+        }
+        favoriteIdsCSV = list.joined(separator: ",")
+    }
+
     @ViewBuilder
     private func paletteRow(_ item: PaletteAction, rank: Int? = nil) -> some View {
-        let button = Button {
+        let body = Button {
             recordRecent(item.id)
             item.action()
         } label: {
@@ -331,15 +360,31 @@ struct CommandPaletteView: View {
             }
             .padding(.vertical, 6)
             .padding(.horizontal, IRISTokens.spacing8)
-            .background(RoundedRectangle(cornerRadius: 6).fill(.thinMaterial))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
 
+        let star = Button {
+            toggleFavorite(item.id)
+        } label: {
+            Image(systemName: isFavorite(item.id) ? "star.fill" : "star")
+                .font(.system(size: 10))
+                .foregroundStyle(isFavorite(item.id) ? .yellow : .secondary.opacity(0.4))
+        }
+        .buttonStyle(.plain)
+        .help(isFavorite(item.id) ? "Unfavorite" : "Add to favorites")
+        .padding(.trailing, IRISTokens.spacing8)
+
+        let row = HStack(spacing: 0) {
+            body
+            star
+        }
+        .background(RoundedRectangle(cornerRadius: 6).fill(.thinMaterial))
+
         if let rank, rank >= 1, rank <= 5 {
-            button.keyboardShortcut(KeyEquivalent(Character("\(rank)")), modifiers: .command)
+            row.keyboardShortcut(KeyEquivalent(Character("\(rank)")), modifiers: .command)
         } else {
-            button
+            row
         }
     }
 }

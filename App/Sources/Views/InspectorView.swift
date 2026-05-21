@@ -10,6 +10,7 @@ import AppKit
 /// v1.192 — Copy verdict mini button on audit row (NSPasteboard).
 /// v1.199 — Drafts past 7d badge (gold calendar.badge.clock) in Quill section header.
 /// v1.204 — Cartographer section search field (codename/path/repo).
+/// v1.209 — Auditor cost-today badge (gold dollar) in Auditor section header.
 
 struct InspectorView: View {
     @Environment(IRISAppState.self) private var appState
@@ -906,9 +907,65 @@ struct InspectorView: View {
 
     // MARK: — Auditor
 
+    // v1.209 — Sum costUSD des AuditReport créés today (calendrier user, startOfDay).
+    private var auditorCostToday: Double {
+        let startOfDay = Calendar.current.startOfDay(for: Date())
+        return allAudits
+            .filter { $0.createdAt >= startOfDay }
+            .reduce(0.0) { $0 + $1.costUSD }
+    }
+
+    // v1.209 — Badge "$X.XXX today" inline pour Auditor section header (gold, n'apparaît que si > 0).
+    @ViewBuilder
+    private var auditorCostBadge: some View {
+        if auditorCostToday > 0 {
+            HStack(spacing: 3) {
+                Image(systemName: "dollarsign.circle")
+                    .font(.system(size: 8))
+                    .foregroundStyle(IRISTokens.goldAccent)
+                Text(String(format: "$%.3f today", auditorCostToday))
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(IRISTokens.goldAccent)
+            }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .background(Capsule().fill(IRISTokens.goldAccent.opacity(0.12)))
+        }
+    }
+
     private var auditorSection: some View {
         VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
-            sectionHeader("Auditor", count: allAudits.count, accent: IRISTokens.irisAccent, pinnable: .auditor)
+            // v1.209 — inlined section header to inject cost-today badge near title/count.
+            HStack(spacing: 4) {
+                Text("AUDITOR")
+                    .font(.system(size: 10, weight: .semibold)).tracking(1.4).foregroundStyle(.secondary)
+                if allAudits.count > 0 {
+                    Text("\(allAudits.count)")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundStyle(IRISTokens.irisAccent)
+                }
+                auditorCostBadge
+                Spacer()
+                Button {
+                    copyAgentSummary(for: .auditor, count: allAudits.count)
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Copy \(AgentID.auditor.descriptor.displayName) summary Markdown")
+                Button {
+                    pinned.toggle(.auditor)
+                } label: {
+                    Image(systemName: pinned.isPinned(.auditor) ? "pin.fill" : "pin")
+                        .font(.system(size: 10))
+                        .foregroundStyle(pinned.isPinned(.auditor) ? IRISTokens.irisAccent : .secondary)
+                }
+                .buttonStyle(.plain)
+                .help(pinned.isPinned(.auditor) ? "Désépingler section" : "Épingler section (toujours visible)")
+            }
+            .padding(.horizontal, IRISTokens.spacing4)
 
             HStack(spacing: IRISTokens.spacing8) {
                 Picker("Projet", selection: $auditPickedProject) {

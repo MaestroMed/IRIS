@@ -9,6 +9,7 @@ import SwiftData
 /// v1.186 — Memory growth past 7d mini stat card (gold).
 /// v1.195 — System status banner (Witness · Sentinel · MCP) at top of dashboard.
 /// v1.201 — Milestone v1.200 celebration card (auto-hides at v1.206).
+/// v1.210 — Recent activity feed card (last 5 events).
 
 struct DashboardView: View {
     @Environment(IRISAppState.self) private var appState
@@ -113,6 +114,9 @@ struct DashboardView: View {
                 // v1.170 — Top dispatched agents past 24h (top 3 podium)
                 topAgentsCard
 
+                // v1.210 — Recent activity feed (last 5 events)
+                recentActivityCard
+
                 // v1.180 — Weekly events trend (7d bar chart sparkline)
                 weeklyTrendCard
 
@@ -211,6 +215,47 @@ struct DashboardView: View {
                             .fill(IRISTokens.irisAccent.opacity(0.3 + Double(item.count) / Double(maxCount) * 0.7))
                             .frame(width: max(20, CGFloat(item.count) / CGFloat(maxCount) * 80), height: 4)
                             .cornerRadius(2)
+                    }
+                }
+            }
+        }
+        .padding(IRISTokens.spacing16)
+        .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
+    }
+
+    // v1.210 — Last 5 events (allEvents sorted desc by timestamp via @Query)
+    private var recentEvents: [EventLog] {
+        Array(allEvents.prefix(5))
+    }
+
+    private var recentActivityCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("RECENT ACTIVITY")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .tracking(1.4)
+                .foregroundStyle(.secondary)
+            if recentEvents.isEmpty {
+                Text("Aucune activité.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(recentEvents) { event in
+                    HStack(spacing: 6) {
+                        Text(event.timestamp, format: .dateTime.hour().minute().second())
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 60, alignment: .leading)
+                        Text(event.kind)
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(.primary.opacity(0.85))
+                            .lineLimit(1)
+                        if let to = event.toAgent {
+                            Text("→ \(to)")
+                                .font(.system(size: 9, design: .monospaced))
+                                .foregroundStyle(IRISTokens.aquaTint.opacity(0.7))
+                                .lineLimit(1)
+                        }
+                        Spacer()
                     }
                 }
             }
