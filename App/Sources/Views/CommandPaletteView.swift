@@ -3,6 +3,7 @@ import SwiftUI
 /// v1.46 — Command palette activée par Cmd+K. Sheet avec search bar + actions rapides.
 /// v1.169 — Recent 5 actions section (persisted @AppStorage).
 /// v1.178 — Cmd+1..5 keyboard shortcuts on first 5 visible rows.
+/// v1.183 — Clear-recents button in RECENT section header.
 struct CommandPaletteView: View {
     @Environment(IRISAppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
@@ -220,12 +221,28 @@ struct CommandPaletteView: View {
                             .padding(IRISTokens.spacing24)
                     } else {
                         if search.isEmpty && !recentActions.isEmpty {
-                            Text("RECENT")
-                                .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                .tracking(1.4)
-                                .foregroundStyle(.secondary)
-                                .padding(.horizontal, IRISTokens.spacing8)
-                                .padding(.top, 4)
+                            HStack {
+                                Text("RECENT")
+                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                    .tracking(1.4)
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Button {
+                                    recentIdsCSV = ""
+                                } label: {
+                                    HStack(spacing: 3) {
+                                        Image(systemName: "xmark.circle")
+                                            .font(.system(size: 9))
+                                        Text("Clear")
+                                            .font(.system(size: 9, design: .monospaced))
+                                    }
+                                    .foregroundStyle(.secondary.opacity(0.7))
+                                }
+                                .buttonStyle(.plain)
+                                .help("Effacer l'historique des actions récentes")
+                            }
+                            .padding(.horizontal, IRISTokens.spacing8)
+                            .padding(.top, 4)
                             ForEach(Array(recentActions.enumerated()), id: \.element.id) { idx, item in
                                 paletteRow(item, rank: idx + 1)
                             }

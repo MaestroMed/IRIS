@@ -5,6 +5,7 @@ import SwiftData
 // @Query EventLog sorted desc + filtres par agent + kind + search.
 // v1.168 — Severity color left-border per row (red/gold/aqua/green).
 // v1.175 — Pause toggle freezes log view to a snapshot (logs accumulate but display stays).
+// v1.184 — Failures-only quick filter button (sets filterKind=agentFailure).
 
 struct LogsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -179,6 +180,17 @@ struct LogsView: View {
             .controlSize(.small)
             .tint(IRISTokens.irisAccent)
             .help("Filter rapide : show only agentDispatched events")
+
+            // v1.184 — Failures-only quick filter
+            Button {
+                filterKind = "agentFailure"
+            } label: {
+                Label("Failures", systemImage: "exclamationmark.triangle.fill")
+                    .font(.system(size: 11))
+            }
+            .controlSize(.small)
+            .tint(.red)
+            .help("Filter rapide : show only agentFailure events")
 
             // v1.39 — Export filtered logs Markdown
             Button {

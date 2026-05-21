@@ -7,6 +7,7 @@ import AppKit
 /// v1.84 — Tag filter Picker.
 /// v1.167 — Export filtered memories to Markdown (home dir).
 /// v1.177 — Pin/unpin memory via "pinned" tag, pinned rows sort to top.
+/// v1.182 — Pinned-only filter toggle (filters to tag pinned).
 /// Permet à Mehdi d'inspecter ce que Scribe sait, et de tester les requêtes de similarité.
 struct MemoryBrowserView: View {
     @Environment(\.modelContext) private var modelContext
@@ -15,6 +16,7 @@ struct MemoryBrowserView: View {
     @State private var typeFilter: String = ""
     @State private var searchText: String = ""
     @State private var tagFilter: String = ""  // v1.84
+    @State private var pinnedOnly: Bool = false  // v1.182
     @State private var retrievalQuery: String = ""
     @State private var retrievalResults: [(Memory, Double)] = []
     @State private var isRetrieving: Bool = false
@@ -40,6 +42,9 @@ struct MemoryBrowserView: View {
                 $0.summary.lowercased().contains(q) ||
                 $0.content.lowercased().contains(q)
             }
+        }
+        if pinnedOnly {
+            items = items.filter { isPinned($0) }
         }
         return items.sorted { lhs, rhs in
             if isPinned(lhs) != isPinned(rhs) {
@@ -150,6 +155,20 @@ struct MemoryBrowserView: View {
             .labelsHidden()
             .controlSize(.small)
             .frame(maxWidth: 140)
+
+            // v1.182 — Pinned-only filter toggle
+            Button {
+                pinnedOnly.toggle()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: pinnedOnly ? "pin.fill" : "pin")
+                    Text("Pinned").font(.system(size: 11))
+                }
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .tint(pinnedOnly ? IRISTokens.goldAccent : .secondary)
+            .help(pinnedOnly ? "Désactiver le filtre pinned" : "Afficher uniquement les memories pinned (tag 'pinned')")
 
             TextField("Search name/summary/content…", text: $searchText)
                 .textFieldStyle(.roundedBorder)
