@@ -21,11 +21,14 @@ import SwiftData
 /// v1.261 — Live window Picker (5/15/30/60min) driving the live count badge.
 /// v1.267 — Most active project past 7d card (audits + signals combined)
 /// v1.287 — Signals by source past 7d top 5 card..
+/// v1.297 — Pinned memories quick view card (top 3 via "pinned" tag).
 
 struct DashboardView: View {
     @Environment(IRISAppState.self) private var appState
 
     @Query private var allMemories: [Memory]
+    // v1.297 — Sorted by createdAt desc pour pinned memories quick view
+    @Query(sort: \Memory.createdAt, order: .reverse) private var allMemoriesForPinned: [Memory]
     @Query(sort: \Signal.emittedAt, order: .reverse) private var allSignals: [Signal]
     @Query private var allDrafts: [Draft]
     @Query private var allAudits: [AuditReport]
@@ -157,6 +160,9 @@ struct DashboardView: View {
 
                 // v1.186 — Memory growth past 7d (gold bar chart)
                 memoryGrowthCard
+
+                // v1.297 — Pinned memories quick view (top 3 via "pinned" tag)
+                pinnedMemoriesCard
 
                 // v1.92 — Snippet du dernier briefing Advisor
                 if let latest = advisorBriefings.first {
@@ -438,6 +444,59 @@ struct DashboardView: View {
                 }
             }
             .frame(height: 60)
+        }
+        .padding(IRISTokens.spacing16)
+        .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
+    }
+
+    // v1.297 — Pinned memories quick view (top 3 par createdAt desc, filtre tag "pinned")
+    private var pinnedMemoriesTop3: [Memory] {
+        allMemoriesForPinned.filter { memory in
+            memory.tagsCSV
+                .split(separator: ",")
+                .map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
+                .contains("pinned")
+        }
+        .prefix(3)
+        .map { $0 }
+    }
+
+    private var pinnedMemoriesCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Image(systemName: "pin.fill")
+                    .foregroundStyle(IRISTokens.goldAccent)
+                    .font(.system(size: 12))
+                Text("PINNED MEMORIES")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .tracking(1.4)
+                    .foregroundStyle(.secondary)
+            }
+            if pinnedMemoriesTop3.isEmpty {
+                Text("Aucune memory pinned. Visit System > Memory pour épingler.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(pinnedMemoriesTop3) { memory in
+                    VStack(alignment: .leading, spacing: 1) {
+                        HStack(spacing: 4) {
+                            Text(memory.type)
+                                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                            Text(memory.name)
+                                .font(.system(size: 11, weight: .medium))
+                                .lineLimit(1)
+                        }
+                        if !memory.summary.isEmpty {
+                            Text(memory.summary)
+                                .font(.system(size: 10))
+                                .foregroundStyle(.primary.opacity(0.75))
+                                .lineLimit(2)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
         }
         .padding(IRISTokens.spacing16)
         .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))

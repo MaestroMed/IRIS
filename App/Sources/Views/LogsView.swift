@@ -23,6 +23,7 @@ import SwiftData
 // v1.278 — Search history dropdown (last 10 persisted via @AppStorage).
 // v1.286 — Export ALL events history (no filters) JSON button.
 // v1.292 — Inferred level badge (E/W/N/D/I color-coded capsule).
+// v1.296 — "Correlated only" toggle filter (events with correlationId).
 
 struct LogsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -46,6 +47,9 @@ struct LogsView: View {
 
     // v1.206 — Past-hour quick filter
     @State private var pastHourOnly: Bool = false
+
+    // v1.296 — Correlated-only quick filter
+    @State private var correlationOnly: Bool = false
 
     // v1.263 — Sort direction toggle (default desc to preserve existing behavior)
     @State private var sortAscending: Bool = false
@@ -73,6 +77,7 @@ struct LogsView: View {
             .filter { filterLevel.isEmpty || $0.payloadJSON.contains("\"level\":\"\(filterLevel)\"") }
             .filter { filterCorrelationId == nil || $0.correlationId == filterCorrelationId }
             .filter { !pastHourOnly || $0.timestamp >= Date().addingTimeInterval(-3600) }
+            .filter { !correlationOnly || $0.correlationId != nil }
             .filter { searchText.isEmpty || $0.payloadJSON.localizedCaseInsensitiveContains(searchText) || $0.kind.localizedCaseInsensitiveContains(searchText) }
             .prefix(logsMaxDisplay))
         return sortAscending ? arr.reversed() : arr
@@ -445,6 +450,7 @@ struct LogsView: View {
                 filterCorrelationId = nil
                 searchText = ""
                 pastHourOnly = false
+                correlationOnly = false
             } label: {
                 HStack(spacing: 4) {
                     Text("Clear")
@@ -460,7 +466,7 @@ struct LogsView: View {
                 }
             }
             .controlSize(.small)
-            .disabled(filterAgent.isEmpty && filterKind.isEmpty && filterLevel.isEmpty && filterCorrelationId == nil && searchText.isEmpty && !pastHourOnly)
+            .disabled(filterAgent.isEmpty && filterKind.isEmpty && filterLevel.isEmpty && filterCorrelationId == nil && searchText.isEmpty && !pastHourOnly && !correlationOnly)
             .keyboardShortcut(KeyEquivalent("l"), modifiers: .command)
             .help("Reset tous les filtres (Cmd+L)")
 
@@ -496,6 +502,15 @@ struct LogsView: View {
             .controlSize(.small)
             .tint(.red)
             .help("Filter rapide : show only agentFailure events")
+
+            // v1.296 — Correlated-only quick filter
+            Button { correlationOnly.toggle() } label: {
+                Label("Correlated", systemImage: correlationOnly ? "link.circle.fill" : "link.circle")
+                    .font(.system(size: 11))
+            }
+            .controlSize(.small)
+            .tint(correlationOnly ? IRISTokens.aquaTint : .secondary)
+            .help(correlationOnly ? "Show all events" : "Show only events with correlationId")
 
             // v1.206 — Past hour quick filter
             Button {

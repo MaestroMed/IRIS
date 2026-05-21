@@ -27,6 +27,7 @@ import AppKit
 /// v1.283 — Total records in DB card (per-model counts horizontal).
 /// v1.288 — Period stats selector card (1h/24h/7d/all) with live event count.
 /// v1.293 — Hot kinds card: per-kind cell now shows latest event preview (timestamp + payload).
+/// v1.298 — Quietest hour past 24h badge (moon.zzz aqua).
 
 struct BusStatsView: View {
     @Query(sort: \EventLog.timestamp, order: .reverse) private var allEvents: [EventLog]
@@ -617,6 +618,56 @@ struct BusStatsView: View {
         }
     }
 
+    private var quietestHour24h: (hour: Int, count: Int)? {
+        let _ = refreshTick
+        let cutoff = Date().addingTimeInterval(-86400)
+        let recent = allEvents.filter { $0.timestamp >= cutoff }
+        guard !recent.isEmpty else { return nil }
+        var counts: [Int: Int] = [:]
+        for event in recent {
+            let hour = Calendar.current.component(.hour, from: event.timestamp)
+            counts[hour, default: 0] += 1
+        }
+        guard !counts.isEmpty else { return nil }
+        var minHour: Int? = nil
+        var minCount: Int = Int.max
+        for hour in 0..<24 {
+            if let count = counts[hour], count < minCount {
+                minCount = count
+                minHour = hour
+            }
+        }
+        guard let h = minHour else { return nil }
+        return (hour: h, count: minCount)
+    }
+
+    @ViewBuilder
+    private var quietestHourBadge: some View {
+        if quietestHour24h == nil {
+            EmptyView()
+        } else {
+            let q = quietestHour24h!
+            HStack(spacing: 4) {
+                Image(systemName: "moon.zzz.fill")
+                    .foregroundStyle(IRISTokens.aquaTint)
+                    .font(.system(size: 11))
+                Text("QUIETEST HOUR")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .tracking(1.2)
+                    .foregroundStyle(.secondary)
+                Text(String(format: "%02d:00", q.hour))
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.primary)
+                Text("(\(q.count) ev)")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Capsule().fill(.thinMaterial))
+        }
+    }
+
     private var burstiestMinute24h: (start: Date, count: Int)? {
         let _ = refreshTick
         let cutoff = Date().addingTimeInterval(-86400)
@@ -1002,6 +1053,8 @@ struct BusStatsView: View {
                 peakDayBadge
 
                 peakHourAllTimeBadge
+
+                quietestHourBadge
 
                 burstiestMinuteCard
 
