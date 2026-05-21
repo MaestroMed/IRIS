@@ -25,6 +25,7 @@ import AppKit
 /// v1.300 — Duplicate memory names detection banner (gold triangle).
 /// v1.306 — Jump-to-top floating button for memories list.
 /// v1.312 — Date range filter Picker (all/7d/30d/90d) on memories.
+/// v1.317 — Click info button → memory details sheet (full content + metadata).
 /// Permet à Mehdi d'inspecter ce que Scribe sait, et de tester les requêtes de similarité.
 enum MemorySortMode: String, CaseIterable { case newest, oldest, type, name }
 
@@ -47,6 +48,7 @@ struct MemoryBrowserView: View {
     @State private var bulkTagInput: String = ""  // v1.227
     @State private var bulkTagStatus: String?  // v1.227
     @State private var expandedIds: Set<UUID> = []  // v1.233
+    @State private var inspectedMemory: Memory?  // v1.317
     @FocusState private var searchFieldFocused: Bool  // v1.239
     @AppStorage("memoryHideTagCloud") private var hideTagCloud: Bool = false  // v1.264
 
@@ -232,6 +234,62 @@ struct MemoryBrowserView: View {
             typeStatsFooter
         }
         .navigationTitle("Memory")
+        .sheet(item: $inspectedMemory) { memory in
+            VStack(alignment: .leading, spacing: IRISTokens.spacing16) {
+                HStack {
+                    Text("Memory details")
+                        .font(.system(size: 16, weight: .light, design: .serif))
+                    Spacer()
+                    Button("Close") { inspectedMemory = nil }
+                        .keyboardShortcut(.cancelAction)
+                }
+                Divider()
+                HStack(spacing: 8) {
+                    Text(memory.type)
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundStyle(typeColor(memory.type))
+                        .padding(.horizontal, 4).padding(.vertical, 1)
+                        .background(typeColor(memory.type).opacity(0.15))
+                        .clipShape(Capsule())
+                    Text(memory.name)
+                        .font(.system(size: 14, weight: .medium))
+                    Spacer()
+                    Text(memory.createdAt, format: .dateTime.day().month().year().hour().minute())
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                if !memory.summary.isEmpty {
+                    Text("Summary")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                    Text(memory.summary)
+                        .font(.system(size: 12))
+                        .textSelection(.enabled)
+                }
+                if !memory.tagsCSV.isEmpty {
+                    Text("Tags: \(memory.tagsCSV)")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                if !memory.content.isEmpty {
+                    Text("Content")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                    ScrollView {
+                        Text(memory.content)
+                            .font(.system(size: 11, design: .monospaced))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(IRISTokens.spacing8)
+                            .background(Color.secondary.opacity(0.05))
+                            .cornerRadius(4)
+                    }
+                }
+                Spacer()
+            }
+            .padding(IRISTokens.spacing24)
+            .frame(minWidth: 600, idealWidth: 700, minHeight: 400, idealHeight: 500)
+        }
     }
 
     // v1.194 — Type stats footer: circle color + count per type
@@ -650,6 +708,16 @@ struct MemoryBrowserView: View {
                 }
                 .buttonStyle(.plain)
                 .help(expandedIds.contains(memory.id) ? "Collapse content" : "Show full content")
+                // v1.317 — Inspect full memory details in sheet
+                Button {
+                    inspectedMemory = memory
+                } label: {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary.opacity(0.6))
+                }
+                .buttonStyle(.plain)
+                .help("Show full memory details")
                 // v1.285 — Copy UUID to pasteboard
                 Button {
                     NSPasteboard.general.clearContents()

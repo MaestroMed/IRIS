@@ -28,6 +28,7 @@ import SwiftData
 // v1.308 — Cmd+Shift+A cycles agent filter (Tous → each agent → wrap).
 // v1.310 — Verbose logs toggle affects payload preview truncation (200→1000).
 // v1.314 — Click row to show full payload sheet.
+// v1.319 — Per-agent breakdown row (top 6 from filtered events).
 
 struct LogsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -148,6 +149,10 @@ struct LogsView: View {
                 kindBreakdownBar
                 Divider()
             }
+            if !filtered.isEmpty {
+                agentBreakdownBar
+                Divider()
+            }
             logsList
         }
         .sheet(item: $inspectedEvent) { event in
@@ -247,6 +252,54 @@ struct LogsView: View {
         .padding(.horizontal, IRISTokens.spacing16)
         .padding(.vertical, 6)
         .background(.thinMaterial)
+    }
+
+    // v1.319 — Breakdown of currently-filtered events by fromAgent (top 6)
+    var agentBreakdown: [(agent: String, count: Int)] {
+        let grouped = Dictionary(grouping: filtered) { $0.fromAgent ?? "(none)" }
+        return grouped
+            .map { (agent: $0.key, count: $0.value.count) }
+            .sorted { $0.count > $1.count }
+            .prefix(6)
+            .map { $0 }
+    }
+
+    @ViewBuilder
+    private var agentBreakdownBar: some View {
+        if filtered.isEmpty {
+            EmptyView()
+        } else {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("AGENTS")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .tracking(1.4)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text("\(agentBreakdown.count) actifs")
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                HStack(spacing: 8) {
+                    ForEach(Array(agentBreakdown.enumerated()), id: \.offset) { _, item in
+                        HStack(spacing: 3) {
+                            Circle()
+                                .fill(IRISTokens.irisAccent.opacity(0.6))
+                                .frame(width: 6, height: 6)
+                            Text(item.agent)
+                                .font(.system(size: 9, design: .monospaced))
+                            Text("(\(item.count))")
+                                .font(.system(size: 9, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer()
+                }
+            }
+            .padding(.horizontal, IRISTokens.spacing16)
+            .padding(.vertical, 4)
+            .background(.thinMaterial)
+        }
     }
 
     // v1.230 — Burst detector: count events within past 60s

@@ -30,6 +30,7 @@ import AppKit
 /// v1.298 — Quietest hour past 24h badge (moon.zzz aqua).
 /// v1.307 — Top 3 correlation chains past 1h card.
 /// v1.313 — Growth rate badge (current vs all-time avg ratio).
+/// v1.318 — Top event senders (fromAgent only) card.
 
 struct BusStatsView: View {
     @Query(sort: \EventLog.timestamp, order: .reverse) private var allEvents: [EventLog]
@@ -965,6 +966,56 @@ struct BusStatsView: View {
         .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
     }
 
+    private var topSenders: [(agent: String, count: Int)] {
+        let _ = refreshTick
+        let filtered = allEvents.filter { $0.fromAgent != nil }
+        let groups = Dictionary(grouping: filtered, by: { $0.fromAgent! })
+            .mapValues { $0.count }
+        return groups
+            .sorted { $0.value > $1.value }
+            .prefix(5)
+            .map { (agent: $0.key, count: $0.value) }
+    }
+
+    @ViewBuilder
+    private var topSendersCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("TOP EVENT SENDERS")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .tracking(1.4)
+                .foregroundStyle(.secondary)
+            if topSenders.isEmpty {
+                Text("Aucun event avec fromAgent.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(Array(topSenders.enumerated()), id: \.offset) { idx, item in
+                    HStack(spacing: 6) {
+                        Text("#\(idx+1)")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundStyle(IRISTokens.irisAccent)
+                            .frame(width: 24, alignment: .leading)
+                        Image(systemName: "paperplane.fill")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.secondary)
+                        Text(item.agent)
+                            .font(.system(size: 11, weight: .medium))
+                        Spacer()
+                        Text("\(item.count)")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                        Rectangle()
+                            .fill(IRISTokens.irisAccent.opacity(0.4))
+                            .frame(width: max(20, CGFloat(item.count) / CGFloat(max(1, topSenders.first?.count ?? 1)) * 80), height: 4)
+                            .cornerRadius(2)
+                    }
+                }
+            }
+        }
+        .padding(IRISTokens.spacing16)
+        .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
+    }
+
     private var totalStats: (total: Int, avgPerHour: Double, earliest: Date?) {
         let total = allEvents.count
         let earliest = allEvents.min { $0.timestamp < $1.timestamp }?.timestamp
@@ -1152,6 +1203,8 @@ struct BusStatsView: View {
                 avgPerSessionCard
 
                 topAgentsByEventCard
+
+                topSendersCard
 
                 cardSection(title: "Dernière heure", total: lastHour.count, events: lastHour, accent: IRISTokens.irisAccent)
                 cardSection(title: "Dernières 24h", total: lastDay.count, events: lastDay, accent: IRISTokens.aquaTint)
