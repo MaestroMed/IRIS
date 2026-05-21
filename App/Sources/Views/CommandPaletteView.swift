@@ -1,11 +1,13 @@
 import SwiftUI
 
 /// v1.46 — Command palette activée par Cmd+K. Sheet avec search bar + actions rapides.
+/// v1.169 — Recent 5 actions section (persisted @AppStorage).
 struct CommandPaletteView: View {
     @Environment(IRISAppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
 
     @State private var search: String = ""
+    @AppStorage("recentPaletteActionIds") private var recentIdsCSV: String = ""
 
     struct PaletteAction: Identifiable {
         let id: String
@@ -168,6 +170,19 @@ struct CommandPaletteView: View {
         return actions
     }
 
+    var recentActions: [PaletteAction] {
+        let ids = recentIdsCSV.split(separator: ",").map(String.init)
+        let all = allActions
+        var result: [PaletteAction] = []
+        for id in ids {
+            if let match = all.first(where: { $0.id == id }) {
+                result.append(match)
+            }
+            if result.count >= 5 { break }
+        }
+        return result
+    }
+
     var filtered: [PaletteAction] {
         if search.isEmpty { return allActions }
         let lowSearch = search.lowercased()
@@ -203,6 +218,24 @@ struct CommandPaletteView: View {
                             .foregroundStyle(.secondary)
                             .padding(IRISTokens.spacing24)
                     } else {
+                        if search.isEmpty && !recentActions.isEmpty {
+                            Text("RECENT")
+                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                .tracking(1.4)
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, IRISTokens.spacing8)
+                                .padding(.top, 4)
+                            ForEach(recentActions) { item in
+                                paletteRow(item)
+                            }
+                            Divider().padding(.vertical, 4)
+                            Text("ALL ACTIONS")
+                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                .tracking(1.4)
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, IRISTokens.spacing8)
+                                .padding(.top, 4)
+                        }
                         ForEach(filtered) { item in
                             paletteRow(item)
                         }
@@ -214,8 +247,19 @@ struct CommandPaletteView: View {
         .frame(minWidth: 500, idealWidth: 600, minHeight: 350, idealHeight: 420)
     }
 
+    private func recordRecent(_ id: String) {
+        var list = recentIdsCSV.split(separator: ",").map(String.init)
+        list.removeAll { $0 == id }
+        list.insert(id, at: 0)
+        if list.count > 5 { list = Array(list.prefix(5)) }
+        recentIdsCSV = list.joined(separator: ",")
+    }
+
     private func paletteRow(_ item: PaletteAction) -> some View {
-        Button(action: item.action) {
+        Button {
+            recordRecent(item.id)
+            item.action()
+        } label: {
             HStack {
                 Image(systemName: item.icon)
                     .foregroundStyle(IRISTokens.irisAccent)

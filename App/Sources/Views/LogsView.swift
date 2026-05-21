@@ -3,6 +3,7 @@ import SwiftData
 
 // IRIS v1.16 — Panel logs runtime affiché quand sidebar System > Logs sélectionné.
 // @Query EventLog sorted desc + filtres par agent + kind + search.
+// v1.168 — Severity color left-border per row (red/gold/aqua/green).
 
 struct LogsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -189,6 +190,10 @@ struct LogsView: View {
 
     private func logRow(_ event: EventLog) -> some View {
         HStack(alignment: .top, spacing: 8) {
+            Rectangle()
+                .fill(severityColor(for: event))
+                .frame(width: 3)
+                .cornerRadius(1.5)
             Text(event.timestamp, format: .dateTime.hour().minute().second())
                 .font(.system(size: 9, design: .monospaced))
                 .foregroundStyle(.secondary)
@@ -268,6 +273,17 @@ struct LogsView: View {
                 .font(.system(size: 9, weight: .semibold, design: .monospaced))
                 .foregroundStyle(color)
         }
+    }
+
+    private func severityColor(for event: EventLog) -> Color {
+        if event.kind == "agentFailure" { return .red }
+        if event.kind == "actionRejected" { return .red }
+        if event.kind == "actionApproved" || event.kind == "actionExecuted" { return .green }
+        if event.kind == "signalEmitted" { return IRISTokens.goldAccent }
+        if event.payloadJSON.contains("\"level\":\"error\"") || event.payloadJSON.contains("\"level\":\"fault\"") { return .red }
+        if event.payloadJSON.contains("\"level\":\"warning\"") { return IRISTokens.goldAccent }
+        if event.payloadJSON.contains("\"level\":\"notice\"") { return IRISTokens.aquaTint }
+        return .clear
     }
 
     private func payloadPreview(_ json: String) -> String {

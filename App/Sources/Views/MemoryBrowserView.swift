@@ -4,6 +4,8 @@ import AppKit
 
 /// v1.56 — Browse all Memory records + ad-hoc Scribe retrieval query.
 /// v1.64 — Delete memory record with confirmation (NSAlert).
+/// v1.84 — Tag filter Picker.
+/// v1.167 — Export filtered memories to Markdown (home dir).
 /// Permet à Mehdi d'inspecter ce que Scribe sait, et de tester les requêtes de similarité.
 struct MemoryBrowserView: View {
     @Environment(\.modelContext) private var modelContext
@@ -15,6 +17,7 @@ struct MemoryBrowserView: View {
     @State private var retrievalQuery: String = ""
     @State private var retrievalResults: [(Memory, Double)] = []
     @State private var isRetrieving: Bool = false
+    @State private var exportStatus: String?  // v1.167
 
     private var availableTypes: [String] {
         Array(Set(allMemories.map(\.type))).sorted()
@@ -77,6 +80,24 @@ struct MemoryBrowserView: View {
             Text("\(allMemories.count) records")
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundStyle(.secondary)
+
+            // v1.167 — Export filtered memories to Markdown
+            Button {
+                exportAllMemories()
+            } label: {
+                Label("Export MD", systemImage: "square.and.arrow.up")
+                    .font(.system(size: 11))
+            }
+            .controlSize(.small)
+            .help("Export toutes les memories filtrées en Markdown")
+
+            if let status = exportStatus {
+                Text(status)
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(status.hasPrefix("✅") ? .green : .red)
+                    .lineLimit(1)
+            }
+
             Spacer()
 
             Picker("Type", selection: $typeFilter) {
@@ -273,6 +294,42 @@ struct MemoryBrowserView: View {
         case "user", "feedback": return IRISTokens.aquaTint
         case "project", "reference": return IRISTokens.goldAccent
         default: return .secondary
+        }
+    }
+
+    // MARK: — v1.167 Export Markdown
+
+    private func exportAllMemories() {
+        var md = "# IRIS Memories Export\n_\(filtered.count) records · \(Date().formatted(date: .abbreviated, time: .shortened))_\n\n---\n\n"
+        for memory in filtered {
+            md += "## \(memory.type) · \(memory.name)\n\n"
+            if !memory.summary.isEmpty {
+                md += "**Summary:** \(memory.summary)\n\n"
+            }
+            if let scope = memory.projectScope {
+                md += "**Scope:** \(scope)\n\n"
+            }
+            md += "**Created:** \(memory.createdAt.formatted(.dateTime.day().month().year().hour().minute()))\n\n"
+            if !memory.tagsCSV.isEmpty {
+                md += "**Tags:** \(memory.tagsCSV)\n\n"
+            }
+            md += "```\n\(memory.content)\n```\n\n---\n\n"
+        }
+
+        let isoFormatter = ISO8601DateFormatter()
+        isoFormatter.formatOptions = [.withInternetDateTime, .withColonSeparatorInTimeZone]
+        let safeStamp = isoFormatter.string(from: Date()).replacingOccurrences(of: ":", with: "-")
+        let url = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("iris-memories-\(safeStamp).md")
+
+        do {
+            try md.write(to: url, atomically: true, encoding: .utf8)
+            exportStatus = "✅ → \(url.lastPathComponent)"
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+                exportStatus = nil
+            }
+        } catch {
+            exportStatus = "⚠️ \(error.localizedDescription)"
         }
     }
 
