@@ -4,9 +4,10 @@ import Foundation
 /// Affiché dans Settings (info section).
 public enum IRISRuntimeInfo {
     /// Version IRIS courante (mise à jour manuellement à chaque release majeure).
-    /// v1.100 — Milestone : 100 versions livrées depuis v0.0.1 bootstrap. Roadmap v2.0 :
-    /// CloudKit sync E2EE design doc dans docs/IRIS-CLOUD-SYNC-DESIGN.md (pas encore impl).
-    public static let appVersion = "1.100"
+    /// v1.120 — Phase A (Witness Vision SCKit + Haiku 4.5) + Phase B (MCP real
+    /// backend Gmail/Calendar/Slack via Claude Desktop config + dedup SHA256) closed.
+    /// IRIS passe de démo polish à exocortex réel opérationnel.
+    public static let appVersion = "1.120"
 
     /// Timestamp du bootstrap IRIS (set par IRISApp.bootstrap au launch).
     public nonisolated(unsafe) static var bootstrapAt: Date?

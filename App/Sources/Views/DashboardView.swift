@@ -68,6 +68,9 @@ struct DashboardView: View {
                     focusedProjectCard(focus)
                 }
 
+                // v1.120 — MCP sources actives banner (Phase B closure)
+                mcpSourcesBanner
+
                 // v1.92 — Snippet du dernier briefing Advisor
                 if let latest = advisorBriefings.first {
                     advisorBriefingCard(latest)
@@ -78,6 +81,46 @@ struct DashboardView: View {
                 Spacer()
             }
             .padding(IRISTokens.spacing24)
+        }
+    }
+
+    // v1.120 — Banner MCP sources avec backend réel actif
+    @ViewBuilder
+    private var mcpSourcesBanner: some View {
+        let mcpSources = Sentinel.knownSources.filter { Sentinel.isMCPBackend(for: $0) }
+        if !mcpSources.isEmpty {
+            HStack(spacing: IRISTokens.spacing16) {
+                Image(systemName: "antenna.radiowaves.left.and.right")
+                    .font(.system(size: 16, weight: .light))
+                    .foregroundStyle(IRISTokens.aquaTint)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("MCP BACKENDS ACTIFS (\(mcpSources.count))")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .tracking(1.4)
+                        .foregroundStyle(.secondary)
+                    HStack(spacing: 8) {
+                        ForEach(mcpSources, id: \.self) { source in
+                            let serverName = Sentinel.mcpServerName(for: source) ?? "?"
+                            let toolName = Sentinel.mcpToolName(for: source)
+                            HStack(spacing: 3) {
+                                Text(source)
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(.primary)
+                                Text("→ \(serverName)\(toolName.map { ".\($0)" } ?? "")")
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(IRISTokens.aquaTint.opacity(0.12))
+                            .clipShape(Capsule())
+                        }
+                    }
+                }
+                Spacer()
+            }
+            .padding(IRISTokens.spacing16)
+            .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusMedium).fill(.regularMaterial))
+            .overlay(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusMedium).strokeBorder(IRISTokens.aquaTint.opacity(0.2), lineWidth: 0.5))
         }
     }
 
