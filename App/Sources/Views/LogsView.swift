@@ -132,6 +132,17 @@ struct LogsView: View {
             .controlSize(.small)
             .disabled(filterAgent.isEmpty && filterKind.isEmpty && filterLevel.isEmpty && filterCorrelationId == nil && searchText.isEmpty)
 
+            // v1.161 — Dispatches quick filter
+            Button {
+                filterKind = "agentDispatched"
+            } label: {
+                Label("Dispatches", systemImage: "arrow.right.circle")
+                    .font(.system(size: 11))
+            }
+            .controlSize(.small)
+            .tint(IRISTokens.irisAccent)
+            .help("Filter rapide : show only agentDispatched events")
+
             // v1.39 — Export filtered logs Markdown
             Button {
                 exportFilteredLogs()

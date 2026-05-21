@@ -133,6 +133,38 @@ struct CommandPaletteView: View {
             }
         ))
 
+        // v1.163 — System destinations shortcuts
+        actions.append(PaletteAction(
+            id: "system.logs",
+            title: "System > Logs",
+            subtitle: "Voir les EventLog runtime",
+            icon: "list.bullet.rectangle",
+            action: {
+                appState.selection = .system(.logs)
+                dismiss()
+            }
+        ))
+        actions.append(PaletteAction(
+            id: "system.memory",
+            title: "System > Memory",
+            subtitle: "Browse mémoires + retrieval Scribe",
+            icon: "books.vertical",
+            action: {
+                appState.selection = .system(.memory)
+                dismiss()
+            }
+        ))
+        actions.append(PaletteAction(
+            id: "system.stats",
+            title: "System > Bus Stats",
+            subtitle: "Stats events par kind 1h/24h/all",
+            icon: "chart.bar.fill",
+            action: {
+                appState.selection = .system(.stats)
+                dismiss()
+            }
+        ))
+
         return actions
     }
 

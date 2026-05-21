@@ -156,6 +156,7 @@ public actor Witness {
             let cost = response.usage.estimatedCostUSD(model: visionModel)
             onCost?(cost, visionModel.rawValue)
             Self.incrementVisionCallsToday()
+            Self.addVisionCost(cost)  // v1.162 — track total cost USD/day (rolling 30 days)
 
             irisLog(.info,
                 "Witness vision OK — \(description.prefix(80)) (input=\(response.usage.inputTokens) out=\(response.usage.outputTokens) cost=$\(String(format: "%.5f", cost)) today=\(Self.visionCallsToday)/\(Self.maxVisionCallsPerDay))",
@@ -306,6 +307,40 @@ public actor Witness {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
         return f.string(from: Date())
+    }
+
+    // MARK: — v1.162 Vision cost tracking (USD/day, rolling 30 days)
+
+    private static let visionCostByDayKey = "iris.witness.visionCostByDay"
+
+    /// Dict yyyy-MM-dd → sum of vision cost (USD) for that day. Rolling 30 days.
+    public static var visionCostByDay: [String: Double] {
+        return UserDefaults.standard.dictionary(forKey: visionCostByDayKey) as? [String: Double] ?? [:]
+    }
+
+    /// Adds a vision call cost to today's bucket and prunes entries older than 30 days.
+    public static func addVisionCost(_ cost: Double) {
+        let today = currentDayStamp()
+        var dict = visionCostByDay
+        dict[today, default: 0] += cost
+
+        // Prune entries older than 30 days
+        let calendar = Calendar(identifier: .gregorian)
+        guard let cutoff = calendar.date(byAdding: .day, value: -30, to: Date()) else {
+            UserDefaults.standard.set(dict, forKey: visionCostByDayKey)
+            return
+        }
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        let cutoffStamp = f.string(from: cutoff)
+        dict = dict.filter { $0.key >= cutoffStamp }
+
+        UserDefaults.standard.set(dict, forKey: visionCostByDayKey)
+    }
+
+    /// Sum of vision cost over the last 30 days (USD).
+    public static var visionCostLast30Days: Double {
+        return visionCostByDay.values.reduce(0, +)
     }
 
     /// Bundle IDs courants suggérés à blocker (apps sensibles).
