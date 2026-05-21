@@ -9,6 +9,7 @@ import AppKit
 /// v1.181 — Auto-refresh 30s timer toggle to force window stats re-eval.
 /// v1.189 — CSV export per kind (1h/24h/all-time) to home dir.
 /// v1.193 — Stats footer (total + avg/h + earliest event date).
+/// v1.202 — Past hour delta % vs previous hour badge (arrow up/down).
 
 struct BusStatsView: View {
     @Query(sort: \EventLog.timestamp, order: .reverse) private var allEvents: [EventLog]
@@ -45,6 +46,41 @@ struct BusStatsView: View {
         let total = events.count
         let percentage = Double(top.value) / Double(total) * 100
         return (top.key, top.value, percentage)
+    }
+
+    private var hourDelta: (current: Int, previous: Int, deltaPercent: Double) {
+        let _ = refreshTick
+        let oneHourCutoff = Date().addingTimeInterval(-3600)
+        let twoHourCutoff = Date().addingTimeInterval(-7200)
+        let current = allEvents.filter { $0.timestamp >= oneHourCutoff }.count
+        let previous = allEvents.filter { $0.timestamp >= twoHourCutoff && $0.timestamp < oneHourCutoff }.count
+        let deltaPercent: Double
+        if previous > 0 {
+            deltaPercent = (Double(current) - Double(previous)) / Double(previous) * 100
+        } else if current > 0 {
+            deltaPercent = 100
+        } else {
+            deltaPercent = 0
+        }
+        return (current, previous, deltaPercent)
+    }
+
+    @ViewBuilder
+    private var hourDeltaBadge: some View {
+        HStack(spacing: 4) {
+            Image(systemName: hourDelta.current > hourDelta.previous ? "arrow.up.right" : (hourDelta.current < hourDelta.previous ? "arrow.down.right" : "arrow.right"))
+                .font(.system(size: 10))
+                .foregroundStyle(hourDelta.current > hourDelta.previous ? .green : (hourDelta.current < hourDelta.previous ? .red : .secondary))
+            Text(String(format: "%+.0f%%", hourDelta.deltaPercent))
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(hourDelta.current > hourDelta.previous ? .green : (hourDelta.current < hourDelta.previous ? .red : .secondary))
+            Text("vs prev hour")
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(.secondary.opacity(0.7))
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(Capsule().fill(.thinMaterial))
     }
 
     private var totalStats: (total: Int, avgPerHour: Double, earliest: Date?) {
@@ -157,6 +193,7 @@ struct BusStatsView: View {
                 .foregroundStyle(IRISTokens.irisAccent)
             Text("Bus Stats")
                 .font(.system(size: 22, weight: .light, design: .serif))
+            hourDeltaBadge
             Button(action: exportMarkdown) {
                 Label("Export MD", systemImage: "square.and.arrow.up")
             }

@@ -8,6 +8,7 @@ import SwiftData
 /// v1.180 — Weekly events trend mini-sparkline card (7d bar chart).
 /// v1.186 — Memory growth past 7d mini stat card (gold).
 /// v1.195 — System status banner (Witness · Sentinel · MCP) at top of dashboard.
+/// v1.201 — Milestone v1.200 celebration card (auto-hides at v1.206).
 
 struct DashboardView: View {
     @Environment(IRISAppState.self) private var appState
@@ -41,6 +42,11 @@ struct DashboardView: View {
             VStack(alignment: .leading, spacing: IRISTokens.spacing24) {
                 // v1.195 — System status banner (Witness · Sentinel · MCP)
                 systemStatusBanner
+
+                // v1.201 — Milestone v1.200 celebration (auto-hides at v1.206)
+                if isInMilestoneWindow {
+                    milestoneCard
+                }
 
                 header
 
@@ -622,6 +628,39 @@ struct DashboardView: View {
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let content = json["content"] as? String else { return "(no content)" }
         return content
+    }
+
+    // MARK: — v1.201 Milestone celebration
+
+    /// True iff current appVersion patch is in [200, 205]. Card auto-hides at 1.206+.
+    private var isInMilestoneWindow: Bool {
+        let parts = IRISRuntimeInfo.appVersion.split(separator: ".")
+        guard parts.count >= 3, let patch = Int(parts[2]) else { return false }
+        return patch >= 200 && patch <= 205
+    }
+
+    private var milestoneCard: some View {
+        HStack(spacing: IRISTokens.spacing16) {
+            Image(systemName: "star.circle.fill")
+                .foregroundStyle(IRISTokens.goldAccent)
+                .font(.system(size: 24))
+            VStack(alignment: .leading, spacing: 2) {
+                Text("MILESTONE v1.200")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .tracking(1.4)
+                    .foregroundStyle(IRISTokens.goldAccent)
+                Text("200 versions shipped · IRIS exocortex perso")
+                    .font(.system(size: 13, weight: .light, design: .serif))
+                    .foregroundStyle(.primary)
+                Text("23 mega-swarm bundles · multi-agent SwiftUI · 0→200 sans interruption")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .padding(IRISTokens.spacing16)
+        .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(IRISTokens.goldAccent.opacity(0.08)))
+        .overlay(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).strokeBorder(IRISTokens.goldAccent.opacity(0.4), lineWidth: 1))
     }
 
     // MARK: — v1.195 System status banner
