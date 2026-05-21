@@ -16,6 +16,9 @@ struct MainCanvasView: View {
     @Query private var allProjectsCount: [ProjectRecord]
     @Query private var allAuditsCount: [AuditReport]
 
+    @State private var placeholderIndex: Int = 0  // v1.146
+    private let placeholderTimer = Timer.publish(every: 4, on: .main, in: .common).autoconnect()
+
     var body: some View {
         ZStack {
             Color.clear
@@ -35,6 +38,10 @@ struct MainCanvasView: View {
         }
         .navigationTitle("")
         .toolbarBackground(.hidden, for: .windowToolbar)
+        // v1.146 — Cycle placeholder examples toutes les 4s
+        .onReceive(placeholderTimer) { _ in
+            placeholderIndex = (placeholderIndex + 1) % Self.rotatingPlaceholders.count
+        }
     }
 
     // MARK: — v1.7 Footer compteurs live
@@ -260,12 +267,25 @@ struct MainCanvasView: View {
         .frame(maxWidth: .infinity)
     }
 
+    // v1.146 — Placeholder qui cycle entre exemples de commandes (4s intervalle)
+    private static let rotatingPlaceholders: [String] = [
+        "Tape ton intent (Cmd+Enter)…",
+        "? — voir les commandes directes",
+        "audit atelier_frisson — déclenche Auditor",
+        "cherche Numelite — Scribe top 5",
+        "drafte réponse Odelie — Quill draft",
+        "scaffold nouveau_projet — Builder",
+        "briefing — Advisor Opus maintenant",
+        "snapshot — Witness vision capture",
+        "/clear — reset conversation"
+    ]
+
     @ViewBuilder
     private var inputBar: some View {
         @Bindable var binding = appState
 
         HStack(alignment: .center, spacing: IRISTokens.spacing8) {
-            TextField("Tape ton intent (Cmd+Enter pour envoyer)…", text: $binding.currentInput, axis: .vertical)
+            TextField(Self.rotatingPlaceholders[placeholderIndex], text: $binding.currentInput, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(.system(size: 14))
                 .lineLimit(1...5)

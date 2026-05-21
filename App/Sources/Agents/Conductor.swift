@@ -180,12 +180,17 @@ public actor Conductor {
         }
 
         // v1.143 — /clear command : reset history + transcript (équivalent du bouton Nouvelle conversation)
+        // v1.147 — Auto-save conversation as Memory avant clear (ne perd pas le contexte)
         if trimmed == "/clear" || trimmed == "/reset" || trimmed == "nouvelle conversation" {
+            let savedCount = await autoSaveConversationBeforeClear()
             conversationHistory.removeAll()
+            let ackContent = savedCount > 0
+                ? "🧭 Conversation reset (sauvée comme Memory — \(savedCount) msgs indexés Scribe). Continue."
+                : "🧭 Conversation reset (history vidée). Continue."
             await EventBus.shared.publish(
-                .agentResponse(from: .conductor, content: "🧭 Conversation reset (history vidée). Continue.", eventId: eventId)
+                .agentResponse(from: .conductor, content: ackContent, eventId: eventId)
             )
-            irisLog(.info, "Conductor /clear executed", category: IRISLogger.conductor)
+            irisLog(.info, "Conductor /clear executed (saved=\(savedCount))", category: IRISLogger.conductor)
             return
         }
 
@@ -304,6 +309,41 @@ public actor Conductor {
 
     Raccourcis : `Cmd+K` palette · `Cmd+1..0` agents · `Cmd+Shift+B` briefing · `Cmd+Shift+R` refresh cartographer · `Cmd+.` stop stream.
     """
+
+    /// v1.147 — Avant /clear, sauve la conversation en cours comme Memory pour Scribe.
+    /// Évite de perdre le contexte de la session. Retourne le nombre de messages indexés.
+    private func autoSaveConversationBeforeClear() async -> Int {
+        guard !conversationHistory.isEmpty, let container = modelContainer else { return 0 }
+        let snapshot = conversationHistory
+        let count = snapshot.count
+        await Self.persistClearedConversation(container: container, messages: snapshot)
+        return count
+    }
+
+    @MainActor
+    private static func persistClearedConversation(container: ModelContainer, messages: [Message]) async {
+        let dateFmt = DateFormatter()
+        dateFmt.dateFormat = "yyyy-MM-dd HH:mm"
+        let firstUser = messages.first(where: { if case .user = $0.role { return true } else { return false } })?.content ?? "(no user msg)"
+        let summary = String(firstUser.prefix(120))
+
+        var content = "# Conversation (sauvegarde automatique /clear) — \(dateFmt.string(from: Date()))\n\n"
+        for msg in messages {
+            let role = msg.role == .user ? "User" : "Conductor"
+            content += "**\(role)** : \(msg.content)\n\n"
+        }
+
+        let memory = Memory(
+            type: "conversation-cleared",
+            name: "conv-clear-\(Int(Date().timeIntervalSince1970))",
+            summary: summary,
+            content: content,
+            sourceAgent: AgentID.conductor.rawValue,
+            projectScope: nil,
+            tagsCSV: "conversation-cleared,auto-save,conductor"
+        )
+        await Scribe.store(memory: memory, in: container.mainContext)
+    }
 
     /// v1.131 — Helper Scribe retrieve formatté pour ack dispatch.
     /// Top 5 mémoires avec scores → markdown lisible pour transcript.

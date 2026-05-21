@@ -112,6 +112,8 @@ public actor Sentinel {
     /// initialize + tools/list, et émet un Signal "MCP <source> ok: N tools".
     /// v1.118 enrichira avec real tool calling pour fetch les vrais data.
     private func pollMCPSources() async {
+        // v1.148 — skip hors plage horaire active
+        guard Self.isWithinActiveHours() else { return }
         for source in Self.knownSources {
             guard let serverName = Self.mcpServerName(for: source) else { continue }
             guard !Self.mutedSources.contains(source) else { continue }
@@ -317,6 +319,39 @@ public actor Sentinel {
 
     public static let knownSources: [String] = ["gmail", "github", "calendar", "fs"]
 
+    // MARK: — v1.148 Active hours window (mute Sentinel hors plage horaire configurée)
+
+    private static let activeHourStartKey = "iris.sentinel.activeHourStart"
+    private static let activeHourEndKey = "iris.sentinel.activeHourEnd"
+
+    public static var activeHourStart: Int {
+        UserDefaults.standard.integer(forKey: activeHourStartKey)  // default 0
+    }
+
+    public static var activeHourEnd: Int {
+        let raw = UserDefaults.standard.integer(forKey: activeHourEndKey)
+        return raw > 0 ? raw : 24  // default 24 = always active
+    }
+
+    public static func setActiveHourWindow(start: Int, end: Int) {
+        UserDefaults.standard.set(max(0, min(23, start)), forKey: activeHourStartKey)
+        UserDefaults.standard.set(max(1, min(24, end)), forKey: activeHourEndKey)
+    }
+
+    /// True si l'heure courante est dans la fenêtre [start, end[. Toujours true si window = [0,24[.
+    public static func isWithinActiveHours() -> Bool {
+        let start = activeHourStart
+        let end = activeHourEnd
+        if start == 0 && end == 24 { return true }
+        let hour = Calendar.current.component(.hour, from: Date())
+        if start < end {
+            return hour >= start && hour < end
+        } else {
+            // Window cross-midnight (e.g. 22..6)
+            return hour >= start || hour < end
+        }
+    }
+
     // MARK: — v1.116 Source backend (stub vs MCP <serverName>)
 
     /// Backend par source : "stub" (templates fictifs) ou "mcp:<serverName>".
@@ -508,6 +543,8 @@ public actor Sentinel {
 
     private func emitStubSignal() async {
         let stub = Self.stubSignals.randomElement()!
+        // v1.148 — skip si hors plage horaire active
+        guard Self.isWithinActiveHours() else { return }
         // v1.74 — skip si source mutée
         guard !Self.mutedSources.contains(stub.source) else {
             irisLog(.debug, "Sentinel stub signal muted (source=\(stub.source))", category: IRISLogger.agents)
@@ -570,6 +607,8 @@ public actor Sentinel {
 
     /// Poll deltas : compare current pushedAt vs cached, emit Signal pour chaque delta.
     private func pollGitHubDeltas() async {
+        // v1.148 — skip hors plage horaire active
+        guard Self.isWithinActiveHours() else { return }
         // v1.74 — skip si source github mutée
         guard !Self.mutedSources.contains("github") else { return }
         // v1.88 — skip si snoozée
@@ -685,6 +724,8 @@ public actor Sentinel {
     }
 
     private func pollFSDeltas() async {
+        // v1.148 — skip hors plage horaire active
+        guard Self.isWithinActiveHours() else { return }
         // v1.74 — skip si source fs mutée
         guard !Self.mutedSources.contains("fs") else { return }
         // v1.88 — skip si snoozée

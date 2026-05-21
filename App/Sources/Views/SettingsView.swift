@@ -1103,6 +1103,39 @@ struct SettingsView: View {
 
             Divider().padding(.vertical, IRISTokens.spacing4)
 
+            // v1.148 — Active hours window (mute hors plage)
+            HStack(spacing: IRISTokens.spacing8) {
+                Text("Active hours")
+                    .font(.system(size: 11))
+                Stepper(value: $sentinelHourStart, in: 0...23) {
+                    Text("\(sentinelHourStart)h")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(IRISTokens.aquaTint)
+                        .frame(width: 30)
+                }
+                .controlSize(.small)
+                Text("→")
+                    .foregroundStyle(.secondary)
+                Stepper(value: $sentinelHourEnd, in: 1...24) {
+                    Text("\(sentinelHourEnd)h")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(IRISTokens.aquaTint)
+                        .frame(width: 30)
+                }
+                .controlSize(.small)
+                .onChange(of: sentinelHourStart) { _, _ in
+                    Sentinel.setActiveHourWindow(start: sentinelHourStart, end: sentinelHourEnd)
+                }
+                .onChange(of: sentinelHourEnd) { _, _ in
+                    Sentinel.setActiveHourWindow(start: sentinelHourStart, end: sentinelHourEnd)
+                }
+                Spacer()
+                Text(sentinelHourStart == 0 && sentinelHourEnd == 24 ? "(always)" : "(mute hors plage)")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.top, 4)
+
             // v1.74 — Source mute toggles
             sentinelMuteToggles
 
@@ -1117,6 +1150,9 @@ struct SettingsView: View {
                 githubIntervalSeconds = Double(await Sentinel.shared.currentGithubInterval)
                 fsIntervalSeconds = Double(await Sentinel.shared.currentFSInterval)
             }
+            // v1.148
+            sentinelHourStart = Sentinel.activeHourStart
+            sentinelHourEnd = Sentinel.activeHourEnd
         }
     }
 
@@ -1281,6 +1317,8 @@ struct SettingsView: View {
     // MARK: — v1.74 Sentinel source mute
 
     @State private var sentinelMuteTick: Int = 0
+    @State private var sentinelHourStart: Int = 0   // v1.148
+    @State private var sentinelHourEnd: Int = 24    // v1.148
 
     private var sentinelMuteToggles: some View {
         let muted = Sentinel.mutedSources
