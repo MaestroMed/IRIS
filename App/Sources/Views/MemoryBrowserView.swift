@@ -11,6 +11,7 @@ import AppKit
 /// v1.194 — Type stats footer with count + circle color per type.
 /// v1.198 — Sort by Picker (newest/oldest/type/name), pinned always on top.
 /// v1.208 — Per-row copy content button with 2s checkmark feedback.
+/// v1.215 — Pin all of currently-filtered type bulk action (gold pin.fill button).
 /// Permet à Mehdi d'inspecter ce que Scribe sait, et de tester les requêtes de similarité.
 enum MemorySortMode: String, CaseIterable { case newest, oldest, type, name }
 
@@ -94,6 +95,23 @@ struct MemoryBrowserView: View {
             tags.insert("pinned", at: 0)
         }
         memory.tagsCSV = tags.joined(separator: ", ")
+        try? modelContext.save()
+    }
+
+    // MARK: — v1.215 Bulk pin by type
+
+    private func pinAllOfType(_ type: String) {
+        guard !type.isEmpty else { return }
+        for memory in allMemories where memory.type == type && !isPinned(memory) {
+            var tags = memory.tagsCSV
+                .split(separator: ",")
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+            if !tags.contains("pinned") {
+                tags.insert("pinned", at: 0)
+            }
+            memory.tagsCSV = tags.joined(separator: ", ")
+        }
         try? modelContext.save()
     }
 
@@ -195,6 +213,19 @@ struct MemoryBrowserView: View {
             .labelsHidden()
             .controlSize(.small)
             .frame(maxWidth: 180)
+
+            // v1.215 — Pin all of currently-filtered type
+            if !typeFilter.isEmpty {
+                Button { pinAllOfType(typeFilter) } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "pin.fill").font(.system(size: 9))
+                        Text("Pin all").font(.system(size: 10))
+                    }
+                }
+                .controlSize(.small)
+                .tint(IRISTokens.goldAccent)
+                .help("Pin tous les memories du type \(typeFilter)")
+            }
 
             // v1.84 — Tag filter Picker
             Picker("Tag", selection: $tagFilter) {

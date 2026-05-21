@@ -10,6 +10,7 @@ import SwiftData
 /// v1.195 — System status banner (Witness · Sentinel · MCP) at top of dashboard.
 /// v1.201 — Milestone v1.200 celebration card (auto-hides at v1.206).
 /// v1.210 — Recent activity feed card (last 5 events).
+/// v1.216 — Avg response time by agent card (dispatched→response delay).
 
 struct DashboardView: View {
     @Environment(IRISAppState.self) private var appState
@@ -116,6 +117,9 @@ struct DashboardView: View {
 
                 // v1.210 — Recent activity feed (last 5 events)
                 recentActivityCard
+
+                // v1.216 — Avg response time by agent (dispatched→response delay)
+                avgResponseTimeCard
 
                 // v1.180 — Weekly events trend (7d bar chart sparkline)
                 weeklyTrendCard
@@ -256,6 +260,59 @@ struct DashboardView: View {
                                 .lineLimit(1)
                         }
                         Spacer()
+                    }
+                }
+            }
+        }
+        .padding(IRISTokens.spacing16)
+        .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
+    }
+
+    // v1.216 — Avg response time by agent (dispatched→response delay in seconds)
+    private var avgResponseTimeByAgent: [(agent: String, avgSeconds: Double, count: Int)] {
+        var dispatchedByCorrelation: [UUID: EventLog] = [:]
+        for event in allEvents where event.kind == "agentDispatched" {
+            if let cid = event.correlationId { dispatchedByCorrelation[cid] = event }
+        }
+        var pairs: [(agent: String, delay: TimeInterval)] = []
+        for event in allEvents where event.kind == "agentResponse" {
+            if let cid = event.correlationId, let dispatched = dispatchedByCorrelation[cid] {
+                let agent = dispatched.toAgent ?? "(unknown)"
+                let delay = event.timestamp.timeIntervalSince(dispatched.timestamp)
+                if delay > 0 { pairs.append((agent: agent, delay: delay)) }
+            }
+        }
+        let grouped = Dictionary(grouping: pairs, by: { $0.agent })
+        let summary = grouped.map { (agent, items) -> (agent: String, avgSeconds: Double, count: Int) in
+            let avg = items.reduce(0.0) { $0 + $1.delay } / Double(items.count)
+            return (agent: agent, avgSeconds: avg, count: items.count)
+        }
+        .sorted { $0.count > $1.count }
+        return Array(summary.prefix(5))
+    }
+
+    private var avgResponseTimeCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("AVG RESPONSE TIME")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .tracking(1.4)
+                .foregroundStyle(.secondary)
+            if avgResponseTimeByAgent.isEmpty {
+                Text("Pas assez de paires dispatched→response.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(Array(avgResponseTimeByAgent.enumerated()), id: \.offset) { _, item in
+                    HStack(spacing: 6) {
+                        Text(item.agent)
+                            .font(.system(size: 11, weight: .medium))
+                        Spacer()
+                        Text(String(format: "%.2fs", item.avgSeconds))
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(IRISTokens.aquaTint)
+                        Text("(\(item.count))")
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(.secondary.opacity(0.6))
                     }
                 }
             }

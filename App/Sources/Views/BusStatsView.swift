@@ -12,6 +12,7 @@ import AppKit
 /// v1.202 — Past hour delta % vs previous hour badge (arrow up/down).
 /// v1.207 — Today vs yesterday comparison card (counts + delta %).
 /// v1.214 — Top 3 busiest hours past 24h card with mini bars.
+/// v1.217 — Active sessions badge (unique correlationIds past 1h).
 
 struct BusStatsView: View {
     @Query(sort: \EventLog.timestamp, order: .reverse) private var allEvents: [EventLog]
@@ -65,6 +66,34 @@ struct BusStatsView: View {
             deltaPercent = 0
         }
         return (current, previous, deltaPercent)
+    }
+
+    private var activeSessionCount: Int {
+        let _ = refreshTick
+        let cutoff = Date().addingTimeInterval(-3600)
+        let filtered = allEvents.filter { $0.timestamp >= cutoff }
+        return Set(filtered.compactMap { $0.correlationId }).count
+    }
+
+    @ViewBuilder
+    private var activeSessionsBadge: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "link.circle.fill")
+                .font(.system(size: 12))
+                .foregroundStyle(IRISTokens.aquaTint)
+            VStack(alignment: .leading, spacing: 0) {
+                Text("\(activeSessionCount)")
+                    .font(.system(size: 16, weight: .light, design: .serif))
+                    .foregroundStyle(IRISTokens.aquaTint)
+                Text("ACTIVE SESSIONS 1H")
+                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                    .tracking(1.2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Capsule().fill(.thinMaterial))
     }
 
     @ViewBuilder
@@ -301,6 +330,7 @@ struct BusStatsView: View {
                 .foregroundStyle(IRISTokens.irisAccent)
             Text("Bus Stats")
                 .font(.system(size: 22, weight: .light, design: .serif))
+            activeSessionsBadge
             hourDeltaBadge
             Button(action: exportMarkdown) {
                 Label("Export MD", systemImage: "square.and.arrow.up")
