@@ -5,6 +5,7 @@ import AppKit
 // IRIS v1.0.A — Inspector dédié par agent sélectionné. Sections globales (pending actions / drafts / signals) toujours visibles.
 // + Sections agent-spécifiques quand sélectionné : Cartographer / Auditor / Builder / Advisor.
 /// v1.172 — Drafts today counter badge in Quill section header.
+/// v1.179 — Witness "Block this app" quick action (appends to blocklist UserDefaults).
 
 struct InspectorView: View {
     @Environment(IRISAppState.self) private var appState
@@ -37,6 +38,7 @@ struct InspectorView: View {
     @State private var composeBody: String = ""
     @State private var composeChannel: String = "email"
     @State private var composeTone: String = "formel-fr-client"
+    @State private var blockStatus: String? = nil        // v1.179 — Witness block transient feedback
 
     var body: some View {
         ScrollView {
@@ -536,6 +538,13 @@ struct InspectorView: View {
         return VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
             sectionHeader("Witness", count: screenSignals.count, accent: IRISTokens.irisAccent, pinnable: .witness)
 
+            // v1.179 — transient block confirmation feedback
+            if let status = blockStatus {
+                Text(status)
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.green)
+            }
+
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 4) {
                     Image(systemName: "eyes")
@@ -642,11 +651,58 @@ struct InspectorView: View {
                 Spacer()
                 Text(signal.emittedAt, format: .dateTime.hour().minute().second())
                     .font(.system(size: 9, design: .monospaced)).foregroundStyle(.secondary)
+                // v1.179 — Block this app quick action (parse appName from summary, resolve bundleId)
+                Button {
+                    blockApp(bundleId: Self.bundleIdFromSummary(signal.summary))
+                } label: {
+                    Image(systemName: "nosign")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.red.opacity(0.7))
+                }
+                .buttonStyle(.plain)
+                .help("Bloquer cette app (ajoute bundleId à la blocklist Witness)")
             }
         }
         .padding(.vertical, 3)
         .padding(.horizontal, 6)
         .background(RoundedRectangle(cornerRadius: 6).fill(.thinMaterial))
+    }
+
+    // v1.179 — Extract appName from Witness summary ("Mehdi sur \(appName) · ..." or "Mehdi sur \(appName)")
+    // then resolve bundleId via NSWorkspace.runningApplications.
+    private static func bundleIdFromSummary(_ summary: String) -> String? {
+        let prefix = "Mehdi sur "
+        guard summary.hasPrefix(prefix) else { return nil }
+        let afterPrefix = String(summary.dropFirst(prefix.count))
+        let appName = afterPrefix.split(separator: "·", maxSplits: 1).first
+            .map { $0.trimmingCharacters(in: .whitespaces) } ?? afterPrefix
+        guard !appName.isEmpty else { return nil }
+        let match = NSWorkspace.shared.runningApplications.first {
+            ($0.localizedName ?? "") == appName
+        }
+        return match?.bundleIdentifier
+    }
+
+    // v1.179 — Append bundleId to Witness blocklist (UserDefaults via Witness.addBlocked),
+    // skip if already present, show transient confirmation 3s.
+    private func blockApp(bundleId: String?) {
+        guard let bundleId, !bundleId.isEmpty else {
+            blockStatus = "⚠️ bundleId introuvable"
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                if blockStatus == "⚠️ bundleId introuvable" { blockStatus = nil }
+            }
+            return
+        }
+        if Witness.blockedBundleIds.contains(bundleId) {
+            blockStatus = "ℹ️ Déjà bloqué: \(bundleId)"
+        } else {
+            Witness.addBlocked(bundleId)
+            blockStatus = "✅ Bloqué: \(bundleId)"
+        }
+        let snapshot = blockStatus
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            if blockStatus == snapshot { blockStatus = nil }
+        }
     }
 
     // MARK: — Cartographer

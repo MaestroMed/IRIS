@@ -6,16 +6,26 @@ import AppKit
 // Affiché quand sidebar System > Stats sélectionné.
 // IRIS v1.164 — Export bus stats snapshot to Markdown (~/iris-busstats-<ISO>.md).
 /// v1.176 — Most-frequent kind past 1h insight banner.
+/// v1.181 — Auto-refresh 30s timer toggle to force window stats re-eval.
 
 struct BusStatsView: View {
     @Query(sort: \EventLog.timestamp, order: .reverse) private var allEvents: [EventLog]
+
+    @State private var autoRefresh: Bool = false
+    @State private var refreshTick: Int = 0
 
     private var now: Date { Date() }
     private var oneHourAgo: Date { now.addingTimeInterval(-3600) }
     private var oneDayAgo: Date { now.addingTimeInterval(-86400) }
 
-    private var lastHour: [EventLog] { allEvents.filter { $0.timestamp >= oneHourAgo } }
-    private var lastDay: [EventLog] { allEvents.filter { $0.timestamp >= oneDayAgo } }
+    private var lastHour: [EventLog] {
+        let _ = refreshTick
+        return allEvents.filter { $0.timestamp >= oneHourAgo }
+    }
+    private var lastDay: [EventLog] {
+        let _ = refreshTick
+        return allEvents.filter { $0.timestamp >= oneDayAgo }
+    }
 
     private static let kindOrder = [
         "userInput", "agentResponse", "agentDispatched",
@@ -84,6 +94,9 @@ struct BusStatsView: View {
             }
             .padding(IRISTokens.spacing24)
         }
+        .onReceive(Timer.publish(every: 30, on: .main, in: .common).autoconnect()) { _ in
+            if autoRefresh { refreshTick += 1 }
+        }
     }
 
     private var header: some View {
@@ -98,6 +111,18 @@ struct BusStatsView: View {
             .buttonStyle(.bordered)
             .controlSize(.small)
             .help("Export stats current snapshot Markdown")
+            Button {
+                autoRefresh.toggle()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: autoRefresh ? "arrow.clockwise.circle.fill" : "arrow.clockwise.circle")
+                        .font(.system(size: 12))
+                        .foregroundStyle(autoRefresh ? IRISTokens.aquaTint : .secondary)
+                    Text("Auto 30s").font(.system(size: 11))
+                }
+            }
+            .buttonStyle(.plain)
+            .help("Toggle auto-refresh stats every 30s")
             Spacer()
             Text("\(allEvents.count) events tracés")
                 .font(.system(size: 11, design: .monospaced))

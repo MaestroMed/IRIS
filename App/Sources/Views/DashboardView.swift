@@ -5,6 +5,7 @@ import SwiftData
 // 4 cards stats Liquid Glass : Memory by type, Signals 24h by source, Drafts by status, Audits by verdict + Cost session.
 /// v1.170 — Top dispatched agents past 24h card.
 /// v1.173 — Alerts last 1h card (failures + critical signals).
+/// v1.180 — Weekly events trend mini-sparkline card (7d bar chart).
 
 struct DashboardView: View {
     @Environment(IRISAppState.self) private var appState
@@ -100,6 +101,9 @@ struct DashboardView: View {
 
                 // v1.170 — Top dispatched agents past 24h (top 3 podium)
                 topAgentsCard
+
+                // v1.180 — Weekly events trend (7d bar chart sparkline)
+                weeklyTrendCard
 
                 // v1.92 — Snippet du dernier briefing Advisor
                 if let latest = advisorBriefings.first {
@@ -199,6 +203,54 @@ struct DashboardView: View {
         }
         .padding(IRISTokens.spacing16)
         .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
+    }
+
+    // v1.180 — Events past 7 days (oldest first, today last)
+    private var eventsLast7Days: [(day: Date, count: Int)] {
+        let cal = Calendar.current
+        let entries: [(day: Date, count: Int)] = (0..<7).map { i in
+            let day = cal.startOfDay(for: Date().addingTimeInterval(-Double(i) * 86400))
+            let count = allEvents.filter { cal.isDate($0.timestamp, inSameDayAs: day) }.count
+            return (day: day, count: count)
+        }
+        return entries.reversed()
+    }
+
+    private var weeklyTrendCard: some View {
+        let days = eventsLast7Days
+        let total = days.reduce(0) { $0 + $1.count }
+        let maxCount = max(days.map(\.count).max() ?? 1, 1)
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("EVENTS PAST 7 DAYS")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .tracking(1.4)
+                .foregroundStyle(.secondary)
+            Text("\(total) total")
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(IRISTokens.aquaTint)
+            GeometryReader { _ in
+                HStack(alignment: .bottom, spacing: 4) {
+                    ForEach(Array(days.enumerated()), id: \.offset) { _, item in
+                        VStack(spacing: 2) {
+                            Rectangle()
+                                .fill(IRISTokens.aquaTint.opacity(0.3 + (Double(item.count) / Double(maxCount)) * 0.7))
+                                .frame(height: max(4, CGFloat(item.count) / CGFloat(maxCount) * 50))
+                            Text(dayLabel(item.day))
+                                .font(.system(size: 8, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+            .frame(height: 60)
+        }
+        .padding(IRISTokens.spacing16)
+        .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
+    }
+
+    private func dayLabel(_ date: Date) -> String {
+        if Calendar.current.isDateInToday(date) { return "Today" }
+        return date.formatted(.dateTime.weekday(.abbreviated))
     }
 
     // v1.173 — Alerts last 1h (agentFailure events + critical/high importance signals)
