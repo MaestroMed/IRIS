@@ -161,7 +161,17 @@ public actor Sentinel {
         }
         try? await client.notify("notifications/initialized")
 
-        // tools/list
+        // v1.118 — Si un tool name est configuré pour cette source, call tools/call.
+        // Sinon, fallback v1.117 : ping tools/list + signal "OK N tools".
+        if let toolName = Self.mcpToolName(for: source) {
+            await callMCPTool(client: client, source: source, serverName: serverName, toolName: toolName)
+        } else {
+            await pingMCPToolsList(client: client, source: source, serverName: serverName)
+        }
+    }
+
+    /// v1.117 — Fallback : juste list les tools dispo et émet un ping signal.
+    private func pingMCPToolsList(client: MCPClient, source: String, serverName: String) async {
         var toolNames: [String] = []
         if let data = try? await client.callMethod("tools/list", params: [:], timeout: 5),
            let result = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -170,25 +180,69 @@ public actor Sentinel {
         }
 
         let summary = "MCP \(source) (\(serverName)) OK : \(toolNames.count) tools — \(toolNames.prefix(3).joined(separator: ", "))"
+        await emitSignal(source: source, summary: summary, importance: .low)
+        irisLog(.info, "Sentinel MCP ping \(source) → \(toolNames.count) tools", category: IRISLogger.agents)
+    }
+
+    /// v1.118 — Call un tool spécifique + parse content[0].text → Signal.
+    private func callMCPTool(client: MCPClient, source: String, serverName: String, toolName: String) async {
+        let params: [String: Any] = [
+            "name": toolName,
+            "arguments": [String: Any]()  // empty pour v1.118 — args personnalisés en v1.119+
+        ]
+        guard let data = try? await client.callMethod("tools/call", params: params, timeout: 15) else {
+            irisLog(.warning, "Sentinel MCP \(source) tools/call '\(toolName)' failed",
+                    category: IRISLogger.agents)
+            return
+        }
+        guard let result = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            irisLog(.warning, "Sentinel MCP \(source) decode result failed", category: IRISLogger.agents)
+            return
+        }
+
+        // MCP tools/call response format : {content: [{type: "text", text: "..."}], isError: false}
+        let content = result["content"] as? [[String: Any]] ?? []
+        let texts: [String] = content.compactMap { block in
+            (block["type"] as? String) == "text" ? (block["text"] as? String) : nil
+        }
+        let isError = (result["isError"] as? Bool) ?? false
+
+        let combined = texts.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !combined.isEmpty else {
+            irisLog(.warning, "Sentinel MCP \(source) empty content from '\(toolName)'",
+                    category: IRISLogger.agents)
+            return
+        }
+
+        // Importance : critical si isError, sinon medium par défaut. v1.119 dedup affinera.
+        let importance: SignalImportance = isError ? .critical : .medium
+        let summary = "[\(serverName).\(toolName)] " + String(combined.prefix(200))
+        await emitSignal(source: source, summary: summary, importance: importance)
+        irisLog(.info,
+            "Sentinel MCP \(source) call '\(toolName)' → \(combined.count) chars (isError=\(isError))",
+            category: IRISLogger.agents
+        )
+    }
+
+    /// Helper : publish + persist en SwiftData.
+    private func emitSignal(source: String, summary: String, importance: SignalImportance) async {
         await EventBus.shared.publish(
-            .signalEmitted(from: .sentinel, importance: .low, summary: summary, source: source)
+            .signalEmitted(from: .sentinel, importance: importance, summary: summary, source: source)
         )
         if let container = await modelContainer {
             let summaryCopy = summary
             let sourceCopy = source
+            let importanceRaw = importance.rawValue
             await MainActor.run {
                 let signal = Signal(
                     source: sourceCopy,
-                    importance: SignalImportance.low.rawValue,
+                    importance: importanceRaw,
                     summary: summaryCopy
                 )
                 container.mainContext.insert(signal)
                 try? container.mainContext.save()
             }
         }
-
-        irisLog(.info, "Sentinel MCP poll \(source) → \(toolNames.count) tools",
-                category: IRISLogger.agents)
     }
 
     public func setInterval(_ seconds: UInt64) {
@@ -283,6 +337,26 @@ public actor Sentinel {
         let backend = sourceBackend(for: source)
         guard backend.hasPrefix("mcp:") else { return nil }
         return String(backend.dropFirst("mcp:".count))
+    }
+
+    // v1.118 — Per-source tool name + args JSON (tools/call wire)
+    private static let mcpToolNameKey = "iris.sentinel.mcpToolName"
+
+    /// Tool name à invoquer pour cette source. Nil = ne pas appeler tools/call,
+    /// juste émettre le ping "OK N tools" (comportement v1.117).
+    public static func mcpToolName(for source: String) -> String? {
+        let map = (UserDefaults.standard.dictionary(forKey: mcpToolNameKey) as? [String: String]) ?? [:]
+        return map[source]
+    }
+
+    public static func setMcpToolName(_ name: String?, for source: String) {
+        var map = (UserDefaults.standard.dictionary(forKey: mcpToolNameKey) as? [String: String]) ?? [:]
+        if let name, !name.trimmingCharacters(in: .whitespaces).isEmpty {
+            map[source] = name.trimmingCharacters(in: .whitespaces)
+        } else {
+            map.removeValue(forKey: source)
+        }
+        UserDefaults.standard.set(map, forKey: mcpToolNameKey)
     }
 
     // MARK: — v1.88 Snooze (timed mute per source)

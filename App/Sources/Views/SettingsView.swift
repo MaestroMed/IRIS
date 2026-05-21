@@ -1242,6 +1242,10 @@ struct SettingsView: View {
     private func sourceBackendRow(_ source: String) -> some View {
         let current = Sentinel.sourceBackend(for: source)
         let servers = MCPManager.shared.servers
+        let toolNameBinding = Binding<String>(
+            get: { Sentinel.mcpToolName(for: source) ?? "" },
+            set: { Sentinel.setMcpToolName($0, for: source); sourceBackendTick += 1 }
+        )
         return HStack {
             Text(source)
                 .font(.system(size: 11, design: .monospaced))
@@ -1261,13 +1265,20 @@ struct SettingsView: View {
             }
             .labelsHidden()
             .controlSize(.small)
-            .frame(maxWidth: 220)
+            .frame(maxWidth: 180)
 
             if current.hasPrefix("mcp:") {
                 Image(systemName: "antenna.radiowaves.left.and.right")
                     .font(.system(size: 9))
                     .foregroundStyle(IRISTokens.aquaTint)
-                    .help("Backend MCP actif (real polling)")
+                    .help("Backend MCP actif")
+                // v1.118 — Tool name input (vide = ping tools/list seul, sinon tools/call)
+                TextField("tool name (vide=ping)", text: toolNameBinding)
+                    .textFieldStyle(.roundedBorder)
+                    .controlSize(.small)
+                    .font(.system(size: 10, design: .monospaced))
+                    .frame(maxWidth: 180)
+                    .help("Nom du tool MCP à invoquer (e.g. gmail_search). Vide → juste ping tools/list.")
             }
             Spacer()
         }
