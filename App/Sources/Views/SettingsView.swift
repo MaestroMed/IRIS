@@ -25,6 +25,7 @@ import AppKit
 /// v1.304 — Clear UserDefaults caches button (preserves API keys + data).
 /// v1.310 — Verbose logs toggle (@AppStorage shared with LogsView).
 /// v1.316 — Reset agent visibility button (restore all defaults).
+/// v1.321 — Cmd+? shortcut documented in cheatsheet (binding TODO).
 struct SettingsView: View {
     @Environment(IRISAppState.self) private var appState
     @Environment(\.modelContext) private var modelContext
@@ -740,6 +741,8 @@ struct SettingsView: View {
                 ("Système",
                  [("Cmd+,", "Settings"),
                   ("Cmd+Shift+O", "Ouvrir fenêtre principale depuis MenuBar"),
+                  // TODO: bind Cmd+? to open Settings → Shortcuts tab (or palette help)
+                  ("⌘?", "Show this cheatsheet"),                          // v1.321
                   ("Cmd+Q", "Quitter IRIS")]
                 )
             ]

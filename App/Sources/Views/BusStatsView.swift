@@ -31,6 +31,7 @@ import AppKit
 /// v1.307 — Top 3 correlation chains past 1h card.
 /// v1.313 — Growth rate badge (current vs all-time avg ratio).
 /// v1.318 — Top event senders (fromAgent only) card.
+/// v1.322 — First event delay badge (boot → first event time).
 
 struct BusStatsView: View {
     @Query(sort: \EventLog.timestamp, order: .reverse) private var allEvents: [EventLog]
@@ -379,6 +380,50 @@ struct BusStatsView: View {
         .padding(.horizontal, 6)
         .padding(.vertical, 2)
         .background(Capsule().fill(.thinMaterial))
+    }
+
+    private var firstEventDelay: TimeInterval? {
+        let _ = refreshTick
+        guard let boot = IRISRuntimeInfo.bootstrapAt else { return nil }
+        let afterBoot = allEvents.filter { $0.timestamp >= boot }
+        guard let earliest = afterBoot.min(by: { $0.timestamp < $1.timestamp }) else { return nil }
+        return earliest.timestamp.timeIntervalSince(boot)
+    }
+
+    @ViewBuilder
+    private var firstEventDelayBadge: some View {
+        if let delay = firstEventDelay {
+            let delayStr: String = {
+                if delay < 1 {
+                    return "<1s"
+                } else if delay < 60 {
+                    return "\(Int(delay))s"
+                } else if delay < 3600 {
+                    return "\(Int(delay/60))m \(Int(delay.truncatingRemainder(dividingBy: 60)))s"
+                } else {
+                    let hours = Int(delay / 3600)
+                    let minutes = Int(delay.truncatingRemainder(dividingBy: 3600) / 60)
+                    return "\(hours)h \(minutes)m"
+                }
+            }()
+            HStack(spacing: 4) {
+                Image(systemName: "timer")
+                    .font(.system(size: 11))
+                    .foregroundStyle(IRISTokens.aquaTint)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(delayStr)
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(IRISTokens.aquaTint)
+                    Text("FIRST EVENT")
+                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                        .tracking(1.2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(.thinMaterial))
+        }
     }
 
     private var liveRate10s: Double {
@@ -1230,6 +1275,7 @@ struct BusStatsView: View {
             Text("Bus Stats")
                 .font(.system(size: 22, weight: .light, design: .serif))
             activeSessionsBadge
+            firstEventDelayBadge
             hourDeltaBadge
             liveRateBadge
             growthRateBadge

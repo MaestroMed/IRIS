@@ -33,6 +33,7 @@ import AppKit
 /// v1.299 — Witness most-used app today badge (iris app.fill).
 /// v1.305 — Compact mode toggle for InspectorView (collapse all section bodies).
 /// v1.311 — Auditor verdict trend stacked bar (30d green/yellow/red ratio).
+/// v1.320 — Auditor verdict timeline (chronological dots last 20 audits 30d).
 
 struct InspectorView: View {
     @Environment(IRISAppState.self) private var appState
@@ -1635,6 +1636,33 @@ struct InspectorView: View {
         }
     }
 
+    // v1.320 — Chronological list of past-30d audits (oldest→newest, capped at 20).
+    private var verdictTimeline30d: [AuditReport] {
+        let cutoff = Date().addingTimeInterval(-30 * 86400)
+        let recent = allAudits
+            .filter { $0.createdAt >= cutoff }
+            .sorted { $0.createdAt < $1.createdAt }
+        return Array(recent.suffix(20))
+    }
+
+    // v1.320 — Mini timeline of verdict dots (oldest left, newest right).
+    @ViewBuilder
+    private var verdictTimelineBar: some View {
+        if verdictTimeline30d.isEmpty {
+            EmptyView()
+        } else {
+            HStack(spacing: 2) {
+                ForEach(verdictTimeline30d) { audit in
+                    Circle()
+                        .fill(verdictColor(audit.verdict))
+                        .frame(width: 8, height: 8)
+                        .help("\(audit.verdict) · \(audit.projectCodename) · \(audit.createdAt.formatted(date: .abbreviated, time: .shortened))")
+                }
+                Spacer()
+            }
+        }
+    }
+
     // v1.209 — Badge "$X.XXX today" inline pour Auditor section header (gold, n'apparaît que si > 0).
     @ViewBuilder
     private var auditorCostBadge: some View {
@@ -1720,8 +1748,11 @@ struct InspectorView: View {
                 .help(pinned.isPinned(.auditor) ? "Désépingler section" : "Épingler section (toujours visible)")
             }
             .padding(.horizontal, IRISTokens.spacing4)
-            verdictTrendBar
-                .padding(.horizontal, IRISTokens.spacing4)
+            VStack(alignment: .leading, spacing: 3) {
+                verdictTrendBar
+                verdictTimelineBar
+            }
+            .padding(.horizontal, IRISTokens.spacing4)
             }
 
             HStack(spacing: IRISTokens.spacing8) {
