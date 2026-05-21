@@ -1,4 +1,5 @@
 import Foundation
+import AppKit  // v1.137 — NSWorkspace pour openInIDE
 import SwiftData
 
 /// Builder v0.8 — instancie skills factory pour scaffold projets.
@@ -62,6 +63,34 @@ public actor Builder {
     public func stop() {
         subscriptionTask?.cancel()
         subscriptionTask = nil
+    }
+
+    /// v1.137 — Scaffold + ouvre directement dans IDE (Cursor préf, fallback Finder).
+    public func scaffoldAndOpen(skillName: String, projectName: String, targetDirectory: String? = nil) async {
+        let dir = targetDirectory ?? "\(NSHomeDirectory())/Developer/\(projectName)"
+        await scaffold(skillName: skillName, projectName: projectName, targetDirectory: dir)
+        // Petit délai pour laisser le scaffold terminer ses writes + git init
+        try? await Task.sleep(nanoseconds: 500_000_000)
+        await Self.openInIDE(path: dir)
+    }
+
+    /// v1.137 — Reuse de la logique Inspector openProjectInIDE (Cursor → Xcode → Finder fallback)
+    @MainActor
+    private static func openInIDE(path: String) {
+        let fm = FileManager.default
+        let projectURL = URL(fileURLWithPath: path)
+        if let contents = try? fm.contentsOfDirectory(atPath: path),
+           let xcodeproj = contents.first(where: { $0.hasSuffix(".xcodeproj") || $0.hasSuffix(".xcworkspace") }) {
+            NSWorkspace.shared.open(URL(fileURLWithPath: (path as NSString).appendingPathComponent(xcodeproj)))
+            return
+        }
+        let cursorURL = URL(fileURLWithPath: "/Applications/Cursor.app")
+        if fm.fileExists(atPath: cursorURL.path) {
+            let config = NSWorkspace.OpenConfiguration()
+            NSWorkspace.shared.open([projectURL], withApplicationAt: cursorURL, configuration: config) { _, _ in }
+            return
+        }
+        NSWorkspace.shared.activateFileViewerSelecting([projectURL])
     }
 
     /// Lance un scaffold. v1.126 — Si SKILL.md existe dans ~/.claude/skills/<skill>/,

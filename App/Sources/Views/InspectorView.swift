@@ -961,6 +961,27 @@ struct InspectorView: View {
                 .tint(IRISTokens.irisAccent)
                 .disabled(scaffoldProjectName.trimmingCharacters(in: .whitespaces).isEmpty)
                 .help("Scaffold + git init + commit + gh repo create + push (action git nécessite approval)")
+
+                // v1.137 — Scaffold + Open in IDE (1-click workflow)
+                Button {
+                    let name = scaffoldProjectName.trimmingCharacters(in: .whitespaces)
+                    guard !name.isEmpty else { return }
+                    Task {
+                        await Builder.shared.scaffoldAndOpen(
+                            skillName: scaffoldSelectedSkill,
+                            projectName: name
+                        )
+                    }
+                    scaffoldProjectName = ""
+                } label: {
+                    Label("Scaffold + Open", systemImage: "chevron.left.forwardslash.chevron.right")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .tint(IRISTokens.aquaTint)
+                .disabled(scaffoldProjectName.trimmingCharacters(in: .whitespaces).isEmpty)
+                .help("Scaffold + ouvre dans Cursor/Xcode immédiatement")
             }
 
             Divider().padding(.vertical, 2)

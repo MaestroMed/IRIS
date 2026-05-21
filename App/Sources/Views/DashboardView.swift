@@ -74,6 +74,9 @@ struct DashboardView: View {
                 // v1.135 — 5 phases real status banner (santé exocortex)
                 phasesRealStatusBanner
 
+                // v1.138 — Quick actions row (most-used)
+                quickActionsRow
+
                 // v1.92 — Snippet du dernier briefing Advisor
                 if let latest = advisorBriefings.first {
                     advisorBriefingCard(latest)
@@ -85,6 +88,44 @@ struct DashboardView: View {
             }
             .padding(IRISTokens.spacing24)
         }
+    }
+
+    // v1.138 — Quick actions row (raccourcis aux actions les plus fréquentes)
+    private var quickActionsRow: some View {
+        HStack(spacing: IRISTokens.spacing8) {
+            quickActionButton(icon: "sunrise.fill", label: "Brief", color: IRISTokens.goldAccent) {
+                Task { await Advisor.shared.runBriefing(kind: .manual) }
+            }
+            quickActionButton(icon: "arrow.clockwise", label: "Refresh map", color: IRISTokens.aquaTint) {
+                Task { await Cartographer.shared.refresh() }
+            }
+            quickActionButton(icon: "eye.square", label: "Vision now", color: IRISTokens.irisAccent) {
+                Task { await Witness.shared.captureWithVision() }
+            }
+            quickActionButton(icon: "books.vertical", label: "Memory", color: IRISTokens.aquaTint) {
+                appState.selection = .system(.memory)
+            }
+            quickActionButton(icon: "list.bullet.rectangle", label: "Logs", color: .secondary) {
+                appState.selection = .system(.logs)
+            }
+            Spacer()
+        }
+    }
+
+    private func quickActionButton(icon: String, label: String, color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 11))
+                Text(label)
+                    .font(.system(size: 11, weight: .medium))
+            }
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(color.opacity(0.12))
+            .clipShape(Capsule())
+            .foregroundStyle(color)
+        }
+        .buttonStyle(.plain)
     }
 
     // v1.135 — Banner "5 phases real" status (Witness Vision / MCP Real / Auditor Real / Builder Real / Dispatch)

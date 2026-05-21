@@ -420,7 +420,9 @@ struct TranscriptRow: View {
     var compact: Bool = false
 
     var body: some View {
-        HStack(alignment: .top, spacing: IRISTokens.spacing8) {
+        // v1.139 — Dispatch ack detection : si content commence par un emoji dispatch
+        let isDispatchAck = TranscriptRow.startsWithDispatchEmoji(entry.content)
+        return HStack(alignment: .top, spacing: IRISTokens.spacing8) {
             roleBadge
 
             VStack(alignment: .leading, spacing: 2) {
@@ -428,12 +430,19 @@ struct TranscriptRow: View {
                     Text(entry.role.displayName)
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(roleColor)
+                    if isDispatchAck {
+                        Text("dispatch")
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            .foregroundStyle(IRISTokens.aquaTint)
+                            .padding(.horizontal, 4).padding(.vertical, 1)
+                            .background(IRISTokens.aquaTint.opacity(0.12))
+                            .clipShape(Capsule())
+                    }
                     Text(entry.timestamp, format: .dateTime.hour().minute().second())
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundStyle(.secondary)
                 }
                 // v1.87 — Render markdown si content contient des marqueurs (#, *, `, [).
-                // Sinon plain text. AttributedString.markdown lenient fallback.
                 Group {
                     if TranscriptRow.looksLikeMarkdown(entry.content),
                        let attr = try? AttributedString(
@@ -449,9 +458,23 @@ struct TranscriptRow: View {
                 .foregroundStyle(.primary)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
+                // v1.139 — Background subtil aqua si dispatch ack
+                .padding(isDispatchAck ? 8 : 0)
+                .background(
+                    isDispatchAck
+                        ? RoundedRectangle(cornerRadius: 6).fill(IRISTokens.aquaTint.opacity(0.06))
+                        : nil
+                )
             }
         }
         .padding(.horizontal, compact ? 0 : IRISTokens.spacing4)
+    }
+
+    /// v1.139 — Détecte les ack de dispatch (commencent par emoji spécifique).
+    static func startsWithDispatchEmoji(_ s: String) -> Bool {
+        let trimmed = s.trimmingCharacters(in: .whitespaces)
+        let dispatchEmojis = ["📋", "🔨", "☀️", "🗺️", "🧠", "👁️", "✍️", "🧭"]
+        return dispatchEmojis.contains(where: { trimmed.hasPrefix($0) })
     }
 
     private var roleBadge: some View {
