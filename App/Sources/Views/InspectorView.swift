@@ -1166,6 +1166,8 @@ struct InspectorView: View {
                 // v1.91 — Sentinel snooze status badges (si id == sentinel)
                 if id == .sentinel {
                     sentinelSnoozeBadges
+                    // v1.156 — Sentinel last poll timestamps
+                    sentinelLastPollBadges
                 }
 
                 // v1.97 — ActionLog history (5 derniers par agent)
@@ -1204,6 +1206,56 @@ struct InspectorView: View {
                 .padding(.vertical, 2)
                 .padding(.horizontal, 4)
                 .background(RoundedRectangle(cornerRadius: 4).fill(.thinMaterial))
+            }
+        }
+    }
+
+    // v1.156 — Sentinel last poll timestamps (visible debug santé)
+    @State private var sentinelTimestamps: SentinelTimestamps = .empty
+    private struct SentinelTimestamps {
+        let stub: Date?
+        let github: Date?
+        let fs: Date?
+        let mcp: Date?
+        static let empty = SentinelTimestamps(stub: nil, github: nil, fs: nil, mcp: nil)
+    }
+
+    @ViewBuilder
+    private var sentinelLastPollBadges: some View {
+        let items: [(label: String, date: Date?)] = [
+            ("stub", sentinelTimestamps.stub),
+            ("github", sentinelTimestamps.github),
+            ("fs", sentinelTimestamps.fs),
+            ("mcp", sentinelTimestamps.mcp)
+        ]
+        let nonEmpty = items.filter { $0.date != nil }
+        if !nonEmpty.isEmpty {
+            VStack(alignment: .leading, spacing: 2) {
+                Divider().padding(.vertical, 2)
+                Text("LAST POLL")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                HStack(spacing: 4) {
+                    ForEach(nonEmpty, id: \.label) { item in
+                        if let date = item.date {
+                            let relative = RelativeDateTimeFormatter().localizedString(for: date, relativeTo: .now)
+                            Text("\(item.label) \(relative)")
+                                .font(.system(size: 9, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 4).padding(.vertical, 1)
+                                .background(IRISTokens.aquaTint.opacity(0.10))
+                                .clipShape(Capsule())
+                        }
+                    }
+                }
+            }
+            .task {
+                // Charge les timestamps actor-isolated
+                let stub = await Sentinel.shared.lastStubEmittedAt
+                let github = await Sentinel.shared.lastGithubPollAt
+                let fs = await Sentinel.shared.lastFSPollAt
+                let mcp = await Sentinel.shared.lastMCPPollAt
+                sentinelTimestamps = SentinelTimestamps(stub: stub, github: github, fs: fs, mcp: mcp)
             }
         }
     }

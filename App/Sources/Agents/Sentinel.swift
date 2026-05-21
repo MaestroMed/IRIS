@@ -18,6 +18,12 @@ public actor Sentinel {
     private var githubPollIntervalSeconds: UInt64 = 300  // 5 min
     private var fsPollIntervalSeconds: UInt64 = 60       // 1 min
     private let mcpPollIntervalSeconds: UInt64 = 300     // v1.117 — 5 min
+
+    // v1.156 — Last poll timestamps (visible Inspector pour debug santé)
+    public private(set) var lastStubEmittedAt: Date? = nil
+    public private(set) var lastGithubPollAt: Date? = nil
+    public private(set) var lastFSPollAt: Date? = nil
+    public private(set) var lastMCPPollAt: Date? = nil
     private weak var modelContainer: ModelContainer?
     private static let githubAccount = "MaestroMed"
     private static let githubCacheKey = "iris.sentinel.githubCache"
@@ -120,6 +126,7 @@ public actor Sentinel {
             guard !Self.isSnoozedNow(source: source) else { continue }
             await pollMCPSource(source: source, serverName: serverName)
         }
+        lastMCPPollAt = .now  // v1.156
     }
 
     @MainActor
@@ -589,6 +596,8 @@ public actor Sentinel {
             }
         }
 
+        lastStubEmittedAt = .now  // v1.156
+
         irisLog(.notice,
             "Sentinel stub signal: [\(stub.source)] importance=\(stub.importance.rawValue) — \(stub.summary)",
             category: IRISLogger.agents
@@ -662,6 +671,7 @@ public actor Sentinel {
         }
 
         await persistGitHubCache(current)
+        lastGithubPollAt = .now  // v1.156
     }
 
     /// Fetch pushedAt par repo via gh CLI. Retourne [repo_name: Date].
@@ -791,6 +801,7 @@ public actor Sentinel {
         }
 
         await persistFSCache(current)
+        lastFSPollAt = .now  // v1.156
     }
 
     /// Scan mtime des projets actifs depuis ProjectRecord SwiftData.

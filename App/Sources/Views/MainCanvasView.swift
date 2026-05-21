@@ -53,8 +53,26 @@ struct MainCanvasView: View {
             statBadge(label: "drafts", count: allDraftsCount.count, icon: "pencil.and.scribble", color: IRISTokens.irisAccent)
             statBadge(label: "projects", count: allProjectsCount.count, icon: "map", color: IRISTokens.goldAccent)
             statBadge(label: "audits", count: allAuditsCount.count, icon: "checkmark.shield", color: .green)
+            // v1.157 — Conductor history length indicator (transcript pairs vs max)
+            let pairs = appState.transcript.count / 2
+            let maxPairs = Conductor.currentMaxHistoryPairs
+            if pairs > 0 {
+                let nearFull = pairs >= maxPairs - 2
+                HStack(spacing: 3) {
+                    Image(systemName: "bubble.left.and.bubble.right")
+                        .font(.system(size: 10))
+                        .foregroundStyle(nearFull ? IRISTokens.goldAccent : .secondary)
+                    Text("\(pairs)/\(maxPairs)")
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(nearFull ? IRISTokens.goldAccent : .primary)
+                    Text("history")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                }
+                .help(nearFull ? "History plein — anciens messages seront dropped" : "Pairs user/assistant dans history Conductor")
+            }
             Spacer()
-            Text("IRIS v1.7 · 10 agents")
+            Text("IRIS v\(IRISRuntimeInfo.appVersion) · 10 agents")
                 .font(.system(size: 9, design: .monospaced))
                 .foregroundStyle(.secondary)
         }
@@ -442,6 +460,11 @@ struct TranscriptRow: View {
     var body: some View {
         // v1.139 — Dispatch ack detection : si content commence par un emoji dispatch
         let isDispatchAck = TranscriptRow.startsWithDispatchEmoji(entry.content)
+        // v1.155 — Error detection (system error level)
+        let isError: Bool = {
+            if case .system(let level) = entry.role { return level.contains("error") }
+            return false
+        }()
         return HStack(alignment: .top, spacing: IRISTokens.spacing8) {
             roleBadge
 
@@ -456,6 +479,14 @@ struct TranscriptRow: View {
                             .foregroundStyle(IRISTokens.aquaTint)
                             .padding(.horizontal, 4).padding(.vertical, 1)
                             .background(IRISTokens.aquaTint.opacity(0.12))
+                            .clipShape(Capsule())
+                    }
+                    if isError {
+                        Text("error")
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            .foregroundStyle(.red)
+                            .padding(.horizontal, 4).padding(.vertical, 1)
+                            .background(Color.red.opacity(0.12))
                             .clipShape(Capsule())
                     }
                     Text(entry.timestamp, format: .dateTime.hour().minute().second())
