@@ -25,6 +25,7 @@ import AppKit
 /// v1.276 — Hot kinds past 1h carousel card (top 3 colored cells).
 /// v1.280 — Burstiest minute past 24h card (gold bolt + count + time).
 /// v1.283 — Total records in DB card (per-model counts horizontal).
+/// v1.288 — Period stats selector card (1h/24h/7d/all) with live event count.
 
 struct BusStatsView: View {
     @Query(sort: \EventLog.timestamp, order: .reverse) private var allEvents: [EventLog]
@@ -38,6 +39,57 @@ struct BusStatsView: View {
     @State private var autoRefresh: Bool = false
     @State private var refreshTick: Int = 0
     @State private var exportCSVStatus: String?
+    @AppStorage("busStatsSelectedPeriod") private var selectedPeriodKey: String = "24h"
+
+    private var periodFilteredEvents: [EventLog] {
+        let _ = refreshTick
+        switch selectedPeriodKey {
+        case "1h":
+            return allEvents.filter { $0.timestamp >= Date().addingTimeInterval(-3600) }
+        case "24h":
+            return allEvents.filter { $0.timestamp >= Date().addingTimeInterval(-86400) }
+        case "7d":
+            return allEvents.filter { $0.timestamp >= Date().addingTimeInterval(-7 * 86400) }
+        case "all":
+            return allEvents
+        default:
+            return allEvents
+        }
+    }
+
+    @ViewBuilder
+    private var periodSelectorCard: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "calendar.badge.clock")
+                .foregroundStyle(IRISTokens.aquaTint)
+                .font(.system(size: 14))
+            Text("PERIOD STATS")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .tracking(1.4)
+                .foregroundStyle(.secondary)
+            Picker("", selection: $selectedPeriodKey) {
+                Text("Past 1h").tag("1h")
+                Text("Past 24h").tag("24h")
+                Text("Past 7d").tag("7d")
+                Text("All time").tag("all")
+            }
+            .labelsHidden()
+            .controlSize(.small)
+            .frame(maxWidth: 100)
+            .pickerStyle(.menu)
+            Spacer()
+            VStack(alignment: .trailing, spacing: 1) {
+                Text("\(periodFilteredEvents.count)")
+                    .font(.system(size: 18, weight: .light, design: .serif))
+                    .foregroundStyle(IRISTokens.aquaTint)
+                Text("events")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(IRISTokens.spacing16)
+        .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
+    }
 
     private var now: Date { Date() }
     private var oneHourAgo: Date { now.addingTimeInterval(-3600) }
@@ -917,6 +969,8 @@ struct BusStatsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: IRISTokens.spacing24) {
                 header
+
+                periodSelectorCard
 
                 topKindBanner
 

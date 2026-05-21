@@ -19,7 +19,8 @@ import SwiftData
 /// v1.250 — Today's signals importance stacked bar (critical/high/normal/low).
 /// v1.255 — Cost stack bar inside costTodayCard (per-model colored).
 /// v1.261 — Live window Picker (5/15/30/60min) driving the live count badge.
-/// v1.267 — Most active project past 7d card (audits + signals combined).
+/// v1.267 — Most active project past 7d card (audits + signals combined)
+/// v1.287 — Signals by source past 7d top 5 card..
 
 struct DashboardView: View {
     @Environment(IRISAppState.self) private var appState
@@ -106,6 +107,9 @@ struct DashboardView: View {
 
                 // v1.250 — Today's signals importance stacked bar (critical/high/normal/low)
                 signalsImportanceCard
+
+                // v1.287 — Signals by source past 7d (top 5)
+                signalsBySourceCard
 
                 // v1.234 — Failure rate past 7d (per-agent fails/total + %)
                 failureRatesCard
@@ -569,6 +573,54 @@ struct DashboardView: View {
                 .font(.system(size: 9, design: .monospaced))
                 .foregroundStyle(.secondary)
         }
+    }
+
+    // v1.287 — Signals by source past 7d (top 5)
+    private var signalsBySource7d: [(source: String, count: Int)] {
+        let cutoff = Date().addingTimeInterval(-7 * 24 * 3600)
+        let recent = allSignals.filter { $0.emittedAt >= cutoff }
+        var counts: [String: Int] = [:]
+        for s in recent {
+            let key = s.source ?? "(unknown)"
+            counts[key, default: 0] += 1
+        }
+        return counts
+            .map { (source: $0.key, count: $0.value) }
+            .sorted { $0.count > $1.count }
+            .prefix(5)
+            .map { $0 }
+    }
+
+    private var signalsBySourceCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("SIGNALS BY SOURCE PAST 7D")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .tracking(1.4)
+                .foregroundStyle(.secondary)
+            if signalsBySource7d.isEmpty {
+                Text("Aucun signal 7d.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(Array(signalsBySource7d.enumerated()), id: \.offset) { _, item in
+                    HStack {
+                        Text(item.source)
+                            .font(.system(size: 11, weight: .medium))
+                            .lineLimit(1)
+                        Spacer()
+                        Text("\(item.count)")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(IRISTokens.aquaTint)
+                        Rectangle()
+                            .fill(IRISTokens.aquaTint.opacity(0.4))
+                            .frame(width: max(20, CGFloat(item.count) / CGFloat(max(1, signalsBySource7d.first?.count ?? 1)) * 100), height: 4)
+                            .cornerRadius(2)
+                    }
+                }
+            }
+        }
+        .padding(IRISTokens.spacing16)
+        .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
     }
 
     // v1.240 — Hourly avg + peak past 24h (24 sliding hour buckets ending at now)

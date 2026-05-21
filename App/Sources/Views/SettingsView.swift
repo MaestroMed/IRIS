@@ -20,6 +20,7 @@ import AppKit
 /// v1.262 — Quick-select chips (5/10/20/50) for Conductor history max pairs.
 /// v1.268 — Witness vision daily quota slider (@AppStorage shared with Witness.swift).
 /// v1.274 — Import config from JSON button (NSOpenPanel + UserDefaults restore).
+/// v1.289 — Auto-backup frequency Picker (off/hourly/daily/weekly).
 struct SettingsView: View {
     @Environment(IRISAppState.self) private var appState
     @Environment(\.modelContext) private var modelContext
@@ -34,6 +35,7 @@ struct SettingsView: View {
     @AppStorage("burstAlertThreshold") private var burstAlertThreshold: Int = 50  // v1.238
     @AppStorage("logsMaxDisplay") private var logsMaxDisplay: Int = 500  // v1.252
     @AppStorage("iris.witness.visionMaxCallsPerDay") private var witnessVisionDailyCap: Int = 100  // v1.268
+    @AppStorage("backupAutoFrequency") private var backupAutoFrequency: String = "daily"  // v1.289
     @State private var blocklistRefreshTick: Int = 0  // v1.212 — force re-render after unblock
     @State private var resetVisionStatus: String?  // v1.259
     @State private var importConfigStatus: String?  // v1.274
@@ -2190,6 +2192,35 @@ struct SettingsView: View {
 
             // v1.67 — Auto-backup scheduler
             autoBackupRow
+
+            // v1.289 — Auto-backup frequency picker
+            autoBackupFrequencyRow
+        }
+    }
+
+    // v1.289 — Frequency picker for auto-backup (UI only, wiring later)
+    private var autoBackupFrequencyRow: some View {
+        HStack(spacing: IRISTokens.spacing8) {
+            Image(systemName: "arrow.clockwise.circle")
+                .foregroundStyle(IRISTokens.aquaTint)
+                .font(.system(size: 12))
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Auto-backup").font(.system(size: 11, weight: .medium))
+                Text("Backup automatique IRIS data SwiftData")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Picker("", selection: $backupAutoFrequency) {
+                Text("Off").tag("off")
+                Text("Hourly").tag("hourly")
+                Text("Daily").tag("daily")
+                Text("Weekly").tag("weekly")
+            }
+            .labelsHidden()
+            .controlSize(.small)
+            .frame(maxWidth: 100)
+            .pickerStyle(.menu)
         }
     }
 
