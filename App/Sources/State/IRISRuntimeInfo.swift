@@ -4,10 +4,10 @@ import Foundation
 /// Affiché dans Settings (info section).
 public enum IRISRuntimeInfo {
     /// Version IRIS courante (mise à jour manuellement à chaque release majeure).
-    /// v1.120 — Phase A (Witness Vision SCKit + Haiku 4.5) + Phase B (MCP real
-    /// backend Gmail/Calendar/Slack via Claude Desktop config + dedup SHA256) closed.
-    /// IRIS passe de démo polish à exocortex réel opérationnel.
-    public static let appVersion = "1.120"
+    /// v1.125 — Phase A (Witness Vision) + Phase B (MCP real) + Phase C (Auditor
+    /// real reads project files + recursive src scan + fingerprint cache) closed.
+    /// IRIS lit, écoute, regarde — exocortex complet sur les 3 axes data.
+    public static let appVersion = "1.125"
 
     /// Timestamp du bootstrap IRIS (set par IRISApp.bootstrap au launch).
     public nonisolated(unsafe) static var bootstrapAt: Date?
