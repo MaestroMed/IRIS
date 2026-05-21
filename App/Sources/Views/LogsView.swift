@@ -22,6 +22,7 @@ import SwiftData
 // v1.270 — Per-row "filter by correlation" link button.
 // v1.278 — Search history dropdown (last 10 persisted via @AppStorage).
 // v1.286 — Export ALL events history (no filters) JSON button.
+// v1.292 — Inferred level badge (E/W/N/D/I color-coded capsule).
 
 struct LogsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -604,6 +605,16 @@ struct LogsView: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 70, alignment: .leading)
 
+            // v1.292 — Inferred level badge (E/W/N/D/I)
+            let level = inferLevel(event)
+            Text(level.label)
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 3)
+                .padding(.vertical, 1)
+                .background(Capsule().fill(level.color))
+                .frame(width: 14)
+
             kindBadge(event.kind)
                 .frame(width: 120, alignment: .leading)
 
@@ -692,6 +703,17 @@ struct LogsView: View {
                 .font(.system(size: 9, weight: .semibold, design: .monospaced))
                 .foregroundStyle(color)
         }
+    }
+
+    // v1.292 — Infer level (label + color) from event kind and payload contents
+    private func inferLevel(_ event: EventLog) -> (label: String, color: Color) {
+        if event.kind == "agentFailure" { return ("E", .red) }
+        if event.kind == "actionRejected" { return ("E", .red) }
+        if event.payloadJSON.contains("\"level\":\"error\"") || event.payloadJSON.contains("\"level\":\"fault\"") { return ("E", .red) }
+        if event.payloadJSON.contains("\"level\":\"warning\"") { return ("W", IRISTokens.goldAccent) }
+        if event.payloadJSON.contains("\"level\":\"notice\"") { return ("N", IRISTokens.aquaTint) }
+        if event.payloadJSON.contains("\"level\":\"debug\"") { return ("D", .secondary.opacity(0.5)) }
+        return ("I", .secondary.opacity(0.7))
     }
 
     private func severityColor(for event: EventLog) -> Color {

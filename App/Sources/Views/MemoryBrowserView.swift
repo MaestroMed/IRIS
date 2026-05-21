@@ -21,6 +21,7 @@ import AppKit
 /// v1.269 — Sort direction indicator icon next to Sort Picker.
 /// v1.275 — Visual relevance bar (40px max) next to retrieval score.
 /// v1.285 — Per-row "copy UUID" button (number.circle icon).
+/// v1.291 — Regex search mode toggle (NSRegularExpression case-insensitive).
 /// Permet à Mehdi d'inspecter ce que Scribe sait, et de tester les requêtes de similarité.
 enum MemorySortMode: String, CaseIterable { case newest, oldest, type, name }
 
@@ -30,6 +31,7 @@ struct MemoryBrowserView: View {
 
     @State private var typeFilter: String = ""
     @State private var searchText: String = ""
+    @State private var regexMode: Bool = false  // v1.291
     @State private var tagFilter: String = ""  // v1.84
     @State private var pinnedOnly: Bool = false  // v1.182
     @State private var sortMode: MemorySortMode = .newest  // v1.198
@@ -68,11 +70,22 @@ struct MemoryBrowserView: View {
             items = items.filter { $0.tagsCSV.lowercased().contains(tag) }
         }
         if !searchText.isEmpty {
-            let q = searchText.lowercased()
-            items = items.filter {
-                $0.name.lowercased().contains(q) ||
-                $0.summary.lowercased().contains(q) ||
-                $0.content.lowercased().contains(q)
+            if regexMode {
+                // Try compile regex; if invalid, skip filter
+                if let regex = try? NSRegularExpression(pattern: searchText, options: [.caseInsensitive]) {
+                    items = items.filter { memory in
+                        let combined = memory.name + " " + memory.summary + " " + memory.content
+                        let range = NSRange(combined.startIndex..., in: combined)
+                        return regex.firstMatch(in: combined, range: range) != nil
+                    }
+                }
+            } else {
+                let q = searchText.lowercased()
+                items = items.filter {
+                    $0.name.lowercased().contains(q) ||
+                    $0.summary.lowercased().contains(q) ||
+                    $0.content.lowercased().contains(q)
+                }
             }
         }
         if pinnedOnly {
@@ -356,6 +369,17 @@ struct MemoryBrowserView: View {
                 .controlSize(.small)
                 .frame(maxWidth: 240)
                 .focused($searchFieldFocused)
+
+            // v1.291 — Regex mode toggle
+            Button { regexMode.toggle() } label: {
+                Text(".*")
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(regexMode ? IRISTokens.goldAccent : .secondary.opacity(0.5))
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 4).padding(.vertical, 1)
+            .background(Capsule().fill(regexMode ? IRISTokens.goldAccent.opacity(0.15) : Color.clear))
+            .help(regexMode ? "Désactiver le mode regex" : "Activer mode regex (NSRegularExpression case-insensitive)")
 
             // v1.264 — Hide tag cloud toggle (compact mode)
             Button { hideTagCloud.toggle() } label: {

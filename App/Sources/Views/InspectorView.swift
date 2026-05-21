@@ -28,6 +28,7 @@ import AppKit
 /// v1.277 — Scribe retrievals today count badge (aqua magnifyingglass).
 /// v1.279 — Scribe "last memory written" relative timestamp row.
 /// v1.284 — Quill cost today badge (gold dollar) in section header.
+/// v1.290 — Cartographer per-project audit count + latest verdict color dot inline.
 
 struct InspectorView: View {
     @Environment(IRISAppState.self) private var appState
@@ -1208,6 +1209,29 @@ struct InspectorView: View {
         }
     }
 
+    // v1.290 — Per-project audit stats (count + latest verdict + latest date)
+    private var auditsByCodename: [String: (count: Int, latestVerdict: String, latestDate: Date)] {
+        var dict: [String: (count: Int, latestVerdict: String, latestDate: Date)] = [:]
+        for audit in allAudits { // allAudits is already sorted desc by createdAt
+            if let existing = dict[audit.projectCodename] {
+                dict[audit.projectCodename] = (count: existing.count + 1, latestVerdict: existing.latestVerdict, latestDate: existing.latestDate)
+            } else {
+                dict[audit.projectCodename] = (count: 1, latestVerdict: audit.verdict, latestDate: audit.createdAt)
+            }
+        }
+        return dict
+    }
+
+    // v1.290 — Map verdict string to color for inline dot.
+    private func verdictColor(_ verdict: String) -> Color {
+        switch verdict {
+        case "GREEN": return .green
+        case "YELLOW": return IRISTokens.goldAccent
+        case "RED": return .red
+        default: return Color.secondary
+        }
+    }
+
     private var cartographerSection: some View {
         // v1.79 — filter status
         let availableStatuses = Array(Set(allProjects.map(\.status))).sorted()
@@ -1328,6 +1352,21 @@ struct InspectorView: View {
                 }
             }
             Spacer()
+            // v1.290 — Per-project audit stats badge (count + latest verdict color dot)
+            if let stats = auditsByCodename[project.codename] {
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(verdictColor(stats.latestVerdict))
+                        .frame(width: 6, height: 6)
+                    Text("\(stats.count) audits")
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 4)
+                .padding(.vertical, 1)
+                .background(Capsule().fill(.thinMaterial))
+                .help("Dernier verdict: \(stats.latestVerdict)")
+            }
             if project.isPrivate {
                 Image(systemName: "lock.fill")
                     .font(.system(size: 9))
