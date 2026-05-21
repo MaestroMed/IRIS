@@ -14,11 +14,14 @@ import SwiftData
 // v1.224 — Paste UUID TextField for direct correlation chain filter.
 // v1.230 — Burst detector banner (red alert if >50 events past 60s).
 // v1.235 — Active filters summary chip row (each removable, with color per filter type).
+// v1.238 — Burst threshold now configurable via @AppStorage burstAlertThreshold.
 
 struct LogsView: View {
     @Environment(\.modelContext) private var modelContext
 
     @Query(sort: \EventLog.timestamp, order: .reverse) private var allEvents: [EventLog]
+
+    @AppStorage("burstAlertThreshold") private var burstAlertThreshold: Int = 50  // v1.238
 
     @State private var filterAgent: String = ""
     @State private var filterKind: String = ""
@@ -170,7 +173,7 @@ struct LogsView: View {
 
     @ViewBuilder
     private var burstBanner: some View {
-        if burstCount60s > 50 {
+        if burstCount60s > burstAlertThreshold {
             HStack(spacing: 8) {
                 Image(systemName: "exclamationmark.octagon.fill")
                     .foregroundStyle(.red)
@@ -180,7 +183,7 @@ struct LogsView: View {
                         .font(.system(size: 10, weight: .bold, design: .monospaced))
                         .tracking(1.4)
                         .foregroundStyle(.red)
-                    Text("\(burstCount60s) events past 60s — bus possibly overloaded")
+                    Text("\(burstCount60s) events past 60s (threshold: \(burstAlertThreshold)) — bus possibly overloaded")
                         .font(.system(size: 11))
                         .foregroundStyle(.primary.opacity(0.85))
                 }

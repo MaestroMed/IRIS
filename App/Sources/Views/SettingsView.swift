@@ -13,6 +13,7 @@ import AppKit
 /// v1.220 — Witness vision capture toggle (@AppStorage witnessVisionEnabled).
 /// v1.226 — Keyboard shortcuts cheatsheet augmented (Cmd+L, Cmd+F logs, Cmd+1..5 palette).
 /// v1.232 — Reset Sentinel intervals to defaults button.
+/// v1.238 — Burst alert threshold slider (@AppStorage shared with LogsView).
 struct SettingsView: View {
     @Environment(IRISAppState.self) private var appState
     @Environment(\.modelContext) private var modelContext
@@ -24,6 +25,7 @@ struct SettingsView: View {
     @State private var backupStatus: String?
     @AppStorage("witnessPaused") private var witnessPaused: Bool = false  // v1.187
     @AppStorage("witnessVisionEnabled") private var witnessVisionEnabled: Bool = true  // v1.220
+    @AppStorage("burstAlertThreshold") private var burstAlertThreshold: Int = 50  // v1.238
     @State private var blocklistRefreshTick: Int = 0  // v1.212 — force re-render after unblock
 
     // v1.212 — Read live from UserDefaults, tied to blocklistRefreshTick for reactivity.
@@ -922,6 +924,30 @@ struct SettingsView: View {
                     .toggleStyle(.switch)
                     .controlSize(.small)
                     .labelsHidden()
+            }
+
+            // v1.238 — Burst alert threshold (LogsView burst banner trigger)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("Burst alert threshold")
+                        .font(.system(size: 12))
+                    Spacer()
+                    Text("\(burstAlertThreshold) events/min")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(IRISTokens.aquaTint)
+                }
+                Slider(
+                    value: Binding(
+                        get: { Double(burstAlertThreshold) },
+                        set: { burstAlertThreshold = Int($0) }
+                    ),
+                    in: 10...200,
+                    step: 5
+                )
+                .controlSize(.small)
+                Text("Logs banner alerte si events/60s dépasse ce seuil.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
             }
 
             // v1.212 — Witness blocklist viewer (per-row unblock)

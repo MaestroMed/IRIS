@@ -15,6 +15,7 @@ import AppKit
 /// v1.217 — Active sessions badge (unique correlationIds past 1h).
 /// v1.225 — 24h heatmap card (one cell per hour, aqua intensity).
 /// v1.231 — Throughput card (events/min × 4 windows: 1m/5m/1h/24h).
+/// v1.237 — Peak day past 7d banner (gold crown).
 
 struct BusStatsView: View {
     @Query(sort: \EventLog.timestamp, order: .reverse) private var allEvents: [EventLog]
@@ -253,6 +254,53 @@ struct BusStatsView: View {
         .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
     }
 
+    private var peakDay7d: (date: Date, count: Int, weekdayName: String)? {
+        let _ = refreshTick
+        let cal = Calendar.current
+        let cutoff = cal.startOfDay(for: Date().addingTimeInterval(-7 * 86400))
+        let recent = allEvents.filter { $0.timestamp >= cutoff }
+        let groups = Dictionary(grouping: recent, by: { cal.startOfDay(for: $0.timestamp) })
+            .mapValues { $0.count }
+        guard let top = groups.max(by: { $0.value < $1.value }), top.value > 0 else { return nil }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEEE"
+        let weekdayName = formatter.string(from: top.key)
+        return (date: top.key, count: top.value, weekdayName: weekdayName)
+    }
+
+    @ViewBuilder
+    private var peakDayBadge: some View {
+        if let peak = peakDay7d {
+            HStack(spacing: 6) {
+                Image(systemName: "crown.fill")
+                    .foregroundStyle(IRISTokens.goldAccent)
+                    .font(.system(size: 12))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("PEAK DAY PAST 7D")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .tracking(1.2)
+                        .foregroundStyle(.secondary)
+                    HStack(spacing: 6) {
+                        Text(peak.weekdayName)
+                            .font(.system(size: 13, weight: .medium))
+                        Text(peak.date, format: .dateTime.day().month())
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                        Text("\(peak.count) events")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(IRISTokens.goldAccent)
+                    }
+                }
+                Spacer()
+            }
+            .padding(.horizontal, IRISTokens.spacing16)
+            .padding(.vertical, 6)
+            .background(IRISTokens.goldAccent.opacity(0.05))
+        } else {
+            EmptyView()
+        }
+    }
+
     private var throughputStats: [(window: String, count: Int, rate: Double)] {
         let _ = refreshTick
         let nowDate = Date()
@@ -393,6 +441,8 @@ struct BusStatsView: View {
                 todayVsYesterdayCard
 
                 topHoursCard
+
+                peakDayBadge
 
                 heatmap24hCard
 

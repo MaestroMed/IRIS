@@ -15,6 +15,7 @@ import AppKit
 /// v1.218 — Auditor verdict counts past 30d badge (green/yellow/red dots + counts).
 /// v1.223 — Bulk "Audit all" button in Cartographer header (sequential 2s delay).
 /// v1.228 — Per-draft model tag (Opus/Sonnet/Haiku capsule color-coded).
+/// v1.236 — Advisor briefings past 7d count badge (iris sun.max).
 
 struct InspectorView: View {
     @Environment(IRISAppState.self) private var appState
@@ -379,6 +380,30 @@ struct InspectorView: View {
             .padding(.horizontal, 4)
             .padding(.vertical, 1)
             .background(Capsule().fill(IRISTokens.goldAccent.opacity(0.12)))
+        }
+    }
+
+    // v1.236 — Briefings Advisor créés sur les 7 derniers jours (rolling window)
+    private var briefingsPast7d: Int {
+        let cutoff = Date().addingTimeInterval(-7 * 86400)
+        return advisorBriefings.filter { $0.timestamp >= cutoff }.count
+    }
+
+    // v1.236 — Badge "X past 7d" inline pour Advisor section header (iris sun.max)
+    @ViewBuilder
+    private var briefingsCountBadge: some View {
+        if briefingsPast7d > 0 {
+            HStack(spacing: 3) {
+                Image(systemName: "sun.max.fill")
+                    .font(.system(size: 8))
+                    .foregroundStyle(IRISTokens.irisAccent)
+                Text("\(briefingsPast7d) past 7d")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(IRISTokens.irisAccent)
+            }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .background(Capsule().fill(IRISTokens.irisAccent.opacity(0.12)))
         }
     }
 
@@ -1471,7 +1496,37 @@ struct InspectorView: View {
         let recent = Array(advisorBriefings.prefix(3))
         let opusCost = appState.costByModel["claude-opus-4-7"] ?? 0
         return VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
-            sectionHeader("Advisor", count: recent.count, accent: IRISTokens.irisAccent, pinnable: .advisor)
+            // v1.236 — Inlined section header to inject "X past 7d" briefings badge
+            HStack(spacing: 4) {
+                Text("ADVISOR")
+                    .font(.system(size: 10, weight: .semibold)).tracking(1.4).foregroundStyle(.secondary)
+                if recent.count > 0 {
+                    Text("\(recent.count)")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundStyle(IRISTokens.irisAccent)
+                }
+                briefingsCountBadge
+                Spacer()
+                Button {
+                    copyAgentSummary(for: .advisor, count: recent.count)
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Copy Advisor summary Markdown")
+                Button {
+                    pinned.toggle(.advisor)
+                } label: {
+                    Image(systemName: pinned.isPinned(.advisor) ? "pin.fill" : "pin")
+                        .font(.system(size: 10))
+                        .foregroundStyle(pinned.isPinned(.advisor) ? IRISTokens.irisAccent : .secondary)
+                }
+                .buttonStyle(.plain)
+                .help(pinned.isPinned(.advisor) ? "Désépingler section" : "Épingler section (toujours visible)")
+            }
+            .padding(.horizontal, IRISTokens.spacing4)
 
             HStack(spacing: IRISTokens.spacing8) {
                 Button {
