@@ -12,6 +12,7 @@ import AppKit
 /// v1.212 — Witness blocklist viewer + per-row unblock button.
 /// v1.220 — Witness vision capture toggle (@AppStorage witnessVisionEnabled).
 /// v1.226 — Keyboard shortcuts cheatsheet augmented (Cmd+L, Cmd+F logs, Cmd+1..5 palette).
+/// v1.232 — Reset Sentinel intervals to defaults button.
 struct SettingsView: View {
     @Environment(IRISAppState.self) private var appState
     @Environment(\.modelContext) private var modelContext
@@ -1354,6 +1355,7 @@ struct SettingsView: View {
     @State private var stubIntervalSeconds: Double = 60
     @State private var githubIntervalSeconds: Double = 300
     @State private var fsIntervalSeconds: Double = 60
+    @State private var sentinelResetStatus: String?  // v1.232
 
     private var sentinelIntervalsSection: some View {
         VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
@@ -1408,6 +1410,24 @@ struct SettingsView: View {
                 .font(.system(size: 9, design: .monospaced))
                 .foregroundStyle(.secondary)
 
+            // v1.232 — Reset Sentinel intervals to defaults
+            HStack(spacing: IRISTokens.spacing8) {
+                Button { resetSentinelIntervals() } label: {
+                    Label("Reset defaults", systemImage: "arrow.counterclockwise")
+                        .font(.system(size: 11))
+                }
+                .controlSize(.small)
+                .tint(.secondary)
+                .help("Restaure les intervalles Sentinel aux valeurs par défaut")
+
+                if let status = sentinelResetStatus {
+                    Text(status)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .transition(.opacity)
+                }
+            }
+
             Divider().padding(.vertical, IRISTokens.spacing4)
 
             // v1.148 — Active hours window (mute hors plage)
@@ -1460,6 +1480,23 @@ struct SettingsView: View {
             // v1.148
             sentinelHourStart = Sentinel.activeHourStart
             sentinelHourEnd = Sentinel.activeHourEnd
+        }
+    }
+
+    // v1.232 — Reset Sentinel intervals to compiled-in defaults.
+    private func resetSentinelIntervals() {
+        stubIntervalSeconds = 60
+        githubIntervalSeconds = 300
+        fsIntervalSeconds = 60
+        Task {
+            await Sentinel.shared.setStubInterval(60)
+            await Sentinel.shared.setGithubInterval(300)
+            await Sentinel.shared.setFSInterval(60)
+        }
+        sentinelResetStatus = "✅ Reset"
+        Task {
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            await MainActor.run { sentinelResetStatus = nil }
         }
     }
 

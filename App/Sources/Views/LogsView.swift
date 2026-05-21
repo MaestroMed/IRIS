@@ -12,6 +12,7 @@ import SwiftData
 // v1.206 — Past hour quick filter toggle (60min window).
 // v1.219 — Cmd+F keyboard shortcut focuses search TextField.
 // v1.224 — Paste UUID TextField for direct correlation chain filter.
+// v1.230 — Burst detector banner (red alert if >50 events past 60s).
 
 struct LogsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -78,6 +79,7 @@ struct LogsView: View {
                 .opacity(0)
                 .frame(width: 0, height: 0)
             header
+            burstBanner
             Divider()
             filtersBar
             Divider()
@@ -157,6 +159,40 @@ struct LogsView: View {
         .padding(.horizontal, IRISTokens.spacing16)
         .padding(.vertical, 6)
         .background(.thinMaterial)
+    }
+
+    // v1.230 — Burst detector: count events within past 60s
+    var burstCount60s: Int {
+        allEvents.filter { $0.timestamp >= Date().addingTimeInterval(-60) }.count
+    }
+
+    @ViewBuilder
+    private var burstBanner: some View {
+        if burstCount60s > 50 {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.octagon.fill")
+                    .foregroundStyle(.red)
+                    .font(.system(size: 14))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("BURST DETECTED")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .tracking(1.4)
+                        .foregroundStyle(.red)
+                    Text("\(burstCount60s) events past 60s — bus possibly overloaded")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.primary.opacity(0.85))
+                }
+                Spacer()
+                Text("\(burstCount60s)/min")
+                    .font(.system(size: 14, weight: .light, design: .serif))
+                    .foregroundStyle(.red)
+            }
+            .padding(IRISTokens.spacing16)
+            .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(Color.red.opacity(0.08)))
+            .overlay(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).strokeBorder(Color.red.opacity(0.4), lineWidth: 1.5))
+            .padding(.horizontal, IRISTokens.spacing16)
+            .padding(.vertical, 4)
+        }
     }
 
     private var header: some View {

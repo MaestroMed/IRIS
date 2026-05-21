@@ -14,6 +14,7 @@ import AppKit
 /// v1.214 — Top 3 busiest hours past 24h card with mini bars.
 /// v1.217 — Active sessions badge (unique correlationIds past 1h).
 /// v1.225 — 24h heatmap card (one cell per hour, aqua intensity).
+/// v1.231 — Throughput card (events/min × 4 windows: 1m/5m/1h/24h).
 
 struct BusStatsView: View {
     @Query(sort: \EventLog.timestamp, order: .reverse) private var allEvents: [EventLog]
@@ -252,6 +253,52 @@ struct BusStatsView: View {
         .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
     }
 
+    private var throughputStats: [(window: String, count: Int, rate: Double)] {
+        let _ = refreshTick
+        let nowDate = Date()
+        let windows: [(String, TimeInterval, Double)] = [
+            ("1m", 60, 1.0),
+            ("5m", 300, 5.0),
+            ("1h", 3600, 60.0),
+            ("24h", 86400, 1440.0)
+        ]
+        return windows.map { label, seconds, minutes in
+            let cutoff = nowDate.addingTimeInterval(-seconds)
+            let count = allEvents.filter { $0.timestamp >= cutoff }.count
+            return (window: label, count: count, rate: Double(count) / minutes)
+        }
+    }
+
+    @ViewBuilder
+    private var throughputCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("THROUGHPUT (events/min)")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .tracking(1.4)
+                .foregroundStyle(.secondary)
+            HStack(spacing: IRISTokens.spacing24) {
+                ForEach(Array(throughputStats.enumerated()), id: \.offset) { _, item in
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(String(format: "%.1f", item.rate))
+                            .font(.system(size: 16, weight: .light, design: .serif))
+                            .foregroundStyle(IRISTokens.aquaTint)
+                        HStack(spacing: 3) {
+                            Text(item.window)
+                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                            Text("\(item.count) ev")
+                                .font(.system(size: 9, design: .monospaced))
+                                .foregroundStyle(.secondary.opacity(0.7))
+                        }
+                    }
+                }
+                Spacer()
+            }
+        }
+        .padding(IRISTokens.spacing16)
+        .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
+    }
+
     private var totalStats: (total: Int, avgPerHour: Double, earliest: Date?) {
         let total = allEvents.count
         let earliest = allEvents.min { $0.timestamp < $1.timestamp }?.timestamp
@@ -340,6 +387,8 @@ struct BusStatsView: View {
                 header
 
                 topKindBanner
+
+                throughputCard
 
                 todayVsYesterdayCard
 
