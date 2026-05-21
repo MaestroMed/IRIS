@@ -204,44 +204,8 @@ public actor Builder {
         ```
         """
 
-        // 3. .gitignore sensé (multi-stack)
-        let gitignore = """
-        # IDE
-        .vscode/
-        .idea/
-        .DS_Store
-
-        # Build
-        node_modules/
-        dist/
-        build/
-        .next/
-        .turbo/
-        DerivedData/
-        .build/
-
-        # Secrets
-        .env
-        .env.local
-        *.pem
-        *.key
-
-        # Logs
-        *.log
-        npm-debug.log*
-
-        # Python
-        __pycache__/
-        *.pyc
-        .venv/
-        venv/
-
-        # Swift / iOS
-        *.xcodeproj
-        *.xcworkspace
-        Package.resolved
-        .swiftpm/
-        """
+        // 3. .gitignore : v1.128 — stack-specific si frontmatter mentionne stack, sinon multi-stack
+        let gitignore = Self.gitignoreForStack(stackArray)
 
         var filesCreated = 0
         let writes: [(String, String)] = [
@@ -335,6 +299,129 @@ public actor Builder {
         }
 
         return ScaffoldResult(success: true, filesCreated: filesCreated, message: "OK")
+    }
+
+    // v1.128 — Stack-specific .gitignore variants
+    /// Compose un .gitignore basé sur la stack du skill. Si stack vide ou inconnue → multi-stack default.
+    /// Stack hints reconnus : "swift", "swiftui", "ios", "next", "nextjs", "node", "python", "py",
+    /// "rust", "go", "ruby", "rails", "tauri", "r3f", "three".
+    nonisolated static func gitignoreForStack(_ stack: [String]) -> String {
+        let lowered = stack.map { $0.lowercased() }
+        var sections: [String] = []
+
+        // Toujours : IDE + secrets + OS
+        sections.append("""
+        # IDE / OS
+        .vscode/
+        .idea/
+        .DS_Store
+        Thumbs.db
+
+        # Secrets
+        .env
+        .env.local
+        .env.*.local
+        *.pem
+        *.key
+        secrets/
+        """)
+
+        let hasNode = lowered.contains(where: { ["next", "nextjs", "node", "typescript", "ts", "react", "vue", "svelte"].contains($0) || $0.contains("next-") })
+        let hasSwift = lowered.contains(where: { ["swift", "swiftui", "ios", "macos", "tuist"].contains($0) || $0.contains("swift") })
+        let hasPython = lowered.contains(where: { ["python", "py", "django", "flask", "fastapi"].contains($0) })
+        let hasRust = lowered.contains(where: { ["rust", "cargo"].contains($0) })
+        let hasGo = lowered.contains(where: { ["go", "golang"].contains($0) })
+        let hasRuby = lowered.contains(where: { ["ruby", "rails"].contains($0) })
+
+        if hasNode {
+            sections.append("""
+            # Node / Next.js / TypeScript
+            node_modules/
+            .next/
+            .turbo/
+            dist/
+            build/
+            out/
+            coverage/
+            *.tsbuildinfo
+            .pnp.*
+            .yarn/install-state.gz
+            npm-debug.log*
+            yarn-debug.log*
+            yarn-error.log*
+            pnpm-debug.log*
+            """)
+        }
+        if hasSwift {
+            sections.append("""
+            # Swift / iOS / macOS / Tuist
+            DerivedData/
+            .build/
+            .swiftpm/
+            *.xcodeproj
+            *.xcworkspace
+            Package.resolved
+            Tuist/Dependencies/Lockfiles/
+            xcuserdata/
+            """)
+        }
+        if hasPython {
+            sections.append("""
+            # Python
+            __pycache__/
+            *.pyc
+            *.pyo
+            .venv/
+            venv/
+            env/
+            *.egg-info/
+            .pytest_cache/
+            .mypy_cache/
+            """)
+        }
+        if hasRust {
+            sections.append("""
+            # Rust
+            target/
+            **/*.rs.bk
+            Cargo.lock
+            """)
+        }
+        if hasGo {
+            sections.append("""
+            # Go
+            *.exe
+            *.test
+            *.out
+            vendor/
+            """)
+        }
+        if hasRuby {
+            sections.append("""
+            # Ruby / Rails
+            *.gem
+            .bundle
+            vendor/bundle
+            log/*.log
+            tmp/*
+            """)
+        }
+
+        // Si rien de spécifique détecté → fallback multi-stack
+        if !hasNode && !hasSwift && !hasPython && !hasRust && !hasGo && !hasRuby {
+            sections.append("""
+            # Multi-stack fallback (stack non détectée dans SKILL.md frontmatter)
+            node_modules/
+            dist/
+            build/
+            DerivedData/
+            .build/
+            __pycache__/
+            *.log
+            """)
+        }
+
+        return sections.joined(separator: "\n\n") + "\n"
     }
 
     // v1.127 — Parse YAML frontmatter d'un SKILL.md (entre les deux `---`)
