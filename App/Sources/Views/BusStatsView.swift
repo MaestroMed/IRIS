@@ -34,6 +34,7 @@ import AppKit
 /// v1.322 — First event delay badge (boot → first event time).
 /// v1.325 — Short-term ratio badge (5min/1h rates comparison).
 /// v1.331 — DB size estimate card (UTF-8 bytes of contents in MB).
+/// v1.337 — Cost burn rate past 1h card (orange flame + annual projection).
 
 struct BusStatsView: View {
     @Query(sort: \EventLog.timestamp, order: .reverse) private var allEvents: [EventLog]
@@ -1220,6 +1221,39 @@ struct BusStatsView: View {
         .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
     }
 
+    private var costBurnRate: (lastHour: Double, perHour: Double) {
+        let cutoff = Date().addingTimeInterval(-3600)
+        let lastHour = allAudits.filter { $0.createdAt >= cutoff }.reduce(0.0) { $0 + $1.costUSD }
+        return (lastHour: lastHour, perHour: lastHour)
+    }
+
+    @ViewBuilder
+    private var costBurnCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Image(systemName: "flame.fill")
+                    .foregroundStyle(.orange)
+                Text("COST BURN PAST 1H")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .tracking(1.4)
+                    .foregroundStyle(.secondary)
+            }
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text(String(format: "$%.3f", costBurnRate.lastHour))
+                    .font(.system(size: 22, weight: .light, design: .serif))
+                    .foregroundStyle(.orange)
+                Text("/hour")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+            Text("Auditor cost dans la dernière heure. Projection annuelle: $\(String(format: "%.2f", costBurnRate.lastHour * 24 * 365))")
+                .font(.system(size: 9))
+                .foregroundStyle(.secondary.opacity(0.7))
+        }
+        .padding(IRISTokens.spacing16)
+        .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
+    }
+
     private var statsFooter: some View {
         HStack(spacing: IRISTokens.spacing24) {
             VStack(alignment: .leading, spacing: 1) {
@@ -1337,6 +1371,8 @@ struct BusStatsView: View {
                 totalRecordsCard
 
                 dbSizeCard
+
+                costBurnCard
             }
             .padding(IRISTokens.spacing24)
         }

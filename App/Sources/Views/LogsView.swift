@@ -31,6 +31,7 @@ import SwiftData
 // v1.319 — Per-agent breakdown row (top 6 from filtered events).
 // v1.327 — Search-text highlighting in payload preview (gold background match).
 // v1.332 — Hide systemLog toggle filter.
+// v1.335 — Snapshot delta indicator next to PAUSED badge.
 
 struct LogsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -121,6 +122,12 @@ struct LogsView: View {
         let currentIndex = agentValues.firstIndex(of: filterAgent) ?? 0
         let nextIndex = (currentIndex + 1) % agentValues.count
         filterAgent = agentValues[nextIndex]
+    }
+
+    // v1.335 — Delta between current allEvents.count and pause snapshot count
+    var pauseDelta: Int? {
+        guard isPaused && !pausedSnapshot.isEmpty else { return nil }
+        return allEvents.count - pausedSnapshot.count
     }
 
     private func togglePause() {
@@ -444,6 +451,14 @@ struct LogsView: View {
                     .padding(.horizontal, 4)
                     .padding(.vertical, 1)
                     .background(Capsule().fill(IRISTokens.goldAccent.opacity(0.15)))
+                // v1.335 — Snapshot delta indicator (events accumulated since paused)
+                if let delta = pauseDelta, delta > 0 {
+                    Text("+\(delta)")
+                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(IRISTokens.aquaTint)
+                        .padding(.horizontal, 3)
+                        .background(Capsule().fill(IRISTokens.aquaTint.opacity(0.15)))
+                }
             }
         }
         .padding(.horizontal, IRISTokens.spacing24)

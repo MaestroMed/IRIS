@@ -37,6 +37,7 @@ import AppKit
 /// v1.326 — Witness "Now:" current frontmost row at top of section.
 /// v1.330 — Conductor today stats row (count + last query timestamp).
 /// v1.333 — Auditor lifetime cost badge (iris infinity) complement v1.209 today.
+/// v1.336 — Latest activity per agent table at top of Inspector.
 
 struct InspectorView: View {
     @Environment(IRISAppState.self) private var appState
@@ -112,6 +113,15 @@ struct InspectorView: View {
                 }
                 .padding(.horizontal, IRISTokens.spacing16)
                 .padding(.vertical, 4)
+
+                // v1.336 — Latest activity per agent mini timeline at top
+                latestPerAgentRow
+                    .padding(IRISTokens.spacing8)
+                    .background(
+                        RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall)
+                            .fill(.thinMaterial)
+                    )
+                    .padding(.horizontal, IRISTokens.spacing16)
 
                 if !appState.pendingActions.isEmpty {
                     pendingActionsSection
@@ -245,6 +255,54 @@ struct InspectorView: View {
     // v1.48 — Liste ordonnée des agents épinglés (ordre AgentID.businessAgents pour stabilité)
     private var pinnedSectionsList: [AgentID] {
         AgentID.businessAgents.filter { pinned.isPinned($0) }
+    }
+
+    // v1.336 — Latest event timestamp + kind per agent (allEvents is already sorted desc by timestamp).
+    private var latestPerAgent: [(agent: AgentID, lastSeen: Date?, eventKind: String)] {
+        AgentID.allCases.map { agent in
+            let raw = agent.rawValue
+            if let event = allEvents.first(where: { $0.toAgent == raw || $0.fromAgent == raw }) {
+                return (agent: agent, lastSeen: event.timestamp, eventKind: event.kind)
+            }
+            return (agent: agent, lastSeen: nil, eventKind: "")
+        }
+    }
+
+    // v1.336 — Mini timeline 1 ligne par agent affichée en haut de l'Inspector.
+    @ViewBuilder
+    private var latestPerAgentRow: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("LATEST PER AGENT")
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .tracking(1.4)
+                .foregroundStyle(.secondary)
+            ForEach(Array(latestPerAgent.enumerated()), id: \.offset) { _, item in
+                HStack(spacing: 8) {
+                    Image(systemName: item.agent.descriptor.symbol)
+                        .font(.system(size: 10))
+                        .foregroundStyle(IRISTokens.aquaTint)
+                        .frame(width: 16)
+                    Text(item.agent.descriptor.displayName)
+                        .font(.system(size: 10, weight: .medium))
+                        .frame(width: 100, alignment: .leading)
+                    if let last = item.lastSeen {
+                        Text(item.eventKind)
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                        Spacer()
+                        Text(last, format: .dateTime.day().month().hour().minute())
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("(no activity)")
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(.secondary.opacity(0.5))
+                        Spacer()
+                    }
+                }
+            }
+        }
     }
 
     @ViewBuilder
