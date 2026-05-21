@@ -7,6 +7,7 @@ import SwiftData
 // v1.175 — Pause toggle freezes log view to a snapshot (logs accumulate but display stays).
 // v1.184 — Failures-only quick filter button (sets filterKind=agentFailure).
 // v1.191 — Horizontal stacked breakdown bar (kind colors) above logsList.
+// v1.197 — Cmd+L keyboard shortcut on Clear filters button.
 
 struct LogsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -224,15 +225,30 @@ struct LogsView: View {
                 .clipShape(Capsule())
             }
 
-            Button("Clear") {
+            Button {
                 filterAgent = ""
                 filterKind = ""
                 filterLevel = ""
                 filterCorrelationId = nil
                 searchText = ""
+            } label: {
+                HStack(spacing: 4) {
+                    Text("Clear")
+                    Text("⌘L")
+                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(.secondary.opacity(0.7))
+                        .padding(.horizontal, 3)
+                        .padding(.vertical, 0.5)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 2)
+                                .strokeBorder(Color.secondary.opacity(0.4), lineWidth: 0.5)
+                        )
+                }
             }
             .controlSize(.small)
             .disabled(filterAgent.isEmpty && filterKind.isEmpty && filterLevel.isEmpty && filterCorrelationId == nil && searchText.isEmpty)
+            .keyboardShortcut(KeyEquivalent("l"), modifiers: .command)
+            .help("Reset tous les filtres (Cmd+L)")
 
             // v1.175 — Pause toggle (freeze view to snapshot)
             Button {

@@ -9,7 +9,10 @@ import AppKit
 /// v1.177 — Pin/unpin memory via "pinned" tag, pinned rows sort to top.
 /// v1.182 — Pinned-only filter toggle (filters to tag pinned).
 /// v1.194 — Type stats footer with count + circle color per type.
+/// v1.198 — Sort by Picker (newest/oldest/type/name), pinned always on top.
 /// Permet à Mehdi d'inspecter ce que Scribe sait, et de tester les requêtes de similarité.
+enum MemorySortMode: String, CaseIterable { case newest, oldest, type, name }
+
 struct MemoryBrowserView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Memory.createdAt, order: .reverse) private var allMemories: [Memory]
@@ -18,6 +21,7 @@ struct MemoryBrowserView: View {
     @State private var searchText: String = ""
     @State private var tagFilter: String = ""  // v1.84
     @State private var pinnedOnly: Bool = false  // v1.182
+    @State private var sortMode: MemorySortMode = .newest  // v1.198
     @State private var retrievalQuery: String = ""
     @State private var retrievalResults: [(Memory, Double)] = []
     @State private var isRetrieving: Bool = false
@@ -58,10 +62,12 @@ struct MemoryBrowserView: View {
             items = items.filter { isPinned($0) }
         }
         return items.sorted { lhs, rhs in
-            if isPinned(lhs) != isPinned(rhs) {
-                return isPinned(lhs)
-            } else {
-                return lhs.createdAt > rhs.createdAt
+            if isPinned(lhs) != isPinned(rhs) { return isPinned(lhs) }
+            switch sortMode {
+            case .newest: return lhs.createdAt > rhs.createdAt
+            case .oldest: return lhs.createdAt < rhs.createdAt
+            case .type: return lhs.type < rhs.type
+            case .name: return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
             }
         }
     }
@@ -212,6 +218,17 @@ struct MemoryBrowserView: View {
             .controlSize(.small)
             .tint(pinnedOnly ? IRISTokens.goldAccent : .secondary)
             .help(pinnedOnly ? "Désactiver le filtre pinned" : "Afficher uniquement les memories pinned (tag 'pinned')")
+
+            // v1.198 — Sort by Picker
+            Picker("Sort", selection: $sortMode) {
+                Text("Newest").tag(MemorySortMode.newest)
+                Text("Oldest").tag(MemorySortMode.oldest)
+                Text("Type").tag(MemorySortMode.type)
+                Text("Name").tag(MemorySortMode.name)
+            }
+            .labelsHidden()
+            .controlSize(.small)
+            .frame(maxWidth: 100)
 
             TextField("Search name/summary/content…", text: $searchText)
                 .textFieldStyle(.roundedBorder)

@@ -8,6 +8,7 @@ import AppKit
 /// v1.179 — Witness "Block this app" quick action (appends to blocklist UserDefaults).
 /// v1.185 — Export today's drafts MD button in Quill section header.
 /// v1.192 — Copy verdict mini button on audit row (NSPasteboard).
+/// v1.199 — Drafts past 7d badge (gold calendar.badge.clock) in Quill section header.
 
 struct InspectorView: View {
     @Environment(IRISAppState.self) private var appState
@@ -350,6 +351,30 @@ struct InspectorView: View {
         }
     }
 
+    // v1.199 — Drafts créés sur les 7 derniers jours (rolling window)
+    private var draftsPast7d: Int {
+        let cutoff = Date().addingTimeInterval(-7 * 86400)
+        return allDrafts.filter { $0.createdAt >= cutoff }.count
+    }
+
+    // v1.199 — Badge "X past 7d" inline pour Quill section header (gold, n'apparaît que si > today)
+    @ViewBuilder
+    private var draftsPast7dBadge: some View {
+        if draftsPast7d > 0 && draftsPast7d != draftsToday {
+            HStack(spacing: 3) {
+                Image(systemName: "calendar.badge.clock")
+                    .font(.system(size: 8))
+                    .foregroundStyle(IRISTokens.goldAccent)
+                Text("\(draftsPast7d) past 7d")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(IRISTokens.goldAccent)
+            }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .background(Capsule().fill(IRISTokens.goldAccent.opacity(0.12)))
+        }
+    }
+
     // v1.101 — Quill dedicated section : last drafts + Sonnet routing badge + cost-this-session
     // v1.172 — Inlined section header to inject "X today" badge between title/count and pin buttons
     private var quillSection: some View {
@@ -367,6 +392,8 @@ struct InspectorView: View {
                         .foregroundStyle(IRISTokens.irisAccent)
                 }
                 draftsTodayBadge
+                Spacer().frame(width: 3)
+                draftsPast7dBadge
                 Spacer()
                 // v1.185 — Export today's drafts as Markdown
                 Button {
