@@ -15,6 +15,7 @@ import SwiftData
 /// v1.229 — Live "+N past 5min" event count badge (aqua circle pulse hint).
 /// v1.234 — Failure rate past 7d card (fails/total + % color-coded green/gold/red).
 /// v1.240 — Hourly avg + peak hour past 24h card (aqua + gold).
+/// v1.250 — Today's signals importance stacked bar (critical/high/normal/low).
 
 struct DashboardView: View {
     @Environment(IRISAppState.self) private var appState
@@ -95,6 +96,9 @@ struct DashboardView: View {
 
                 // v1.173 — Alerts last 1h (failures + critical signals)
                 alertsCard
+
+                // v1.250 — Today's signals importance stacked bar (critical/high/normal/low)
+                signalsImportanceCard
 
                 // v1.234 — Failure rate past 7d (per-agent fails/total + %)
                 failureRatesCard
@@ -478,6 +482,83 @@ struct DashboardView: View {
         .padding(IRISTokens.spacing16)
         .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
         .overlay(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).strokeBorder(totalAlerts > 0 ? Color.red.opacity(0.6) : Color.clear, lineWidth: 1.5))
+    }
+
+    // v1.250 — Today's signals importance breakdown (calendar day, critical/high/normal/low)
+    private var todaysSignalImportance: (critical: Int, high: Int, normal: Int, low: Int, total: Int) {
+        let startOfDay = Calendar.current.startOfDay(for: Date())
+        let todays = allSignals.filter { $0.emittedAt >= startOfDay }
+        var critical = 0, high = 0, normal = 0, low = 0
+        for s in todays {
+            switch s.importance {
+            case 5: critical += 1
+            case 4: high += 1
+            case 3: normal += 1
+            default: low += 1
+            }
+        }
+        return (critical, high, normal, low, critical + high + normal + low)
+    }
+
+    private var signalsImportanceCard: some View {
+        let t = todaysSignalImportance
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("SIGNALS TODAY")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .tracking(1.4)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("\(t.total) total")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(IRISTokens.aquaTint)
+            }
+            if t.total == 0 {
+                Text("Aucun signal aujourd'hui.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            } else {
+                GeometryReader { proxy in
+                    HStack(spacing: 1) {
+                        if t.critical > 0 {
+                            Rectangle().fill(.red)
+                                .frame(width: proxy.size.width * CGFloat(t.critical) / CGFloat(max(1, t.total)))
+                        }
+                        if t.high > 0 {
+                            Rectangle().fill(IRISTokens.goldAccent)
+                                .frame(width: proxy.size.width * CGFloat(t.high) / CGFloat(max(1, t.total)))
+                        }
+                        if t.normal > 0 {
+                            Rectangle().fill(IRISTokens.aquaTint)
+                                .frame(width: proxy.size.width * CGFloat(t.normal) / CGFloat(max(1, t.total)))
+                        }
+                        if t.low > 0 {
+                            Rectangle().fill(Color.secondary)
+                                .frame(width: proxy.size.width * CGFloat(t.low) / CGFloat(max(1, t.total)))
+                        }
+                    }
+                }
+                .frame(height: 6)
+                // Mini legend
+                HStack(spacing: 8) {
+                    legendItem(.red, "Critical", t.critical)
+                    legendItem(IRISTokens.goldAccent, "High", t.high)
+                    legendItem(IRISTokens.aquaTint, "Normal", t.normal)
+                    legendItem(.secondary, "Low", t.low)
+                }
+            }
+        }
+        .padding(IRISTokens.spacing16)
+        .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
+    }
+
+    private func legendItem(_ color: Color, _ label: String, _ count: Int) -> some View {
+        HStack(spacing: 3) {
+            Circle().fill(color).frame(width: 5, height: 5)
+            Text("\(label) \(count)")
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(.secondary)
+        }
     }
 
     // v1.240 — Hourly avg + peak past 24h (24 sliding hour buckets ending at now)

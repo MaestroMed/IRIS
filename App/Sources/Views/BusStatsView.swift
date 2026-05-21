@@ -17,6 +17,7 @@ import AppKit
 /// v1.231 — Throughput card (events/min × 4 windows: 1m/5m/1h/24h).
 /// v1.237 — Peak day past 7d banner (gold crown).
 /// v1.242 — Period comparisons card (1h/24h/7d vs previous period of same length).
+/// v1.249 — Avg events per session today card (events/sessions ratio).
 
 struct BusStatsView: View {
     @Query(sort: \EventLog.timestamp, order: .reverse) private var allEvents: [EventLog]
@@ -77,6 +78,47 @@ struct BusStatsView: View {
         let cutoff = Date().addingTimeInterval(-3600)
         let filtered = allEvents.filter { $0.timestamp >= cutoff }
         return Set(filtered.compactMap { $0.correlationId }).count
+    }
+
+    private var avgEventsPerSession: (events: Int, sessions: Int, avg: Double) {
+        let _ = refreshTick
+        let todayEvents = allEvents.filter { Calendar.current.isDateInToday($0.timestamp) }
+        let events = todayEvents.count
+        let sessions = Set(todayEvents.compactMap { $0.correlationId }).count
+        let avg = sessions == 0 ? 0 : Double(events) / Double(sessions)
+        return (events, sessions, avg)
+    }
+
+    @ViewBuilder
+    private var avgPerSessionCard: some View {
+        HStack(spacing: IRISTokens.spacing24) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text("AVG EVENTS / SESSION TODAY")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .tracking(1.2)
+                    .foregroundStyle(.secondary)
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(String(format: "%.1f", avgEventsPerSession.avg))
+                        .font(.system(size: 18, weight: .light, design: .serif))
+                        .foregroundStyle(IRISTokens.aquaTint)
+                    Text("ev/session")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 1) {
+                Text("BREAKDOWN")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .tracking(1.2)
+                    .foregroundStyle(.secondary)
+                Text("\(avgEventsPerSession.events) events / \(avgEventsPerSession.sessions) sessions")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(IRISTokens.spacing16)
+        .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
     }
 
     @ViewBuilder
@@ -506,6 +548,8 @@ struct BusStatsView: View {
                 peakDayBadge
 
                 heatmap24hCard
+
+                avgPerSessionCard
 
                 cardSection(title: "Dernière heure", total: lastHour.count, events: lastHour, accent: IRISTokens.irisAccent)
                 cardSection(title: "Dernières 24h", total: lastDay.count, events: lastDay, accent: IRISTokens.aquaTint)

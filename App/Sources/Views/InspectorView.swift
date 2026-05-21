@@ -19,6 +19,7 @@ import AppKit
 /// v1.241 — Witness today captures count badge (aqua eye).
 /// v1.244 — Cartographer audited/total badge in section header.
 /// v1.247 — Drafts past 30d badge (aqua calendar) after the today/7d badges.
+/// v1.248 — Auditor "RED only" quick filter toggle (.red capsule when active).
 
 struct InspectorView: View {
     @Environment(IRISAppState.self) private var appState
@@ -41,6 +42,7 @@ struct InspectorView: View {
     @State private var scaffoldProjectName: String = ""
     @State private var scaffoldSelectedSkill: String = "doc-first-project-scaffolding"
     @State private var auditPickedProject: String = ""
+    @State private var auditRedOnly: Bool = false        // v1.248 — Auditor "RED only" quick filter
     @State private var expandedAuditIds: Set<UUID> = []  // v1.62
     @State private var editingDraftId: UUID? = nil       // v1.63
     @State private var draftEditBuffer: String = ""
@@ -1122,6 +1124,11 @@ struct InspectorView: View {
             .reduce(0.0) { $0 + $1.costUSD }
     }
 
+    // v1.248 — Quick filter: when auditRedOnly is true, only show audits with verdict "RED".
+    private var filteredAudits: [AuditReport] {
+        auditRedOnly ? allAudits.filter { $0.verdict == "RED" } : allAudits
+    }
+
     // v1.218 — Counts AuditReport verdicts (GREEN/YELLOW/RED) over past 30 days.
     private var verdictCounts: (green: Int, yellow: Int, red: Int) {
         let cutoff = Date().addingTimeInterval(-30 * 86400)
@@ -1200,6 +1207,22 @@ struct InspectorView: View {
                 }
                 auditorCostBadge
                 verdictCountsBadge
+                // v1.248 — Auditor "RED only" quick filter toggle
+                Button { auditRedOnly.toggle() } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: auditRedOnly ? "circle.fill" : "circle")
+                            .font(.system(size: 8))
+                            .foregroundStyle(.red)
+                        Text("RED only")
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(auditRedOnly ? .red : .secondary)
+                    }
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 1)
+                .background(Capsule().fill(auditRedOnly ? .red.opacity(0.15) : Color.clear))
+                .help(auditRedOnly ? "Show all audits" : "Show only RED audits")
                 Spacer()
                 Button {
                     copyAgentSummary(for: .auditor, count: allAudits.count)
@@ -1243,7 +1266,7 @@ struct InspectorView: View {
                 .disabled(auditPickedProject.isEmpty)
             }
 
-            ForEach(Array(allAudits.prefix(5))) { audit in
+            ForEach(Array(filteredAudits.prefix(5))) { audit in
                 auditRow(audit)
             }
         }
