@@ -64,7 +64,9 @@ public actor Builder {
         subscriptionTask = nil
     }
 
-    /// Lance un scaffold (v0.8 mock : crée dossier cible + descripteur).
+    /// Lance un scaffold. v1.126 — Si SKILL.md existe dans ~/.claude/skills/<skill>/,
+    /// scaffold "real" (lit le skill + write CLAUDE.md + README + .gitignore + git init).
+    /// Sinon fallback mock placeholder.
     public func scaffold(skillName: String, projectName: String, targetDirectory: String? = nil) async {
         let dir = targetDirectory ?? "\(NSHomeDirectory())/Developer/\(projectName)"
         irisLog(.info, "Builder scaffold \(skillName) → \(dir)", category: IRISLogger.agents)
@@ -78,7 +80,19 @@ public actor Builder {
             )
         )
 
-        let result = await performMockScaffold(skill: skillName, project: projectName, targetDir: dir)
+        // v1.126 — Tente real scaffold d'abord, fallback mock si SKILL.md absent
+        let skillPath = ("~/.claude/skills/\(skillName)/SKILL.md" as NSString).expandingTildeInPath
+        let useReal = FileManager.default.fileExists(atPath: skillPath)
+
+        let result: ScaffoldResult
+        let actionType: String
+        if useReal {
+            result = await performRealScaffold(skill: skillName, skillMdPath: skillPath, project: projectName, targetDir: dir)
+            actionType = "skill.scaffold.real"
+        } else {
+            result = await performMockScaffold(skill: skillName, project: projectName, targetDir: dir)
+            actionType = "skill.scaffold.mock"
+        }
 
         // Persist ActionLog
         if let container = await modelContainer {
@@ -86,7 +100,7 @@ public actor Builder {
                 let context = container.mainContext
                 let log = ActionLog(
                     agentId: AgentID.builder.rawValue,
-                    actionType: "skill.scaffold.mock",
+                    actionType: actionType,
                     paramsJSON: "{\"skill\":\"\(skillName)\",\"project\":\"\(projectName)\",\"targetDir\":\"\(dir)\"}",
                     resultJSON: "{\"success\":\(result.success),\"filesCreated\":\(result.filesCreated)}",
                     success: result.success,
@@ -99,9 +113,10 @@ public actor Builder {
             }
         }
 
+        let mode = useReal ? "REAL" : "MOCK"
         let summary = result.success
-            ? "✅ Scaffold \(projectName) OK — \(result.filesCreated) fichiers (\(dir))"
-            : "⚠️ Scaffold \(projectName) failed — \(result.message)"
+            ? "✅ Scaffold [\(mode)] \(projectName) OK — \(result.filesCreated) fichiers (\(dir))"
+            : "⚠️ Scaffold [\(mode)] \(projectName) failed — \(result.message)"
 
         await EventBus.shared.publish(
             .signalEmitted(
@@ -111,6 +126,145 @@ public actor Builder {
                 source: "builder"
             )
         )
+    }
+
+    // MARK: — v1.126 Real scaffold (reads SKILL.md, writes CLAUDE.md + README + .gitignore + git init)
+
+    private nonisolated func performRealScaffold(
+        skill: String,
+        skillMdPath: String,
+        project: String,
+        targetDir: String
+    ) async -> ScaffoldResult {
+        let url = URL(fileURLWithPath: targetDir)
+        let fm = FileManager.default
+
+        // Crée le dir
+        do {
+            try fm.createDirectory(at: url, withIntermediateDirectories: true)
+        } catch {
+            return ScaffoldResult(success: false, filesCreated: 0, message: "mkdir failed: \(error.localizedDescription)")
+        }
+
+        // Lit le SKILL.md (cap 50KB pour éviter excess)
+        let skillContent: String
+        if let data = try? Data(contentsOf: URL(fileURLWithPath: skillMdPath)),
+           let text = String(data: data.prefix(50_000), encoding: .utf8) {
+            skillContent = text
+        } else {
+            skillContent = "(SKILL.md introuvable ou non-UTF8 à \(skillMdPath))"
+        }
+
+        // 1. CLAUDE.md — source de vérité projet, hérite le skill
+        let claudeMd = """
+        # \(project)
+
+        Projet scaffold par IRIS Builder via skill `\(skill)` le \(Self.isoNow()).
+
+        ---
+
+        ## Skill source (\(skill))
+
+        \(skillContent)
+
+        ---
+
+        ## Project-specific context
+
+        _À compléter au fur et à mesure._
+
+        - Stack :
+        - Domaine :
+        - Client / use case :
+        - Liens utiles :
+        """
+
+        // 2. README.md générique
+        let readme = """
+        # \(project)
+
+        Projet bootstrap via IRIS Builder + skill `\(skill)`.
+
+        Voir [CLAUDE.md](./CLAUDE.md) pour le contexte complet du projet (source de vérité pour Claude Code).
+
+        ## Quick start
+
+        ```bash
+        # ouvre Claude Code dans ce dossier
+        claude
+        # invoque le skill : "Use the \(skill) skill"
+        ```
+        """
+
+        // 3. .gitignore sensé (multi-stack)
+        let gitignore = """
+        # IDE
+        .vscode/
+        .idea/
+        .DS_Store
+
+        # Build
+        node_modules/
+        dist/
+        build/
+        .next/
+        .turbo/
+        DerivedData/
+        .build/
+
+        # Secrets
+        .env
+        .env.local
+        *.pem
+        *.key
+
+        # Logs
+        *.log
+        npm-debug.log*
+
+        # Python
+        __pycache__/
+        *.pyc
+        .venv/
+        venv/
+
+        # Swift / iOS
+        *.xcodeproj
+        *.xcworkspace
+        Package.resolved
+        .swiftpm/
+        """
+
+        var filesCreated = 0
+        let writes: [(String, String)] = [
+            ("CLAUDE.md", claudeMd),
+            ("README.md", readme),
+            (".gitignore", gitignore)
+        ]
+        for (filename, content) in writes {
+            let fileURL = url.appendingPathComponent(filename)
+            if (try? content.write(to: fileURL, atomically: true, encoding: .utf8)) != nil {
+                filesCreated += 1
+            }
+        }
+
+        // 4. git init (Process)
+        let gitInit = Process()
+        gitInit.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        gitInit.arguments = ["git", "init"]
+        gitInit.currentDirectoryURL = url
+        gitInit.standardOutput = Pipe()
+        gitInit.standardError = Pipe()
+        do {
+            try gitInit.run()
+            gitInit.waitUntilExit()
+        } catch {
+            // Pas bloquant : si git absent, on continue mais log
+            irisLog(.warning, "Builder git init failed (non-fatal): \(error.localizedDescription)",
+                    category: IRISLogger.agents)
+        }
+
+        return ScaffoldResult(success: true, filesCreated: filesCreated, message: "real scaffold OK — \(skill) hydrated into CLAUDE.md")
     }
 
     // MARK: — Mock scaffold filesystem
