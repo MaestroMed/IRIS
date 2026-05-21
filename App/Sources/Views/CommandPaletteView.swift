@@ -4,6 +4,7 @@ import SwiftUI
 /// v1.169 — Recent 5 actions section (persisted @AppStorage).
 /// v1.178 — Cmd+1..5 keyboard shortcuts on first 5 visible rows.
 /// v1.183 — Clear-recents button in RECENT section header.
+/// v1.188 — Action count hint subtitle (total + filtered + active search).
 struct CommandPaletteView: View {
     @Environment(IRISAppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
@@ -209,6 +210,24 @@ struct CommandPaletteView: View {
                     .foregroundStyle(.secondary)
             }
             .padding(IRISTokens.spacing16)
+
+            HStack {
+                Image(systemName: "list.bullet")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary.opacity(0.6))
+                Text("\(allActions.count) actions disponibles · \(filtered.count) affichées")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.secondary.opacity(0.7))
+                if !search.isEmpty {
+                    Spacer()
+                    Text("filter: \"\(search)\"")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(IRISTokens.aquaTint.opacity(0.8))
+                }
+                Spacer()
+            }
+            .padding(.horizontal, IRISTokens.spacing16)
+            .padding(.bottom, 4)
 
             Divider()
 

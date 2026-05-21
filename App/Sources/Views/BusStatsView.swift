@@ -7,12 +7,14 @@ import AppKit
 // IRIS v1.164 — Export bus stats snapshot to Markdown (~/iris-busstats-<ISO>.md).
 /// v1.176 — Most-frequent kind past 1h insight banner.
 /// v1.181 — Auto-refresh 30s timer toggle to force window stats re-eval.
+/// v1.189 — CSV export per kind (1h/24h/all-time) to home dir.
 
 struct BusStatsView: View {
     @Query(sort: \EventLog.timestamp, order: .reverse) private var allEvents: [EventLog]
 
     @State private var autoRefresh: Bool = false
     @State private var refreshTick: Int = 0
+    @State private var exportCSVStatus: String?
 
     private var now: Date { Date() }
     private var oneHourAgo: Date { now.addingTimeInterval(-3600) }
@@ -111,6 +113,18 @@ struct BusStatsView: View {
             .buttonStyle(.bordered)
             .controlSize(.small)
             .help("Export stats current snapshot Markdown")
+            Button { exportStatsCSV() } label: {
+                Label("CSV", systemImage: "tablecells").font(.system(size: 11))
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .help("Export stats par kind en CSV (1h/24h/all)")
+            if let status = exportCSVStatus {
+                Text(status)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .transition(.opacity)
+            }
             Button {
                 autoRefresh.toggle()
             } label: {
@@ -150,6 +164,44 @@ struct BusStatsView: View {
             NSWorkspace.shared.activateFileViewerSelecting([url])
         } catch {
             NSLog("[BusStatsView] export failed: \(error)")
+        }
+    }
+
+    private func exportStatsCSV() {
+        let isoFormatter = ISO8601DateFormatter()
+        isoFormatter.formatOptions = [.withInternetDateTime]
+        let isoStamp = isoFormatter.string(from: Date()).replacingOccurrences(of: ":", with: "-")
+
+        let hourGroups = Dictionary(grouping: lastHour, by: \.kind).mapValues { $0.count }
+        let dayGroups = Dictionary(grouping: lastDay, by: \.kind).mapValues { $0.count }
+        let allGroups = Dictionary(grouping: allEvents, by: \.kind).mapValues { $0.count }
+
+        var seen = Set<String>()
+        var kinds: [String] = []
+        for k in Self.kindOrder where seen.insert(k).inserted { kinds.append(k) }
+        for k in hourGroups.keys where seen.insert(k).inserted { kinds.append(k) }
+        for k in dayGroups.keys where seen.insert(k).inserted { kinds.append(k) }
+        for k in allGroups.keys where seen.insert(k).inserted { kinds.append(k) }
+
+        var csv = "kind,past_1h,past_24h,all_time\n"
+        for kind in kinds {
+            let h = hourGroups[kind] ?? 0
+            let d = dayGroups[kind] ?? 0
+            let a = allGroups[kind] ?? 0
+            csv += "\(kind),\(h),\(d),\(a)\n"
+        }
+
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let url = home.appendingPathComponent("iris-busstats-\(isoStamp).csv")
+        do {
+            try csv.write(to: url, atomically: true, encoding: .utf8)
+            exportCSVStatus = "✅ → \(url.lastPathComponent)"
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        } catch {
+            exportCSVStatus = "⚠️ \(error.localizedDescription)"
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+            exportCSVStatus = nil
         }
     }
 

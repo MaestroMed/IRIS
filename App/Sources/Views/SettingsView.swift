@@ -6,6 +6,7 @@ import AppKit
 /// v1.171 — Storage summary section (per-entity counts).
 /// v1.174 — Open Application Support folder in Finder.
 /// v1.187 — Witness Pause/Resume quick toggle (shares @AppStorage key with Witness.swift).
+/// v1.190 — Re-seed memories from disk button (calls MemorySeeder).
 struct SettingsView: View {
     @Environment(IRISAppState.self) private var appState
     @Environment(\.modelContext) private var modelContext
@@ -694,6 +695,7 @@ struct SettingsView: View {
     // MARK: — v1.52 Data folders shortcuts + v1.59 EventLog purge
 
     @State private var purgeDays: Double = 30
+    @State private var reseedStatus: String?  // v1.190
 
     private var dataFoldersSection: some View {
         VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
@@ -722,6 +724,23 @@ struct SettingsView: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .help("Ouvre ~/.claude/skills dans Finder")
+
+                // v1.190 — Re-seed memories from disk
+                Button {
+                    reseedMemories()
+                } label: {
+                    Label("Re-seed depuis disk", systemImage: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("Force re-seed des memories depuis ~/.claude/projects/.../memory/*.md")
+
+                if let reseedStatus {
+                    Text(reseedStatus)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
 
                 Spacer()
             }
@@ -759,6 +778,18 @@ struct SettingsView: View {
             backupStatus = "🗑️ Purgé \(count) EventLog > \(days)j."
         } catch {
             backupStatus = "⚠️ Purge échouée : \(error.localizedDescription)"
+        }
+    }
+
+    // v1.190 — Re-seed memories from disk via MemorySeeder
+    private func reseedMemories() {
+        reseedStatus = "⏳ Re-seed en cours…"
+        Task { @MainActor in
+            await MemorySeeder.seedIfNeeded(in: modelContext)
+            reseedStatus = "✅ Re-seed lancé"
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                reseedStatus = nil
+            }
         }
     }
 
