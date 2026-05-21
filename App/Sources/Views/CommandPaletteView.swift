@@ -6,6 +6,7 @@ import SwiftUI
 /// v1.183 — Clear-recents button in RECENT section header.
 /// v1.188 — Action count hint subtitle (total + filtered + active search).
 /// v1.211 — Favorites star toggle (yellow), favorites sort first.
+/// v1.301 — Help footer with keyboard shortcuts hints (⌘1-5 · star · recents · esc).
 struct CommandPaletteView: View {
     @Environment(IRISAppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
@@ -296,6 +297,36 @@ struct CommandPaletteView: View {
                 }
                 .padding(IRISTokens.spacing8)
             }
+
+            Divider()
+
+            HStack(spacing: 12) {
+                HStack(spacing: 3) {
+                    Text("⌘1..5")
+                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    Text("Quick action")
+                        .font(.system(size: 9))
+                }
+                HStack(spacing: 3) {
+                    Image(systemName: "star")
+                        .font(.system(size: 9))
+                    Text("Click to favorite")
+                        .font(.system(size: 9))
+                }
+                HStack(spacing: 3) {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.system(size: 9))
+                    Text("Recents auto-saved")
+                        .font(.system(size: 9))
+                }
+                Spacer()
+                Text("Esc to close")
+                    .font(.system(size: 9))
+            }
+            .padding(.horizontal, IRISTokens.spacing16)
+            .padding(.vertical, 6)
+            .foregroundStyle(.secondary.opacity(0.7))
+            .background(.thinMaterial)
         }
         .frame(minWidth: 500, idealWidth: 600, minHeight: 350, idealHeight: 420)
     }

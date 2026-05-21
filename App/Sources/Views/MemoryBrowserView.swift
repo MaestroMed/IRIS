@@ -22,6 +22,7 @@ import AppKit
 /// v1.275 — Visual relevance bar (40px max) next to retrieval score.
 /// v1.285 — Per-row "copy UUID" button (number.circle icon).
 /// v1.291 — Regex search mode toggle (NSRegularExpression case-insensitive).
+/// v1.300 — Duplicate memory names detection banner (gold triangle).
 /// Permet à Mehdi d'inspecter ce que Scribe sait, et de tester les requêtes de similarité.
 enum MemorySortMode: String, CaseIterable { case newest, oldest, type, name }
 
@@ -48,6 +49,15 @@ struct MemoryBrowserView: View {
 
     private var availableTypes: [String] {
         Array(Set(allMemories.map(\.type))).sorted()
+    }
+
+    // v1.300 — Duplicate memory names detection
+    private var duplicateCounts: [String: Int] {
+        var dict: [String: Int] = [:]
+        for m in allMemories {
+            dict[m.name, default: 0] += 1
+        }
+        return dict.filter { $0.value > 1 }
     }
 
     // v1.194 — Type stats: count per memory type, sorted desc
@@ -202,6 +212,7 @@ struct MemoryBrowserView: View {
                 retrievalResultsView
                 Divider()
             }
+            duplicatesBanner
             mainList
             Divider()
             typeStatsFooter
@@ -479,6 +490,27 @@ struct MemoryBrowserView: View {
         }
         .frame(maxHeight: 220)
         .background(IRISTokens.aquaTint.opacity(0.05))
+    }
+
+    // v1.300 — Duplicates banner
+    @ViewBuilder
+    private var duplicatesBanner: some View {
+        if duplicateCounts.isEmpty {
+            EmptyView()
+        } else {
+            HStack(spacing: 6) {
+                Image(systemName: "exclamationmark.triangle")
+                    .foregroundStyle(IRISTokens.goldAccent)
+                    .font(.system(size: 11))
+                Text("\(duplicateCounts.count) noms dupliqués détectés (\(duplicateCounts.values.reduce(0, +)) memories au total)")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.primary.opacity(0.85))
+                Spacer()
+            }
+            .padding(.horizontal, IRISTokens.spacing16)
+            .padding(.vertical, 4)
+            .background(IRISTokens.goldAccent.opacity(0.08))
+        }
     }
 
     private var mainList: some View {

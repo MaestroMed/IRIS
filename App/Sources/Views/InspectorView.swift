@@ -30,6 +30,7 @@ import AppKit
 /// v1.284 — Quill cost today badge (gold dollar) in section header.
 /// v1.290 — Cartographer per-project audit count + latest verdict color dot inline.
 /// v1.294 — Cartographer project status Picker (All/Active/Archived/Experimental).
+/// v1.299 — Witness most-used app today badge (iris app.fill).
 
 struct InspectorView: View {
     @Environment(IRISAppState.self) private var appState
@@ -705,6 +706,49 @@ struct InspectorView: View {
         }
     }
 
+    // v1.299 — Most-used app today from Witness signals (parse summary "Mehdi sur AppName · ...")
+    private var witnessTopAppToday: (appName: String, count: Int)? {
+        let todaySignals = allSignals.filter {
+            ($0.source == "screen" || $0.source == "screen-vision")
+                && Calendar.current.isDateInToday($0.emittedAt)
+        }
+        var counts: [String: Int] = [:]
+        for signal in todaySignals {
+            let summary = signal.summary
+            let parts = summary.components(separatedBy: " sur ")
+            guard parts.count >= 2,
+                  let afterSur = parts.last,
+                  let appName = afterSur.components(separatedBy: " · ").first else { continue }
+            let trimmed = appName.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty else { continue }
+            counts[trimmed, default: 0] += 1
+        }
+        guard let top = counts.max(by: { $0.value < $1.value }) else { return nil }
+        return (appName: top.key, count: top.value)
+    }
+
+    // v1.299 — Badge "AppName (X)" inline pour Witness section header (iris app.fill)
+    @ViewBuilder
+    private var witnessTopAppBadge: some View {
+        if let top = witnessTopAppToday {
+            HStack(spacing: 3) {
+                Image(systemName: "app.fill")
+                    .font(.system(size: 8))
+                    .foregroundStyle(IRISTokens.irisAccent)
+                Text(top.appName)
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(IRISTokens.irisAccent)
+                    .lineLimit(1)
+                Text("(\(top.count))")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .background(Capsule().fill(IRISTokens.irisAccent.opacity(0.12)))
+        }
+    }
+
     // v1.254 — Total scaffolds run via Builder (ActionLog actionType contains "scaffold")
     private var builderScaffoldCount: Int {
         allActionLogs.filter { $0.actionType.contains("scaffold") }.count
@@ -953,6 +997,7 @@ struct InspectorView: View {
                         .foregroundStyle(IRISTokens.irisAccent)
                 }
                 witnessTodayBadge
+                witnessTopAppBadge
                 Spacer()
                 Button {
                     copyAgentSummary(for: .witness, count: screenSignals.count)
