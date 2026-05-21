@@ -169,6 +169,14 @@ public actor Conductor {
         let eventId = UUID()
         irisLog(.info, "Conductor handling user input (\(text.prefix(40))…)", category: IRISLogger.conductor)
 
+        // v1.130 — Intent classification : detect specialized agent target → dispatch
+        if let intent = Self.classifyIntent(text) {
+            irisLog(.info, "Conductor dispatch \(intent.agent) (target=\(intent.target ?? "-"))",
+                    category: IRISLogger.conductor)
+            await dispatchIntent(intent, originalText: text, eventId: eventId)
+            return
+        }
+
         let hasKey = IRISKeychain.shared.hasAnthropicAPIKey()
         // v1.54 — wrap dans Task pour permettre cancel via cancelCurrentResponse()
         let task = Task { [weak self] in
@@ -182,6 +190,96 @@ public actor Conductor {
         currentResponseTask = task
         await task.value
         currentResponseTask = nil
+    }
+
+    // MARK: — v1.130 Intent classification (heuristic, no LLM call)
+
+    /// Detected intent : agent à dispatcher + target optionnel (e.g. codename projet).
+    struct DetectedIntent: Sendable {
+        let agent: AgentID
+        let target: String?  // ex: "atelier_frisson" pour un audit
+        let original: String
+    }
+
+    /// Heuristique regex/keyword pour parser un user input vers un agent spécialisé.
+    /// Retourne nil → Conductor répond solo (default).
+    static func classifyIntent(_ raw: String) -> DetectedIntent? {
+        let low = raw.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // 1. Audit : "audit X", "audite X", "audit projet X"
+        if let m = matchFirstCapture(low, pattern: #"^(audit|audite|audite-moi|audit projet)\s+([a-z0-9_\-]+)"#) {
+            return DetectedIntent(agent: .auditor, target: m, original: raw)
+        }
+
+        // 2. Scaffold/Build : "scaffold X", "crée projet X", "nouveau projet X", "bootstrap X"
+        if let m = matchFirstCapture(low, pattern: #"^(scaffold|crée projet|nouveau projet|bootstrap|init projet)\s+([a-z0-9_\-]+)"#) {
+            return DetectedIntent(agent: .builder, target: m, original: raw)
+        }
+
+        // 3. Advisor : "briefing", "résume ma journée", "advise", "que dois-je faire"
+        if low.hasPrefix("briefing") || low.contains("résume ma journée")
+            || low.hasPrefix("advise") || low.contains("que dois-je faire")
+            || low.contains("brief now") {
+            return DetectedIntent(agent: .advisor, target: nil, original: raw)
+        }
+
+        // 4. Cartographer : "refresh cartographer", "rescan repos", "recharge projets"
+        if low.contains("refresh cartographer") || low.contains("rescan repo")
+            || low.contains("recharge projet") || low.contains("re-scan projet") {
+            return DetectedIntent(agent: .cartographer, target: nil, original: raw)
+        }
+
+        return nil
+    }
+
+    /// Helper regex : retourne le 2ème groupe capturé (l'argument après le verbe).
+    private static func matchFirstCapture(_ text: String, pattern: String) -> String? {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else { return nil }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        guard let match = regex.firstMatch(in: text, options: [], range: range),
+              match.numberOfRanges >= 3,
+              let captureRange = Range(match.range(at: 2), in: text) else { return nil }
+        return String(text[captureRange])
+    }
+
+    /// Dispatch un intent vers son agent target via le bus (effets de bord) + publie un
+    /// agentResponse pour le UI feedback immédiat.
+    private func dispatchIntent(_ intent: DetectedIntent, originalText: String, eventId: UUID) async {
+        // Append user input à l'history pour traçabilité conversation
+        appendToHistory(Message(role: .user, content: originalText))
+
+        let ack: String
+        switch intent.agent {
+        case .auditor:
+            let target = intent.target ?? "—"
+            ack = "📋 Dispatch → Auditor sur projet `\(target)`. Lance audit Sonnet 4.6 + lit fichiers réels."
+            Task { await Auditor.shared.auditProject(codename: target, force: false) }
+
+        case .builder:
+            let target = intent.target ?? "(sans nom)"
+            ack = "🔨 Dispatch → Builder pour scaffold `\(target)`. Skill par défaut : doc-first-project-scaffolding. Configure dans Builder Inspector pour changer."
+            Task { await Builder.shared.scaffold(skillName: "doc-first-project-scaffolding", projectName: target) }
+
+        case .advisor:
+            ack = "☀️ Dispatch → Advisor pour briefing Opus 4.7. Réponse arrive dans quelques secondes."
+            Task { await Advisor.shared.runBriefing(kind: .manual) }
+
+        case .cartographer:
+            ack = "🗺️ Dispatch → Cartographer pour refresh complet (~/Developer + gh repo list)."
+            Task { await Cartographer.shared.refresh() }
+
+        default:
+            ack = "Dispatch \(intent.agent.rawValue) non implémenté — fallback Conductor solo."
+        }
+
+        // Publie ack + dispatch event sur le bus
+        await EventBus.shared.publish(
+            .agentDispatched(from: .conductor, to: intent.agent, intent: intent.original, eventId: eventId)
+        )
+        await EventBus.shared.publish(
+            .agentResponse(from: .conductor, content: ack, eventId: eventId)
+        )
+        appendToHistory(Message(role: .assistant, content: ack))
     }
 
     // MARK: — Mock mode (sans API key)
