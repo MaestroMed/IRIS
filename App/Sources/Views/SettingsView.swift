@@ -23,6 +23,7 @@ import AppKit
 /// v1.289 — Auto-backup frequency Picker (off/hourly/daily/weekly).
 /// v1.295 — Notification threshold Picker (importance-driven, UI only).
 /// v1.304 — Clear UserDefaults caches button (preserves API keys + data).
+/// v1.310 — Verbose logs toggle (@AppStorage shared with LogsView).
 struct SettingsView: View {
     @Environment(IRISAppState.self) private var appState
     @Environment(\.modelContext) private var modelContext
@@ -36,6 +37,7 @@ struct SettingsView: View {
     @AppStorage("witnessVisionEnabled") private var witnessVisionEnabled: Bool = true  // v1.220
     @AppStorage("burstAlertThreshold") private var burstAlertThreshold: Int = 50  // v1.238
     @AppStorage("logsMaxDisplay") private var logsMaxDisplay: Int = 500  // v1.252
+    @AppStorage("logsVerbosePayload") private var logsVerbosePayload: Bool = false  // v1.310
     @AppStorage("iris.witness.visionMaxCallsPerDay") private var witnessVisionDailyCap: Int = 100  // v1.268
     @AppStorage("backupAutoFrequency") private var backupAutoFrequency: String = "daily"  // v1.289
     @AppStorage("notificationMinImportance") private var notificationMinImportance: Int = 5  // v1.295
@@ -1058,6 +1060,25 @@ struct SettingsView: View {
                 Text("Combien d'events afficher en même temps dans LogsView (performance vs visibility).")
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
+            }
+
+            // v1.310 — Verbose logs toggle (extends payload truncation 200 → 1000 chars)
+            HStack {
+                Image(systemName: "text.justify")
+                    .foregroundStyle(IRISTokens.aquaTint)
+                    .font(.system(size: 12))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Verbose logs")
+                        .font(.system(size: 11, weight: .medium))
+                    Text("Affiche payloads complets dans LogsView (jusqu'à 1000 chars au lieu de 200)")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Toggle("", isOn: $logsVerbosePayload)
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                    .labelsHidden()
             }
 
             // v1.212 — Witness blocklist viewer (per-row unblock)

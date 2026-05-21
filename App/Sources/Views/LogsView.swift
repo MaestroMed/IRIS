@@ -25,6 +25,8 @@ import SwiftData
 // v1.292 — Inferred level badge (E/W/N/D/I color-coded capsule).
 // v1.296 — "Correlated only" toggle filter (events with correlationId).
 // v1.302 — Cmd+P keyboard shortcut on Pause toggle button.
+// v1.308 — Cmd+Shift+A cycles agent filter (Tous → each agent → wrap).
+// v1.310 — Verbose logs toggle affects payload preview truncation (200→1000).
 
 struct LogsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -34,6 +36,7 @@ struct LogsView: View {
     @AppStorage("burstAlertThreshold") private var burstAlertThreshold: Int = 50  // v1.238
     @AppStorage("logsMaxDisplay") private var logsMaxDisplay: Int = 500  // v1.252
     @AppStorage("logsSearchHistoryCSV") private var searchHistoryCSV: String = ""  // v1.278
+    @AppStorage("logsVerbosePayload") private var logsVerbosePayload: Bool = false  // v1.310
 
     @State private var filterAgent: String = ""
     @State private var filterKind: String = ""
@@ -101,6 +104,14 @@ struct LogsView: View {
         searchHistoryCSV = list.joined(separator: ",")
     }
 
+    // v1.308 — Cycle agent filter: "" → AgentID[0] → AgentID[1] → ... → wrap to ""
+    private func cycleAgentFilter() {
+        let agentValues = [""] + AgentID.allCases.map(\.rawValue)
+        let currentIndex = agentValues.firstIndex(of: filterAgent) ?? 0
+        let nextIndex = (currentIndex + 1) % agentValues.count
+        filterAgent = agentValues[nextIndex]
+    }
+
     private func togglePause() {
         if isPaused {
             pausedSnapshot = []
@@ -116,6 +127,11 @@ struct LogsView: View {
             // v1.219 — Hidden button hosting Cmd+F shortcut (focuses search field)
             Button("") { searchFieldFocused = true }
                 .keyboardShortcut(KeyEquivalent("f"), modifiers: .command)
+                .opacity(0)
+                .frame(width: 0, height: 0)
+            // v1.308 — Hidden button hosting Cmd+Shift+A shortcut (cycle agent filter)
+            Button("") { cycleAgentFilter() }
+                .keyboardShortcut(KeyEquivalent("a"), modifiers: [.command, .shift])
                 .opacity(0)
                 .frame(width: 0, height: 0)
             header
@@ -745,9 +761,9 @@ struct LogsView: View {
     }
 
     private func payloadPreview(_ json: String) -> String {
-        // Cap à 200 chars, strip multiline pour rester compact
+        // Cap à 200 chars (1000 si verbose), strip multiline pour rester compact
         let trimmed = json.replacingOccurrences(of: "\n", with: " ")
-        return String(trimmed.prefix(200))
+        return String(trimmed.prefix(logsVerbosePayload ? 1000 : 200))
     }
 
     private func exportFilteredLogs() {

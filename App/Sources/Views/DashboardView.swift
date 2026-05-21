@@ -23,6 +23,7 @@ import SwiftData
 /// v1.287 — Signals by source past 7d top 5 card..
 /// v1.297 — Pinned memories quick view card (top 3 via "pinned" tag).
 /// v1.303 — Recent Quill drafts card (last 3 with tone + subject + content preview).
+/// v1.309 — This week summary card (events/signals/audits/drafts since week-start).
 
 struct DashboardView: View {
     @Environment(IRISAppState.self) private var appState
@@ -160,6 +161,9 @@ struct DashboardView: View {
 
                 // v1.180 — Weekly events trend (7d bar chart sparkline)
                 weeklyTrendCard
+
+                // v1.309 — This week summary (events/signals/audits/drafts since week-start)
+                currentWeekCard
 
                 // v1.186 — Memory growth past 7d (gold bar chart)
                 memoryGrowthCard
@@ -410,6 +414,69 @@ struct DashboardView: View {
     private func dayLabel(_ date: Date) -> String {
         if Calendar.current.isDateInToday(date) { return "Today" }
         return date.formatted(.dateTime.weekday(.abbreviated))
+    }
+
+    // v1.309 — Current calendar-week stats (Monday → today, locale-aware via Calendar.current)
+    private var currentWeekStats: (events: Int, signals: Int, audits: Int, drafts: Int, weekStart: Date) {
+        let weekStart = Calendar.current.dateInterval(of: .weekOfYear, for: Date())?.start ?? Date()
+        let events = allEvents.filter { $0.timestamp >= weekStart }.count
+        let signals = allSignals.filter { $0.emittedAt >= weekStart }.count
+        let audits = allAudits.filter { $0.createdAt >= weekStart }.count
+        let drafts = allDraftsForRecent.filter { $0.createdAt >= weekStart }.count
+        return (events: events, signals: signals, audits: audits, drafts: drafts, weekStart: weekStart)
+    }
+
+    private var currentWeekCard: some View {
+        let stats = currentWeekStats
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("THIS WEEK")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .tracking(1.4)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("\(stats.weekStart, format: .dateTime.day().month()) →")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+            HStack(spacing: IRISTokens.spacing16) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("\(stats.events)")
+                        .font(.system(size: 16, weight: .light, design: .serif))
+                        .foregroundStyle(IRISTokens.aquaTint)
+                    Text("EVENTS")
+                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("\(stats.signals)")
+                        .font(.system(size: 16, weight: .light, design: .serif))
+                        .foregroundStyle(IRISTokens.irisAccent)
+                    Text("SIGNALS")
+                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("\(stats.audits)")
+                        .font(.system(size: 16, weight: .light, design: .serif))
+                        .foregroundStyle(IRISTokens.goldAccent)
+                    Text("AUDITS")
+                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("\(stats.drafts)")
+                        .font(.system(size: 16, weight: .light, design: .serif))
+                        .foregroundStyle(.green)
+                    Text("DRAFTS")
+                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+        }
+        .padding(IRISTokens.spacing16)
+        .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
     }
 
     // v1.186 — Memories past 7 days (oldest first, today last)
