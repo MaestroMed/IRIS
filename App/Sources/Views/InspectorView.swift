@@ -13,6 +13,7 @@ import AppKit
 /// v1.209 — Auditor cost-today badge (gold dollar) in Auditor section header.
 /// v1.213 — Audit-now button per Cartographer project row (Auditor.runAudit).
 /// v1.218 — Auditor verdict counts past 30d badge (green/yellow/red dots + counts).
+/// v1.223 — Bulk "Audit all" button in Cartographer header (sequential 2s delay).
 
 struct InspectorView: View {
     @Environment(IRISAppState.self) private var appState
@@ -779,7 +780,19 @@ struct InspectorView: View {
             : searchScoped.filter { $0.status == projectStatusFilter }
         let limited = Array(filtered.prefix(8))
         return VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
-            sectionHeader("Cartographer", count: filtered.count, accent: IRISTokens.irisAccent, pinnable: .cartographer)
+            HStack {
+                sectionHeader("Cartographer", count: filtered.count, accent: IRISTokens.irisAccent, pinnable: .cartographer)
+                Spacer()
+                // v1.223 — Bulk audit all visible projects
+                Button { auditAllProjects() } label: {
+                    Label("Audit all", systemImage: "checkmark.shield.fill")
+                        .font(.system(size: 11))
+                }
+                .controlSize(.small)
+                .tint(IRISTokens.aquaTint)
+                .help("Lancer un audit sur tous les projets visibles (filteredProjects, force: true)")
+                .disabled(filteredProjects.isEmpty)
+            }
 
             TextField("Filter projects by codename/path…", text: $cartographerSearch)
                 .textFieldStyle(.roundedBorder)
@@ -921,6 +934,18 @@ struct InspectorView: View {
     private func triggerAudit(_ project: ProjectRecord) {
         guard !project.codename.isEmpty else { return }
         Task { await Auditor.shared.auditProject(codename: project.codename, force: true) }
+    }
+
+    // v1.223 — Sequential audit-all over filteredProjects, 2s spacing to avoid API hammering.
+    private func auditAllProjects() {
+        let projects = filteredProjects
+        Task {
+            for project in projects {
+                guard !project.codename.isEmpty else { continue }
+                await Auditor.shared.auditProject(codename: project.codename, force: true)
+                try? await Task.sleep(nanoseconds: 2_000_000_000) // 2s
+            }
+        }
     }
 
     // MARK: — Auditor

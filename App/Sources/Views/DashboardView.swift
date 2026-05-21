@@ -11,6 +11,7 @@ import SwiftData
 /// v1.201 — Milestone v1.200 celebration card (auto-hides at v1.206).
 /// v1.210 — Recent activity feed card (last 5 events).
 /// v1.216 — Avg response time by agent card (dispatched→response delay).
+/// v1.222 — Auditor cost today card (total + per-model breakdown).
 
 struct DashboardView: View {
     @Environment(IRISAppState.self) private var appState
@@ -91,6 +92,9 @@ struct DashboardView: View {
 
                 // v1.173 — Alerts last 1h (failures + critical signals)
                 alertsCard
+
+                // v1.222 — Auditor cost today (total + per-model breakdown)
+                costTodayCard
 
                 // v1.102 — Currently focused project (latest Witness signal with project scope)
                 if let focus = latestFocusedSignal {
@@ -465,6 +469,55 @@ struct DashboardView: View {
         .padding(IRISTokens.spacing16)
         .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
         .overlay(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).strokeBorder(totalAlerts > 0 ? Color.red.opacity(0.6) : Color.clear, lineWidth: 1.5))
+    }
+
+    // v1.222 — Auditor cost today (AuditReport.costUSD summed for today)
+    private var auditCostToday: Double {
+        let start = Calendar.current.startOfDay(for: Date())
+        return allAudits.filter { $0.createdAt >= start }.reduce(0.0) { $0 + $1.costUSD }
+    }
+
+    private var costTodayBreakdown: [(model: String, cost: Double)] {
+        let start = Calendar.current.startOfDay(for: Date())
+        let today = allAudits.filter { $0.createdAt >= start }
+        let grouped = Dictionary(grouping: today, by: { $0.modelUsed })
+        return grouped.map { (model: $0.key, cost: $0.value.reduce(0.0) { $0 + $1.costUSD }) }
+            .sorted { $0.cost > $1.cost }
+    }
+
+    private var costTodayCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("AUDITOR COST TODAY")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .tracking(1.4)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(String(format: "$%.3f", auditCostToday))
+                    .font(.system(size: 13, weight: .light, design: .serif))
+                    .foregroundStyle(IRISTokens.goldAccent)
+            }
+            if costTodayBreakdown.isEmpty {
+                Text("Aucun audit aujourd'hui.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(Array(costTodayBreakdown.enumerated()), id: \.offset) { _, item in
+                    HStack {
+                        Text(item.model)
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                        Spacer()
+                        Text(String(format: "$%.3f", item.cost))
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(IRISTokens.aquaTint)
+                    }
+                }
+            }
+        }
+        .padding(IRISTokens.spacing16)
+        .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
     }
 
     // v1.160 — Agent activity dots banner (10 agents avec status dot live)

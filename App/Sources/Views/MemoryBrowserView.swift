@@ -12,6 +12,7 @@ import AppKit
 /// v1.198 — Sort by Picker (newest/oldest/type/name), pinned always on top.
 /// v1.208 — Per-row copy content button with 2s checkmark feedback.
 /// v1.215 — Pin all of currently-filtered type bulk action (gold pin.fill button).
+/// v1.221 — Divider with "UNPINNED" label between pinned and unpinned groups in mainList.
 /// Permet à Mehdi d'inspecter ce que Scribe sait, et de tester les requêtes de similarité.
 enum MemorySortMode: String, CaseIterable { case newest, oldest, type, name }
 
@@ -368,7 +369,26 @@ struct MemoryBrowserView: View {
                         .foregroundStyle(.secondary)
                         .padding(IRISTokens.spacing24)
                 } else {
-                    ForEach(filtered) { memory in
+                    let pinned = filtered.filter { isPinned($0) }
+                    let unpinned = filtered.filter { !isPinned($0) }
+                    if !pinned.isEmpty {
+                        ForEach(pinned) { memory in
+                            memoryRow(memory, score: nil, rank: nil)
+                        }
+                        if !unpinned.isEmpty {
+                            HStack(spacing: 4) {
+                                Rectangle().fill(Color.secondary.opacity(0.15)).frame(height: 1)
+                                Text("UNPINNED")
+                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                    .tracking(1.4)
+                                    .foregroundStyle(.secondary.opacity(0.6))
+                                Rectangle().fill(Color.secondary.opacity(0.15)).frame(height: 1)
+                            }
+                            .padding(.horizontal, IRISTokens.spacing8)
+                            .padding(.vertical, 6)
+                        }
+                    }
+                    ForEach(unpinned) { memory in
                         memoryRow(memory, score: nil, rank: nil)
                     }
                 }
