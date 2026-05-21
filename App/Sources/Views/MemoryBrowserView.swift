@@ -16,6 +16,7 @@ import AppKit
 /// v1.227 — Bulk add-tag to filtered memories.
 /// v1.233 — Expandable rows with full content (chevron toggle, textSelection enabled).
 /// v1.239 — Cmd+/ focus search TextField (hidden Button).
+/// v1.251 — Search-text highlighting in memory rows (summary + expanded content).
 /// Permet à Mehdi d'inspecter ce que Scribe sait, et de tester les requêtes de similarité.
 enum MemorySortMode: String, CaseIterable { case newest, oldest, type, name }
 
@@ -539,15 +540,11 @@ struct MemoryBrowserView: View {
                 .help("Supprimer cette memory (confirmation requise)")
             }
             if !memory.summary.isEmpty {
-                Text(memory.summary)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.primary.opacity(0.85))
+                highlightedText(memory.summary, search: searchText, baseFont: .system(size: 11), baseColor: .primary.opacity(0.85))
                     .lineLimit(2)
             }
             if expandedIds.contains(memory.id) && !memory.content.isEmpty {
-                Text(memory.content)
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(.primary.opacity(0.75))
+                highlightedText(memory.content, search: searchText, baseFont: .system(size: 10, design: .monospaced), baseColor: .primary.opacity(0.75))
                     .padding(.top, 4)
                     .padding(.horizontal, 4)
                     .background(Color.secondary.opacity(0.05))
@@ -557,6 +554,30 @@ struct MemoryBrowserView: View {
         }
         .padding(.vertical, 4).padding(.horizontal, IRISTokens.spacing8)
         .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
+    }
+
+    // MARK: — v1.251 Search-text highlighting
+
+    private func highlightedText(_ source: String, search: String, baseFont: Font, baseColor: Color) -> Text {
+        let trimmed = search.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return Text(source).font(baseFont).foregroundColor(baseColor)
+        }
+        var attr = AttributedString(source)
+        attr.font = baseFont
+        attr.foregroundColor = baseColor
+        let lowSource = source.lowercased()
+        let lowSearch = trimmed.lowercased()
+        var cursor = lowSource.startIndex
+        while cursor < lowSource.endIndex,
+              let range = lowSource.range(of: lowSearch, range: cursor..<lowSource.endIndex) {
+            if let attrRange = Range(range, in: attr) {
+                attr[attrRange].backgroundColor = IRISTokens.goldAccent.opacity(0.3)
+                attr[attrRange].foregroundColor = .primary
+            }
+            cursor = range.upperBound
+        }
+        return Text(attr)
     }
 
     private func typeColor(_ type: String) -> Color {

@@ -15,6 +15,7 @@ import AppKit
 /// v1.232 — Reset Sentinel intervals to defaults button.
 /// v1.238 — Burst alert threshold slider (@AppStorage shared with LogsView).
 /// v1.245 — Memory browser shortcuts added to cheatsheet.
+/// v1.252 — Max events displayed slider for LogsView (@AppStorage).
 struct SettingsView: View {
     @Environment(IRISAppState.self) private var appState
     @Environment(\.modelContext) private var modelContext
@@ -27,6 +28,7 @@ struct SettingsView: View {
     @AppStorage("witnessPaused") private var witnessPaused: Bool = false  // v1.187
     @AppStorage("witnessVisionEnabled") private var witnessVisionEnabled: Bool = true  // v1.220
     @AppStorage("burstAlertThreshold") private var burstAlertThreshold: Int = 50  // v1.238
+    @AppStorage("logsMaxDisplay") private var logsMaxDisplay: Int = 500  // v1.252
     @State private var blocklistRefreshTick: Int = 0  // v1.212 — force re-render after unblock
 
     // v1.212 — Read live from UserDefaults, tied to blocklistRefreshTick for reactivity.
@@ -950,6 +952,30 @@ struct SettingsView: View {
                 )
                 .controlSize(.small)
                 Text("Logs banner alerte si events/60s dépasse ce seuil.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+
+            // v1.252 — Max events displayed in LogsView
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("Max events displayed")
+                        .font(.system(size: 12))
+                    Spacer()
+                    Text("\(logsMaxDisplay)")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(IRISTokens.aquaTint)
+                }
+                Slider(
+                    value: Binding(
+                        get: { Double(logsMaxDisplay) },
+                        set: { logsMaxDisplay = Int($0) }
+                    ),
+                    in: 100...2000,
+                    step: 100
+                )
+                .controlSize(.small)
+                Text("Combien d'events afficher en même temps dans LogsView (performance vs visibility).")
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
             }

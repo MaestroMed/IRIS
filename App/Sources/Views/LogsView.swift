@@ -16,6 +16,7 @@ import SwiftData
 // v1.235 — Active filters summary chip row (each removable, with color per filter type).
 // v1.238 — Burst threshold now configurable via @AppStorage burstAlertThreshold.
 // v1.243 — Since-launch stat in header (uptime + events since bootstrap).
+// v1.252 — Max display events configurable via @AppStorage logsMaxDisplay.
 
 struct LogsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -23,6 +24,7 @@ struct LogsView: View {
     @Query(sort: \EventLog.timestamp, order: .reverse) private var allEvents: [EventLog]
 
     @AppStorage("burstAlertThreshold") private var burstAlertThreshold: Int = 50  // v1.238
+    @AppStorage("logsMaxDisplay") private var logsMaxDisplay: Int = 500  // v1.252
 
     @State private var filterAgent: String = ""
     @State private var filterKind: String = ""
@@ -62,7 +64,7 @@ struct LogsView: View {
             .filter { filterCorrelationId == nil || $0.correlationId == filterCorrelationId }
             .filter { !pastHourOnly || $0.timestamp >= Date().addingTimeInterval(-3600) }
             .filter { searchText.isEmpty || $0.payloadJSON.localizedCaseInsensitiveContains(searchText) || $0.kind.localizedCaseInsensitiveContains(searchText) }
-            .prefix(500)
+            .prefix(logsMaxDisplay)
             .map { $0 }
     }
 

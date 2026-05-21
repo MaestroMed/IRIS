@@ -18,6 +18,7 @@ import AppKit
 /// v1.237 — Peak day past 7d banner (gold crown).
 /// v1.242 — Period comparisons card (1h/24h/7d vs previous period of same length).
 /// v1.249 — Avg events per session today card (events/sessions ratio).
+/// v1.253 — Live events/sec rate badge (past 10s window).
 
 struct BusStatsView: View {
     @Query(sort: \EventLog.timestamp, order: .reverse) private var allEvents: [EventLog]
@@ -139,6 +140,31 @@ struct BusStatsView: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
+        .background(Capsule().fill(.thinMaterial))
+    }
+
+    private var liveRate10s: Double {
+        let _ = refreshTick
+        let cutoff = Date().addingTimeInterval(-10)
+        let count = allEvents.filter { $0.timestamp >= cutoff }.count
+        return Double(count) / 10.0
+    }
+
+    @ViewBuilder
+    private var liveRateBadge: some View {
+        HStack(spacing: 4) {
+            Circle()
+                .fill(liveRate10s > 0 ? IRISTokens.aquaTint : .secondary.opacity(0.4))
+                .frame(width: 6, height: 6)
+            Text(String(format: "%.1f", liveRate10s))
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundStyle(liveRate10s > 0 ? IRISTokens.aquaTint : .secondary)
+            Text("ev/sec")
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(.secondary.opacity(0.7))
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
         .background(Capsule().fill(.thinMaterial))
     }
 
@@ -574,6 +600,7 @@ struct BusStatsView: View {
                 .font(.system(size: 22, weight: .light, design: .serif))
             activeSessionsBadge
             hourDeltaBadge
+            liveRateBadge
             Button(action: exportMarkdown) {
                 Label("Export MD", systemImage: "square.and.arrow.up")
             }
