@@ -10,6 +10,7 @@ import SwiftData
 // v1.197 — Cmd+L keyboard shortcut on Clear filters button.
 // v1.203 — CSV export filtered events button (next to Export MD).
 // v1.206 — Past hour quick filter toggle (60min window).
+// v1.219 — Cmd+F keyboard shortcut focuses search TextField.
 
 struct LogsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -29,6 +30,9 @@ struct LogsView: View {
 
     // v1.206 — Past-hour quick filter
     @State private var pastHourOnly: Bool = false
+
+    // v1.219 — Cmd+F focuses search TextField
+    @FocusState private var searchFieldFocused: Bool
 
     private static let kindOrder = [
         "userInput", "agentDispatched", "agentResponse",
@@ -64,6 +68,11 @@ struct LogsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            // v1.219 — Hidden button hosting Cmd+F shortcut (focuses search field)
+            Button("") { searchFieldFocused = true }
+                .keyboardShortcut(KeyEquivalent("f"), modifiers: .command)
+                .opacity(0)
+                .frame(width: 0, height: 0)
             header
             Divider()
             filtersBar
@@ -203,10 +212,16 @@ struct LogsView: View {
             .controlSize(.small)
             .frame(maxWidth: 120)
 
-            TextField("Search payload / kind…", text: $searchText)
-                .textFieldStyle(.roundedBorder)
-                .controlSize(.small)
-                .frame(maxWidth: 300)
+            HStack(spacing: 4) {
+                TextField("Search payload / kind…", text: $searchText)
+                    .textFieldStyle(.roundedBorder)
+                    .controlSize(.small)
+                    .focused($searchFieldFocused)
+                    .frame(maxWidth: 300)
+                Text("⌘F")
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.secondary.opacity(0.5))
+            }
 
             // v1.70 — Correlation badge si actif
             if let cid = filterCorrelationId {

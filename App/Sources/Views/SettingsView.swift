@@ -10,6 +10,7 @@ import AppKit
 /// v1.196 — Open ~/Developer folder button (Cartographer scan target).
 /// v1.205 — About IRIS section (version, boot, uptime, commit, github link).
 /// v1.212 — Witness blocklist viewer + per-row unblock button.
+/// v1.220 — Witness vision capture toggle (@AppStorage witnessVisionEnabled).
 struct SettingsView: View {
     @Environment(IRISAppState.self) private var appState
     @Environment(\.modelContext) private var modelContext
@@ -20,6 +21,7 @@ struct SettingsView: View {
     @State private var savedMessage: String?
     @State private var backupStatus: String?
     @AppStorage("witnessPaused") private var witnessPaused: Bool = false  // v1.187
+    @AppStorage("witnessVisionEnabled") private var witnessVisionEnabled: Bool = true  // v1.220
     @State private var blocklistRefreshTick: Int = 0  // v1.212 — force re-render after unblock
 
     // v1.212 — Read live from UserDefaults, tied to blocklistRefreshTick for reactivity.
@@ -891,6 +893,24 @@ struct SettingsView: View {
                 }
                 .controlSize(.small)
                 .tint(witnessPaused ? .green : .red.opacity(0.8))
+            }
+
+            // v1.220 — Witness vision capture toggle
+            HStack(spacing: 8) {
+                Image(systemName: witnessVisionEnabled ? "eye.fill" : "eye.slash")
+                    .foregroundStyle(witnessVisionEnabled ? IRISTokens.aquaTint : .secondary.opacity(0.6))
+                    .font(.system(size: 12))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Vision capture").font(.system(size: 11, weight: .medium))
+                    Text(witnessVisionEnabled ? "Active — analyse screenshots avec Haiku" : "Disabled — capture metadata seulement")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Toggle("", isOn: $witnessVisionEnabled)
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                    .labelsHidden()
             }
 
             // v1.212 — Witness blocklist viewer (per-row unblock)

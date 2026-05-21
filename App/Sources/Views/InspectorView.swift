@@ -12,6 +12,7 @@ import AppKit
 /// v1.204 — Cartographer section search field (codename/path/repo).
 /// v1.209 — Auditor cost-today badge (gold dollar) in Auditor section header.
 /// v1.213 — Audit-now button per Cartographer project row (Auditor.runAudit).
+/// v1.218 — Auditor verdict counts past 30d badge (green/yellow/red dots + counts).
 
 struct InspectorView: View {
     @Environment(IRISAppState.self) private var appState
@@ -932,6 +933,53 @@ struct InspectorView: View {
             .reduce(0.0) { $0 + $1.costUSD }
     }
 
+    // v1.218 — Counts AuditReport verdicts (GREEN/YELLOW/RED) over past 30 days.
+    private var verdictCounts: (green: Int, yellow: Int, red: Int) {
+        let cutoff = Date().addingTimeInterval(-30 * 86400)
+        let recent = allAudits.filter { $0.createdAt >= cutoff }
+        var green = 0, yellow = 0, red = 0
+        for audit in recent {
+            switch audit.verdict {
+            case "GREEN": green += 1
+            case "YELLOW": yellow += 1
+            case "RED": red += 1
+            default: break
+            }
+        }
+        return (green, yellow, red)
+    }
+
+    // v1.218 — Mini stat row badge with colored dots + counts for verdicts past 30d.
+    @ViewBuilder
+    private var verdictCountsBadge: some View {
+        let counts = verdictCounts
+        if counts.green + counts.yellow + counts.red > 0 {
+            HStack(spacing: 6) {
+                HStack(spacing: 3) {
+                    Circle().fill(.green).frame(width: 6, height: 6)
+                    Text("\(counts.green)")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(.green)
+                }
+                HStack(spacing: 3) {
+                    Circle().fill(IRISTokens.goldAccent).frame(width: 6, height: 6)
+                    Text("\(counts.yellow)")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(IRISTokens.goldAccent)
+                }
+                HStack(spacing: 3) {
+                    Circle().fill(.red).frame(width: 6, height: 6)
+                    Text("\(counts.red)")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(.red)
+                }
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(.thinMaterial))
+        }
+    }
+
     // v1.209 — Badge "$X.XXX today" inline pour Auditor section header (gold, n'apparaît que si > 0).
     @ViewBuilder
     private var auditorCostBadge: some View {
@@ -962,6 +1010,7 @@ struct InspectorView: View {
                         .foregroundStyle(IRISTokens.irisAccent)
                 }
                 auditorCostBadge
+                verdictCountsBadge
                 Spacer()
                 Button {
                     copyAgentSummary(for: .auditor, count: allAudits.count)
