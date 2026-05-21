@@ -29,6 +29,7 @@ import SwiftData
 // v1.310 — Verbose logs toggle affects payload preview truncation (200→1000).
 // v1.314 — Click row to show full payload sheet.
 // v1.319 — Per-agent breakdown row (top 6 from filtered events).
+// v1.327 — Search-text highlighting in payload preview (gold background match).
 
 struct LogsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -767,9 +768,7 @@ struct LogsView: View {
                         .help("Filter par cette correlation chain")
                     }
                 }
-                Text(payloadPreview(event.payloadJSON))
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(.primary.opacity(0.75))
+                highlightedPayload(payloadPreview(event.payloadJSON), search: searchText)
                     .lineLimit(2)
                     .textSelection(.enabled)
             }
@@ -844,6 +843,31 @@ struct LogsView: View {
         if event.payloadJSON.contains("\"level\":\"warning\"") { return IRISTokens.goldAccent }
         if event.payloadJSON.contains("\"level\":\"notice\"") { return IRISTokens.aquaTint }
         return .clear
+    }
+
+    // v1.327 — Highlight matching search ranges in payload preview (gold background).
+    private func highlightedPayload(_ source: String, search: String) -> Text {
+        if search.isEmpty {
+            return Text(source).font(.system(size: 10, design: .monospaced)).foregroundColor(.primary.opacity(0.75))
+        }
+        var attr = AttributedString(source)
+        attr.font = .system(size: 10, design: .monospaced)
+        attr.foregroundColor = .primary.opacity(0.75)
+        let lowSource = source.lowercased()
+        let lowSearch = search.lowercased()
+        var idx = lowSource.startIndex
+        while let range = lowSource.range(of: lowSearch, range: idx..<lowSource.endIndex) {
+            let startOffset = lowSource.distance(from: lowSource.startIndex, to: range.lowerBound)
+            let endOffset = lowSource.distance(from: lowSource.startIndex, to: range.upperBound)
+            let attrStart = attr.index(attr.startIndex, offsetByCharacters: startOffset)
+            let attrEnd = attr.index(attr.startIndex, offsetByCharacters: endOffset)
+            if attrStart < attr.endIndex && attrEnd <= attr.endIndex && attrStart < attrEnd {
+                attr[attrStart..<attrEnd].backgroundColor = IRISTokens.goldAccent.opacity(0.3)
+                attr[attrStart..<attrEnd].foregroundColor = .primary
+            }
+            idx = range.upperBound
+        }
+        return Text(attr)
     }
 
     private func payloadPreview(_ json: String) -> String {

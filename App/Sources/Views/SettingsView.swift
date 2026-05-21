@@ -26,6 +26,7 @@ import AppKit
 /// v1.310 — Verbose logs toggle (@AppStorage shared with LogsView).
 /// v1.316 — Reset agent visibility button (restore all defaults).
 /// v1.321 — Cmd+? shortcut documented in cheatsheet (binding TODO).
+/// v1.328 — EventLog auto-purge cadence Picker (UI only).
 struct SettingsView: View {
     @Environment(IRISAppState.self) private var appState
     @Environment(\.modelContext) private var modelContext
@@ -43,6 +44,7 @@ struct SettingsView: View {
     @AppStorage("iris.witness.visionMaxCallsPerDay") private var witnessVisionDailyCap: Int = 100  // v1.268
     @AppStorage("backupAutoFrequency") private var backupAutoFrequency: String = "daily"  // v1.289
     @AppStorage("notificationMinImportance") private var notificationMinImportance: Int = 5  // v1.295
+    @AppStorage("eventLogPurgeCadence") private var purgeCadence: String = "off"  // v1.328
     @State private var blocklistRefreshTick: Int = 0  // v1.212 — force re-render after unblock
     @State private var resetVisionStatus: String?  // v1.259
     @State private var importConfigStatus: String?  // v1.274
@@ -857,6 +859,32 @@ struct SettingsView: View {
                 .controlSize(.small)
                 .tint(IRISTokens.goldAccent)
                 Spacer()
+            }
+
+            // v1.328 — EventLog auto-purge cadence Picker (UI only).
+            // TODO: wire purgeCadence to a periodic Timer task that calls existing EventLog cleanup (v1.59).
+            HStack(spacing: IRISTokens.spacing8) {
+                Image(systemName: "trash.circle")
+                    .foregroundStyle(.orange.opacity(0.8))
+                    .font(.system(size: 12))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Auto-purge EventLog")
+                        .font(.system(size: 11, weight: .medium))
+                    Text("Périodicité de nettoyage automatique des events anciens")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Picker("", selection: $purgeCadence) {
+                    Text("Off").tag("off")
+                    Text("Daily").tag("daily")
+                    Text("Weekly").tag("weekly")
+                    Text("Monthly").tag("monthly")
+                }
+                .labelsHidden()
+                .controlSize(.small)
+                .frame(maxWidth: 100)
+                .pickerStyle(.menu)
             }
         }
     }

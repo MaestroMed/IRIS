@@ -34,6 +34,7 @@ import AppKit
 /// v1.305 — Compact mode toggle for InspectorView (collapse all section bodies).
 /// v1.311 — Auditor verdict trend stacked bar (30d green/yellow/red ratio).
 /// v1.320 — Auditor verdict timeline (chronological dots last 20 audits 30d).
+/// v1.326 — Witness "Now:" current frontmost row at top of section.
 
 struct InspectorView: View {
     @Environment(IRISAppState.self) private var appState
@@ -772,6 +773,42 @@ struct InspectorView: View {
         }
     }
 
+    // v1.326 — Latest Witness capture (screen or screen-vision) sorted desc by emittedAt
+    private var witnessLatest: Signal? {
+        allSignals
+            .filter { $0.source == "screen" || $0.source == "screen-vision" }
+            .sorted { $0.emittedAt > $1.emittedAt }
+            .first
+    }
+
+    // v1.326 — "Now:" inline row showing latest Witness capture summary + timestamp
+    @ViewBuilder
+    private var witnessLatestRow: some View {
+        if let latest = witnessLatest {
+            HStack(spacing: 6) {
+                Image(systemName: "eye.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(IRISTokens.aquaTint)
+                Text("Now:")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                Text(latest.summary)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Spacer()
+                Text(latest.emittedAt, format: .dateTime.hour().minute().second())
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, IRISTokens.spacing8)
+            .padding(.vertical, 4)
+            .background(IRISTokens.aquaTint.opacity(0.05))
+        } else {
+            EmptyView()
+        }
+    }
+
     // v1.254 — Total scaffolds run via Builder (ActionLog actionType contains "scaffold")
     private var builderScaffoldCount: Int {
         allActionLogs.filter { $0.actionType.contains("scaffold") }.count
@@ -1042,6 +1079,9 @@ struct InspectorView: View {
                 .help(pinned.isPinned(.witness) ? "Désépingler section" : "Épingler section (toujours visible)")
             }
             .padding(.horizontal, IRISTokens.spacing4)
+
+            // v1.326 — "Now:" current frontmost preview at top of section
+            witnessLatestRow
 
             // v1.179 — transient block confirmation feedback
             if let status = blockStatus {
