@@ -8,6 +8,7 @@ import AppKit
 /// v1.167 — Export filtered memories to Markdown (home dir).
 /// v1.177 — Pin/unpin memory via "pinned" tag, pinned rows sort to top.
 /// v1.182 — Pinned-only filter toggle (filters to tag pinned).
+/// v1.194 — Type stats footer with count + circle color per type.
 /// Permet à Mehdi d'inspecter ce que Scribe sait, et de tester les requêtes de similarité.
 struct MemoryBrowserView: View {
     @Environment(\.modelContext) private var modelContext
@@ -24,6 +25,16 @@ struct MemoryBrowserView: View {
 
     private var availableTypes: [String] {
         Array(Set(allMemories.map(\.type))).sorted()
+    }
+
+    // v1.194 — Type stats: count per memory type, sorted desc
+    private var typeStats: [(type: String, count: Int)] {
+        var dict: [String: Int] = [:]
+        for m in allMemories {
+            dict[m.type, default: 0] += 1
+        }
+        return dict.map { (type: $0.key, count: $0.value) }
+            .sorted { $0.count > $1.count }
     }
 
     private var filtered: [Memory] {
@@ -100,8 +111,40 @@ struct MemoryBrowserView: View {
                 Divider()
             }
             mainList
+            Divider()
+            typeStatsFooter
         }
         .navigationTitle("Memory")
+    }
+
+    // v1.194 — Type stats footer: circle color + count per type
+    private var typeStatsFooter: some View {
+        HStack(spacing: IRISTokens.spacing16) {
+            Text("PAR TYPE")
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .tracking(1.4)
+                .foregroundStyle(.secondary)
+            ForEach(Array(typeStats.enumerated()), id: \.offset) { _, item in
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(typeColor(item.type))
+                        .frame(width: 6, height: 6)
+                    Text(item.type)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.primary)
+                    Text("\(item.count)")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            Text("\(allMemories.count) total")
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(IRISTokens.aquaTint)
+        }
+        .padding(.horizontal, IRISTokens.spacing16)
+        .padding(.vertical, IRISTokens.spacing8)
+        .background(.thinMaterial)
     }
 
     private var header: some View {

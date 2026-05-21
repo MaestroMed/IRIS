@@ -7,6 +7,7 @@ import SwiftData
 /// v1.173 — Alerts last 1h card (failures + critical signals).
 /// v1.180 — Weekly events trend mini-sparkline card (7d bar chart).
 /// v1.186 — Memory growth past 7d mini stat card (gold).
+/// v1.195 — System status banner (Witness · Sentinel · MCP) at top of dashboard.
 
 struct DashboardView: View {
     @Environment(IRISAppState.self) private var appState
@@ -38,6 +39,9 @@ struct DashboardView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: IRISTokens.spacing24) {
+                // v1.195 — System status banner (Witness · Sentinel · MCP)
+                systemStatusBanner
+
                 header
 
                 LazyVGrid(
@@ -618,6 +622,73 @@ struct DashboardView: View {
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let content = json["content"] as? String else { return "(no content)" }
         return content
+    }
+
+    // MARK: — v1.195 System status banner
+
+    /// Witness pause state — mirrors @AppStorage("witnessPaused") key added v1.187.
+    private var witnessActive: Bool {
+        !UserDefaults.standard.bool(forKey: "witnessPaused")
+    }
+
+    /// Sentinel active sources — knownSources minus muted (gmail/github/calendar/fs).
+    private var sentinelActiveCount: Int {
+        let muted = Sentinel.mutedSources
+        return Sentinel.knownSources.filter { !muted.contains($0) }.count
+    }
+
+    /// MCP servers discovered/connected count. MCPManager has no live-connection accessor —
+    /// `servers` reflects parsed config; 0 if discover() never ran.
+    private var mcpConnectedCount: Int {
+        MCPManager.shared.servers.count
+    }
+
+    private var systemStatusBanner: some View {
+        HStack(spacing: IRISTokens.spacing24) {
+            Image(systemName: "checkmark.seal.fill")
+                .foregroundStyle(.green)
+                .font(.system(size: 14))
+            Text("SYSTEM STATUS")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .tracking(1.4)
+                .foregroundStyle(.secondary)
+            // Witness pill
+            HStack(spacing: 4) {
+                Image(systemName: witnessActive ? "eye.fill" : "eye.slash.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(witnessActive ? .green.opacity(0.8) : .red.opacity(0.8))
+                Text("Witness")
+                    .font(.system(size: 10))
+                Text(witnessActive ? "active" : "pause")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+            // Sentinel pill
+            HStack(spacing: 4) {
+                Image(systemName: "sensor.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(sentinelActiveCount > 0 ? IRISTokens.aquaTint : .secondary)
+                Text("Sentinel")
+                    .font(.system(size: 10))
+                Text("\(sentinelActiveCount) sources")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+            // MCP pill
+            HStack(spacing: 4) {
+                Image(systemName: "antenna.radiowaves.left.and.right")
+                    .font(.system(size: 10))
+                    .foregroundStyle(mcpConnectedCount > 0 ? IRISTokens.goldAccent : .secondary)
+                Text("MCP")
+                    .font(.system(size: 10))
+                Text("\(mcpConnectedCount) servers")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .padding(IRISTokens.spacing8)
+        .background(.thinMaterial)
     }
 
     // MARK: — Header

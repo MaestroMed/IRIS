@@ -7,6 +7,7 @@ import AppKit
 /// v1.174 — Open Application Support folder in Finder.
 /// v1.187 — Witness Pause/Resume quick toggle (shares @AppStorage key with Witness.swift).
 /// v1.190 — Re-seed memories from disk button (calls MemorySeeder).
+/// v1.196 — Open ~/Developer folder button (Cartographer scan target).
 struct SettingsView: View {
     @Environment(IRISAppState.self) private var appState
     @Environment(\.modelContext) private var modelContext
@@ -725,6 +726,17 @@ struct SettingsView: View {
                 .controlSize(.small)
                 .help("Ouvre ~/.claude/skills dans Finder")
 
+                // v1.196 — Open ~/Developer folder (Cartographer scan target)
+                Button {
+                    openDeveloperFolder()
+                } label: {
+                    Label("~/Developer folder", systemImage: "folder")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("Reveal ~/Developer dans Finder (target Cartographer)")
+
                 // v1.190 — Re-seed memories from disk
                 Button {
                     reseedMemories()
@@ -791,6 +803,20 @@ struct SettingsView: View {
                 reseedStatus = nil
             }
         }
+    }
+
+    // v1.196 — Open ~/Developer folder (Cartographer scan target)
+    private func openDeveloperFolder() {
+        let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Developer", isDirectory: true)
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            let alert = NSAlert()
+            alert.messageText = "Dossier ~/Developer absent"
+            alert.informativeText = "Crée ~/Developer pour que Cartographer le scanne."
+            alert.alertStyle = .informational
+            alert.runModal()
+            return
+        }
+        NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
     private func revealInFinder(path: String) {
