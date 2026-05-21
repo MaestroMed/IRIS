@@ -22,6 +22,7 @@ import SwiftData
 /// v1.267 — Most active project past 7d card (audits + signals combined)
 /// v1.287 — Signals by source past 7d top 5 card..
 /// v1.297 — Pinned memories quick view card (top 3 via "pinned" tag).
+/// v1.303 — Recent Quill drafts card (last 3 with tone + subject + content preview).
 
 struct DashboardView: View {
     @Environment(IRISAppState.self) private var appState
@@ -31,6 +32,8 @@ struct DashboardView: View {
     @Query(sort: \Memory.createdAt, order: .reverse) private var allMemoriesForPinned: [Memory]
     @Query(sort: \Signal.emittedAt, order: .reverse) private var allSignals: [Signal]
     @Query private var allDrafts: [Draft]
+    // v1.303 — Sorted by createdAt desc pour recent drafts card
+    @Query(sort: \Draft.createdAt, order: .reverse) private var allDraftsForRecent: [Draft]
     @Query private var allAudits: [AuditReport]
     @Query private var allProjects: [ProjectRecord]
     @Query(sort: \ActionLog.executedAt, order: .reverse) private var allActions: [ActionLog]
@@ -163,6 +166,9 @@ struct DashboardView: View {
 
                 // v1.297 — Pinned memories quick view (top 3 via "pinned" tag)
                 pinnedMemoriesCard
+
+                // v1.303 — Recent Quill drafts (last 3 with tone + subject + content preview)
+                recentDraftsCard
 
                 // v1.92 — Snippet du dernier briefing Advisor
                 if let latest = advisorBriefings.first {
@@ -459,6 +465,56 @@ struct DashboardView: View {
         }
         .prefix(3)
         .map { $0 }
+    }
+
+    // v1.303 — Recent Quill drafts (last 3 by createdAt desc)
+    private var recentDrafts: [Draft] {
+        Array(allDraftsForRecent.prefix(3))
+    }
+
+    private var recentDraftsCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Image(systemName: "pencil.and.scribble")
+                    .foregroundStyle(IRISTokens.irisAccent)
+                    .font(.system(size: 12))
+                Text("RECENT DRAFTS")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .tracking(1.4)
+                    .foregroundStyle(.secondary)
+            }
+            if recentDrafts.isEmpty {
+                Text("Aucun draft Quill.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(recentDrafts) { draft in
+                    VStack(alignment: .leading, spacing: 1) {
+                        HStack(spacing: 4) {
+                            if !draft.tone.isEmpty {
+                                Text(draft.tone)
+                                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(IRISTokens.aquaTint)
+                            }
+                            Text(draft.subject ?? "(no subject)")
+                                .font(.system(size: 11, weight: .medium))
+                                .lineLimit(1)
+                            Spacer()
+                            Text(draft.createdAt, format: .dateTime.hour().minute())
+                                .font(.system(size: 9, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                        }
+                        Text(String(draft.content.prefix(80)))
+                            .font(.system(size: 10))
+                            .foregroundStyle(.primary.opacity(0.75))
+                            .lineLimit(2)
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+        .padding(IRISTokens.spacing16)
+        .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
     }
 
     private var pinnedMemoriesCard: some View {

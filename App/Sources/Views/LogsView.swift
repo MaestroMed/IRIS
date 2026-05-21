@@ -24,6 +24,7 @@ import SwiftData
 // v1.286 — Export ALL events history (no filters) JSON button.
 // v1.292 — Inferred level badge (E/W/N/D/I color-coded capsule).
 // v1.296 — "Correlated only" toggle filter (events with correlationId).
+// v1.302 — Cmd+P keyboard shortcut on Pause toggle button.
 
 struct LogsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -479,7 +480,8 @@ struct LogsView: View {
             }
             .controlSize(.small)
             .tint(isPaused ? IRISTokens.goldAccent : .secondary)
-            .help(isPaused ? "Resume live log updates" : "Pause les logs au snapshot actuel (figer la vue)")
+            .keyboardShortcut(KeyEquivalent("p"), modifiers: .command)
+            .help(isPaused ? "Resume live log updates (Cmd+P)" : "Pause les logs (Cmd+P)")
 
             // v1.161 — Dispatches quick filter
             Button {

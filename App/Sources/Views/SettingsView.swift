@@ -22,6 +22,7 @@ import AppKit
 /// v1.274 — Import config from JSON button (NSOpenPanel + UserDefaults restore).
 /// v1.289 — Auto-backup frequency Picker (off/hourly/daily/weekly).
 /// v1.295 — Notification threshold Picker (importance-driven, UI only).
+/// v1.304 — Clear UserDefaults caches button (preserves API keys + data).
 struct SettingsView: View {
     @Environment(IRISAppState.self) private var appState
     @Environment(\.modelContext) private var modelContext
@@ -41,6 +42,7 @@ struct SettingsView: View {
     @State private var blocklistRefreshTick: Int = 0  // v1.212 — force re-render after unblock
     @State private var resetVisionStatus: String?  // v1.259
     @State private var importConfigStatus: String?  // v1.274
+    @State private var clearCacheStatus: String?  // v1.304
 
     // v1.212 — Read live from UserDefaults, tied to blocklistRefreshTick for reactivity.
     private var blockedIds: [String] {
@@ -1185,6 +1187,18 @@ struct SettingsView: View {
                 .controlSize(.small)
                 .tint(IRISTokens.aquaTint)
                 .help("Importer un fichier config JSON (settings IRIS)")
+
+                // v1.304 — Clear UserDefaults cache (preserves API keys + fundamentals)
+                Button {
+                    clearAllCaches()
+                } label: {
+                    Label("Clear UserDefaults cache", systemImage: "eraser.fill")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .tint(.orange)
+                .help("Réinitialise les caches UserDefaults IRIS (préserve API keys + system fundamentals)")
             }
 
             if let status = importConfigStatus {
@@ -1194,7 +1208,54 @@ struct SettingsView: View {
                     .padding(.top, 4)
                     .fixedSize(horizontal: false, vertical: true)
             }
+
+            if let status = clearCacheStatus {
+                Text(status)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(status.hasPrefix("✅") ? .green : (status.hasPrefix("⚠️") ? .red : .secondary))
+                    .padding(.top, 4)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
+    }
+
+    // v1.304 — Clear UserDefaults caches (preserves API keys + sensitive keys).
+    private func clearAllCaches() {
+        let alert = NSAlert()
+        alert.messageText = "Clear UserDefaults caches IRIS ?"
+        alert.informativeText = "Cela réinitialise les préférences UI (filtres, sliders, toggles). N'efface PAS les données SwiftData ni les clés API. Continuer ?"
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Clear")
+        alert.addButton(withTitle: "Annuler")
+
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        // Known IRIS pref keys (non "iris." prefixed) — conservative list.
+        let knownIRISPrefs: Set<String> = [
+            "burstAlertThreshold",
+            "logsMaxDisplay",
+            "memoryHideTagCloud",
+            "witnessPaused",
+            "witnessVisionEnabled",
+            "backupAutoFrequency",
+            "notificationMinImportance"
+        ]
+
+        let dict = UserDefaults.standard.dictionaryRepresentation()
+        var cleared = 0
+        for key in dict.keys {
+            let lowerKey = key.lowercased()
+            // Exclude any sensitive key
+            if lowerKey.contains("apikey") || lowerKey.contains("anthropickey") || lowerKey.contains("secret") || lowerKey.contains("token") {
+                continue
+            }
+            if key.hasPrefix("iris.") || knownIRISPrefs.contains(key) {
+                UserDefaults.standard.removeObject(forKey: key)
+                cleared += 1
+            }
+        }
+        clearCacheStatus = "✅ \(cleared) caches reset"
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { clearCacheStatus = nil }
     }
 
     // v1.274 — Import config from JSON, restoring UserDefaults keys.
