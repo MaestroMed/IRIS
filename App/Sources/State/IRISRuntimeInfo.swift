@@ -4,11 +4,11 @@ import Foundation
 /// Affiché dans Settings (info section).
 public enum IRISRuntimeInfo {
     /// Version IRIS courante (mise à jour manuellement à chaque release majeure).
-    /// v1.133 — 5 phases real closed : A Witness Vision · B MCP Real · C Auditor
-    /// Real · D Builder Real · E Conductor Multi-Agent Dispatch (route "audit X"
-    /// vers Auditor, "cherche X" vers Scribe etc. sans LLM call). Exocortex
-    /// orchestré : regarde / écoute / lit / écrit / route.
-    public static let appVersion = "1.133"
+    /// v1.150 — 6 bundles MEGA SWARM post-Phase E (18 versions polish dispatch +
+    /// integration + UX). Witness/Sentinel/Auditor/Builder/Dispatch tous wired
+    /// + Cmd-K palette + rotating hints + active hours + cost burn sparkline +
+    /// fingerprint cache + SHA256 dedup + auto-save /clear.
+    public static let appVersion = "1.150"
 
     /// Timestamp du bootstrap IRIS (set par IRISApp.bootstrap au launch).
     public nonisolated(unsafe) static var bootstrapAt: Date?

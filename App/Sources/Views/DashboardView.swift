@@ -14,6 +14,13 @@ struct DashboardView: View {
     @Query private var allProjects: [ProjectRecord]
     @Query(sort: \ActionLog.executedAt, order: .reverse) private var allActions: [ActionLog]
 
+    // v1.151 — agentDispatched events pour dispatch frequency analytics
+    @Query(
+        filter: #Predicate<EventLog> { $0.kind == "agentDispatched" },
+        sort: \EventLog.timestamp,
+        order: .reverse
+    ) private var dispatchedEvents: [EventLog]
+
     // v1.92 — Dernier briefing Advisor (EventLog kind=agentResponse fromAgent=advisor)
     @Query(
         filter: #Predicate<EventLog> { $0.kind == "agentResponse" && $0.fromAgent == "advisor" },
@@ -77,6 +84,9 @@ struct DashboardView: View {
                 // v1.138 — Quick actions row (most-used)
                 quickActionsRow
 
+                // v1.151 — Dispatch frequency 24h (par agent target)
+                dispatchFrequencyBanner
+
                 // v1.92 — Snippet du dernier briefing Advisor
                 if let latest = advisorBriefings.first {
                     advisorBriefingCard(latest)
@@ -87,6 +97,47 @@ struct DashboardView: View {
                 Spacer()
             }
             .padding(IRISTokens.spacing24)
+        }
+    }
+
+    // v1.151 — Dispatch frequency 24h (counts par agent target depuis EventLog)
+    @ViewBuilder
+    private var dispatchFrequencyBanner: some View {
+        let oneDayAgo = Date().addingTimeInterval(-86400)
+        let recent = dispatchedEvents.filter { $0.timestamp > oneDayAgo }
+        let byTarget = Dictionary(grouping: recent, by: { $0.toAgent ?? "?" })
+            .map { ($0.key, $0.value.count) }
+            .sorted { $0.1 > $1.1 }
+        if !byTarget.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Image(systemName: "arrow.right.circle.fill")
+                        .foregroundStyle(IRISTokens.irisAccent)
+                        .font(.system(size: 12))
+                    Text("DISPATCHES 24H (\(recent.count))")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .tracking(1.4)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                HStack(spacing: 6) {
+                    ForEach(byTarget.prefix(8), id: \.0) { item in
+                        HStack(spacing: 3) {
+                            Text(item.0)
+                                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            Text("\(item.1)")
+                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                .foregroundStyle(IRISTokens.irisAccent)
+                        }
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(IRISTokens.irisAccent.opacity(0.10))
+                        .clipShape(Capsule())
+                    }
+                }
+            }
+            .padding(IRISTokens.spacing16)
+            .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusMedium).fill(.regularMaterial))
+            .overlay(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusMedium).strokeBorder(IRISTokens.irisAccent.opacity(0.15), lineWidth: 0.5))
         }
     }
 

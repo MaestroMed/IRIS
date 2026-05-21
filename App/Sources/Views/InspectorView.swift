@@ -1477,6 +1477,18 @@ struct InspectorView: View {
                     }
                     .buttonStyle(.plain)
                     .help("Send to Quill (force draft generation high importance)")
+                    // v1.149 — Send to Conductor as context (prepend dans currentInput + navigate)
+                    Button {
+                        let contextLine = "[Contexte signal \(signal.source)/\(signal.importance): \(signal.summary)]\n"
+                        appState.currentInput = contextLine + appState.currentInput
+                        appState.selection = .agent(.conductor)
+                    } label: {
+                        Image(systemName: "arrow.right.square")
+                            .font(.system(size: 9))
+                            .foregroundStyle(IRISTokens.irisAccent.opacity(0.7))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Inject ce signal comme contexte dans le prochain message Conductor")
                     if signal.acknowledged {
                         Image(systemName: "checkmark")
                             .font(.system(size: 8))
