@@ -21,6 +21,7 @@ import AppKit
 /// v1.253 — Live events/sec rate badge (past 10s window).
 /// v1.258 — Latest critical event timestamp badge (red if recent, green if none).
 /// v1.265 — Peak hour-of-day all-time badge (gold clock).
+/// v1.271 — Top agents by event count (from + to involvement) card.
 
 struct BusStatsView: View {
     @Query(sort: \EventLog.timestamp, order: .reverse) private var allEvents: [EventLog]
@@ -574,6 +575,59 @@ struct BusStatsView: View {
         .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
     }
 
+    private var topAgentsByEventCount: [(agent: String, count: Int)] {
+        let _ = refreshTick
+        var counts: [String: Int] = [:]
+        for event in allEvents {
+            var seen = Set<String>()
+            if let from = event.fromAgent { seen.insert(from) }
+            if let to = event.toAgent { seen.insert(to) }
+            for agent in seen {
+                counts[agent, default: 0] += 1
+            }
+        }
+        return counts
+            .sorted { $0.value > $1.value }
+            .prefix(5)
+            .map { (agent: $0.key, count: $0.value) }
+    }
+
+    @ViewBuilder
+    private var topAgentsByEventCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("TOP AGENTS BY EVENTS")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .tracking(1.4)
+                .foregroundStyle(.secondary)
+            if topAgentsByEventCount.isEmpty {
+                Text("Aucun event avec agent attribué.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(Array(topAgentsByEventCount.enumerated()), id: \.offset) { idx, item in
+                    HStack(spacing: 8) {
+                        Text("#\(idx+1)")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundStyle(IRISTokens.aquaTint)
+                            .frame(width: 24, alignment: .leading)
+                        Text(item.agent)
+                            .font(.system(size: 11, weight: .medium))
+                        Spacer()
+                        Text("\(item.count)")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                        Rectangle()
+                            .fill(IRISTokens.aquaTint.opacity(0.4))
+                            .frame(width: max(20, CGFloat(item.count) / CGFloat(max(1, topAgentsByEventCount.first?.count ?? 1)) * 100), height: 4)
+                            .cornerRadius(2)
+                    }
+                }
+            }
+        }
+        .padding(IRISTokens.spacing16)
+        .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
+    }
+
     private var totalStats: (total: Int, avgPerHour: Double, earliest: Date?) {
         let total = allEvents.count
         let earliest = allEvents.min { $0.timestamp < $1.timestamp }?.timestamp
@@ -678,6 +732,8 @@ struct BusStatsView: View {
                 heatmap24hCard
 
                 avgPerSessionCard
+
+                topAgentsByEventCard
 
                 cardSection(title: "Dernière heure", total: lastHour.count, events: lastHour, accent: IRISTokens.irisAccent)
                 cardSection(title: "Dernières 24h", total: lastDay.count, events: lastDay, accent: IRISTokens.aquaTint)

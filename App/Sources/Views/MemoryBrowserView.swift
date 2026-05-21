@@ -18,6 +18,7 @@ import AppKit
 /// v1.239 — Cmd+/ focus search TextField (hidden Button).
 /// v1.251 — Search-text highlighting in memory rows (summary + expanded content).
 /// v1.264 — Hide tag cloud toggle (@AppStorage memoryHideTagCloud).
+/// v1.269 — Sort direction indicator icon next to Sort Picker.
 /// Permet à Mehdi d'inspecter ce que Scribe sait, et de tester les requêtes de similarité.
 enum MemorySortMode: String, CaseIterable { case newest, oldest, type, name }
 
@@ -83,6 +84,16 @@ struct MemoryBrowserView: View {
             case .type: return lhs.type < rhs.type
             case .name: return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
             }
+        }
+    }
+
+    // MARK: — v1.269 Sort direction indicator
+
+    private var sortIndicatorIcon: String {
+        switch sortMode {
+        case .newest: return "arrow.down"
+        case .oldest: return "arrow.up"
+        case .type, .name: return "textformat"
         }
     }
 
@@ -322,16 +333,21 @@ struct MemoryBrowserView: View {
                 }
             }
 
-            // v1.198 — Sort by Picker
-            Picker("Sort", selection: $sortMode) {
-                Text("Newest").tag(MemorySortMode.newest)
-                Text("Oldest").tag(MemorySortMode.oldest)
-                Text("Type").tag(MemorySortMode.type)
-                Text("Name").tag(MemorySortMode.name)
+            // v1.198 — Sort by Picker (v1.269 — direction indicator)
+            HStack(spacing: 4) {
+                Picker("Sort", selection: $sortMode) {
+                    Text("Newest").tag(MemorySortMode.newest)
+                    Text("Oldest").tag(MemorySortMode.oldest)
+                    Text("Type").tag(MemorySortMode.type)
+                    Text("Name").tag(MemorySortMode.name)
+                }
+                .labelsHidden()
+                .controlSize(.small)
+                .frame(maxWidth: 100)
+                Image(systemName: sortIndicatorIcon)
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary.opacity(0.6))
             }
-            .labelsHidden()
-            .controlSize(.small)
-            .frame(maxWidth: 100)
 
             TextField("Search name/summary/content…", text: $searchText)
                 .textFieldStyle(.roundedBorder)

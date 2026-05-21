@@ -19,6 +19,7 @@ import SwiftData
 // v1.252 — Max display events configurable via @AppStorage logsMaxDisplay.
 // v1.256 — JSON export filtered events button.
 // v1.263 — Sort direction toggle (asc/desc) via @State sortAscending.
+// v1.270 — Per-row "filter by correlation" link button.
 
 struct LogsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -596,6 +597,20 @@ struct LogsView: View {
             }
 
             Spacer()
+
+            // v1.270 — Per-row filter-by-correlation link button (right edge)
+            if let cid = event.correlationId {
+                Button {
+                    filterCorrelationId = cid
+                } label: {
+                    Image(systemName: "link")
+                        .font(.system(size: 9))
+                        .foregroundStyle(filterCorrelationId == cid ? IRISTokens.aquaTint : .secondary.opacity(0.4))
+                }
+                .buttonStyle(.plain)
+                .help("Filter logs to this correlation chain")
+                .disabled(filterCorrelationId == cid)
+            }
         }
         .padding(.vertical, 3)
         .padding(.horizontal, 6)
