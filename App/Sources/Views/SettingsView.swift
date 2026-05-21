@@ -1277,8 +1277,24 @@ struct SettingsView: View {
                     .textFieldStyle(.roundedBorder)
                     .controlSize(.small)
                     .font(.system(size: 10, design: .monospaced))
-                    .frame(maxWidth: 180)
+                    .frame(maxWidth: 160)
                     .help("Nom du tool MCP à invoquer (e.g. gmail_search). Vide → juste ping tools/list.")
+                // v1.119 — Dedup cache count + clear
+                let cached = Sentinel.dedupCacheCount(source: source)
+                Button {
+                    Sentinel.clearDedupCache(source: source)
+                    sourceBackendTick += 1
+                } label: {
+                    HStack(spacing: 2) {
+                        Image(systemName: "trash.circle")
+                            .font(.system(size: 10))
+                        Text("\(cached)")
+                            .font(.system(size: 9, design: .monospaced))
+                    }
+                    .foregroundStyle(cached > 0 ? IRISTokens.aquaTint : .secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Dedup cache : \(cached) signatures vues. Click pour clear.")
             }
             Spacer()
         }

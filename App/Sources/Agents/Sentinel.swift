@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import CryptoKit  // v1.119 — SHA256 dedup hash
 
 /// Sentinel v0.3 — STUB qui génère des signaux fictifs périodiques.
 /// Permet de tester le flow bus → Conductor → Quill → Envoy sans MCP Gmail fonctionnel.
@@ -214,12 +215,18 @@ public actor Sentinel {
             return
         }
 
-        // Importance : critical si isError, sinon medium par défaut. v1.119 dedup affinera.
+        // v1.119 — Dedup : skip si déjà vu récemment pour cette source
+        if Self.dedupCheckAndStore(source: source, content: combined) {
+            irisLog(.debug, "Sentinel MCP \(source) dedup skip '\(toolName)' (\(combined.count) chars)",
+                    category: IRISLogger.agents)
+            return
+        }
+
         let importance: SignalImportance = isError ? .critical : .medium
         let summary = "[\(serverName).\(toolName)] " + String(combined.prefix(200))
         await emitSignal(source: source, summary: summary, importance: importance)
         irisLog(.info,
-            "Sentinel MCP \(source) call '\(toolName)' → \(combined.count) chars (isError=\(isError))",
+            "Sentinel MCP \(source) call '\(toolName)' → \(combined.count) chars (isError=\(isError) cached=\(Self.dedupCacheCount(source: source)))",
             category: IRISLogger.agents
         )
     }
@@ -357,6 +364,48 @@ public actor Sentinel {
             map.removeValue(forKey: source)
         }
         UserDefaults.standard.set(map, forKey: mcpToolNameKey)
+    }
+
+    // v1.119 — Dedup cache : SHA256(source + content) per emit, ring buffer 1000/source
+    private static let dedupCacheKey = "iris.sentinel.mcpDedupCache"  // [source: [hash hex]]
+    private static let dedupCacheMaxPerSource = 1000
+
+    /// True si déjà vu récemment (et noté). Retourne false + ajoute au cache sinon.
+    public static func dedupCheckAndStore(source: String, content: String) -> Bool {
+        let hash = sha256Hex(content)
+        var cache = (UserDefaults.standard.dictionary(forKey: dedupCacheKey) as? [String: [String]]) ?? [:]
+        let perSource = cache[source] ?? []
+        if perSource.contains(hash) {
+            return true  // already seen → skip emit
+        }
+        var updated = perSource
+        updated.append(hash)
+        if updated.count > dedupCacheMaxPerSource {
+            updated.removeFirst(updated.count - dedupCacheMaxPerSource)
+        }
+        cache[source] = updated
+        UserDefaults.standard.set(cache, forKey: dedupCacheKey)
+        return false
+    }
+
+    public static func clearDedupCache(source: String? = nil) {
+        if let source {
+            var cache = (UserDefaults.standard.dictionary(forKey: dedupCacheKey) as? [String: [String]]) ?? [:]
+            cache.removeValue(forKey: source)
+            UserDefaults.standard.set(cache, forKey: dedupCacheKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: dedupCacheKey)
+        }
+    }
+
+    public static func dedupCacheCount(source: String) -> Int {
+        let cache = (UserDefaults.standard.dictionary(forKey: dedupCacheKey) as? [String: [String]]) ?? [:]
+        return (cache[source] ?? []).count
+    }
+
+    private static func sha256Hex(_ s: String) -> String {
+        let digest = SHA256.hash(data: Data(s.utf8))
+        return digest.map { String(format: "%02x", $0) }.joined()
     }
 
     // MARK: — v1.88 Snooze (timed mute per source)
