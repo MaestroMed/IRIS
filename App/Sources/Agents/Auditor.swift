@@ -394,8 +394,83 @@ public actor Auditor {
             totalBytes += head.count
         }
 
+        // v1.123 — Si encore du budget, scan récursif src/ pour les fichiers code récents
+        if totalBytes < totalBudget {
+            let remaining = totalBudget - totalBytes
+            let extra = scanRecentSourceFiles(
+                projectPath: projectPath,
+                budgetBytes: remaining,
+                perFileCap: perFileCapBytes
+            )
+            sections.append(contentsOf: extra.sections)
+            totalBytes += extra.bytesUsed
+        }
+
         guard !sections.isEmpty else { return "" }
-        return "## Key files extract (cap 4KB/file)\n\n" + sections.joined(separator: "\n\n")
+        return "## Key files extract (per-file \(perFileCapBytes / 1000)KB cap · total \(totalBudget / 1000)KB budget)\n\n" + sections.joined(separator: "\n\n")
+    }
+
+    /// v1.123 — Scan récursif léger (depth ≤ 3) des fichiers source récents.
+    /// Skip patterns node_modules / .git / .build / DerivedData / dist / .next / vendor.
+    /// Trie par mtime desc → privilégie les fichiers modifiés récemment (= actifs).
+    private static func scanRecentSourceFiles(
+        projectPath: String,
+        budgetBytes: Int,
+        perFileCap: Int
+    ) -> (sections: [String], bytesUsed: Int) {
+        let skipDirs: Set<String> = [
+            "node_modules", ".git", ".build", "DerivedData",
+            "dist", "build", ".next", ".turbo", "vendor",
+            "Pods", "__pycache__", ".swiftpm"
+        ]
+        let codeExts: Set<String> = [
+            "swift", "ts", "tsx", "js", "jsx",
+            "py", "rb", "go", "rs", "java", "kt",
+            "md"  // docs aussi (utile pour audit)
+        ]
+        let projectURL = URL(fileURLWithPath: projectPath)
+        let fm = FileManager.default
+
+        // Enumerate récursif manuel avec depth cap
+        var candidates: [(URL, Int, Date)] = []  // (url, size, mtime)
+        func walk(_ url: URL, depth: Int) {
+            guard depth <= 3 else { return }
+            guard let contents = try? fm.contentsOfDirectory(at: url, includingPropertiesForKeys: [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey], options: [.skipsHiddenFiles]) else { return }
+            for child in contents {
+                let name = child.lastPathComponent
+                if skipDirs.contains(name) { continue }
+                guard let vals = try? child.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey]) else { continue }
+                if vals.isDirectory == true {
+                    walk(child, depth: depth + 1)
+                } else {
+                    let ext = child.pathExtension.lowercased()
+                    guard codeExts.contains(ext) else { continue }
+                    let size = vals.fileSize ?? 0
+                    if size == 0 || size > 100_000 { continue }
+                    let mtime = vals.contentModificationDate ?? .distantPast
+                    candidates.append((child, size, mtime))
+                }
+            }
+        }
+        walk(projectURL, depth: 0)
+
+        // Trie par mtime desc (récent first)
+        candidates.sort { $0.2 > $1.2 }
+
+        // Build sections jusqu'à budget
+        var sections: [String] = []
+        var bytesUsed = 0
+        for (url, size, _) in candidates {
+            if bytesUsed >= budgetBytes { break }
+            guard let data = try? Data(contentsOf: url) else { continue }
+            let head = data.prefix(perFileCap)
+            guard let text = String(data: head, encoding: .utf8) else { continue }
+            let relPath = url.path.replacingOccurrences(of: projectPath, with: "").trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            let truncNote = size > perFileCap ? "\n[…tronqué \(size - perFileCap) bytes…]" : ""
+            sections.append("### \(relPath) (\(size) bytes)\n```\n\(text)\(truncNote)\n```")
+            bytesUsed += head.count
+        }
+        return (sections, bytesUsed)
     }
 
     // MARK: — Output parser
