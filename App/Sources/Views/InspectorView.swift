@@ -24,6 +24,7 @@ import AppKit
 /// v1.257 — Envoy pending actions count badge (gold hourglass).
 /// v1.260 — Export all audits MD button in Auditor section header.
 /// v1.266 — Most audited project badge (gold flame).
+/// v1.272 — Drafts/hour avg today badge (aqua speedometer).
 
 struct InspectorView: View {
     @Environment(IRISAppState.self) private var appState
@@ -490,6 +491,34 @@ struct InspectorView: View {
         }
     }
 
+    // v1.272 — Drafts/hour moyen aujourd'hui (depuis le premier draft du jour)
+    private var draftsPerHourToday: Double? {
+        let todays = allDrafts.filter { Calendar.current.isDateInToday($0.createdAt) }
+        let count = todays.count
+        if count == 0 { return nil }
+        guard let earliest = todays.map({ $0.createdAt }).min() else { return nil }
+        let hoursElapsed = max(1.0, Date().timeIntervalSince(earliest) / 3600)
+        return Double(count) / hoursElapsed
+    }
+
+    // v1.272 — Badge "X.X/h" inline pour Quill section header (aqua speedometer)
+    @ViewBuilder
+    private var draftsRateBadge: some View {
+        if let rate = draftsPerHourToday, rate > 0 {
+            HStack(spacing: 3) {
+                Image(systemName: "speedometer")
+                    .font(.system(size: 8))
+                    .foregroundStyle(IRISTokens.aquaTint)
+                Text(String(format: "%.1f/h", rate))
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(IRISTokens.aquaTint)
+            }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .background(Capsule().fill(IRISTokens.aquaTint.opacity(0.12)))
+        }
+    }
+
     // v1.236 — Briefings Advisor créés sur les 7 derniers jours (rolling window)
     private var briefingsPast7d: Int {
         let cutoff = Date().addingTimeInterval(-7 * 86400)
@@ -584,6 +613,8 @@ struct InspectorView: View {
                 draftsPast7dBadge
                 Spacer().frame(width: 3)
                 draftsPast30dBadge
+                Spacer().frame(width: 3)
+                draftsRateBadge
                 Spacer()
                 // v1.185 — Export today's drafts as Markdown
                 Button {

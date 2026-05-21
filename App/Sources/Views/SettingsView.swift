@@ -19,6 +19,7 @@ import AppKit
 /// v1.259 — Reset Witness vision counters button (daily quota + 30d cost history).
 /// v1.262 — Quick-select chips (5/10/20/50) for Conductor history max pairs.
 /// v1.268 — Witness vision daily quota slider (@AppStorage shared with Witness.swift).
+/// v1.274 — Import config from JSON button (NSOpenPanel + UserDefaults restore).
 struct SettingsView: View {
     @Environment(IRISAppState.self) private var appState
     @Environment(\.modelContext) private var modelContext
@@ -35,6 +36,7 @@ struct SettingsView: View {
     @AppStorage("iris.witness.visionMaxCallsPerDay") private var witnessVisionDailyCap: Int = 100  // v1.268
     @State private var blocklistRefreshTick: Int = 0  // v1.212 — force re-render after unblock
     @State private var resetVisionStatus: String?  // v1.259
+    @State private var importConfigStatus: String?  // v1.274
 
     // v1.212 — Read live from UserDefaults, tied to blocklistRefreshTick for reactivity.
     private var blockedIds: [String] {
@@ -1167,7 +1169,55 @@ struct SettingsView: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .tint(IRISTokens.aquaTint)
+
+                // v1.274 — Import config from JSON (restore UserDefaults)
+                Button {
+                    importConfig()
+                } label: {
+                    Label("Import config JSON", systemImage: "square.and.arrow.down")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .tint(IRISTokens.aquaTint)
+                .help("Importer un fichier config JSON (settings IRIS)")
             }
+
+            if let status = importConfigStatus {
+                Text(status)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(status.hasPrefix("✅") ? .green : (status.hasPrefix("⚠️") ? .red : .secondary))
+                    .padding(.top, 4)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    // v1.274 — Import config from JSON, restoring UserDefaults keys.
+    private func importConfig() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.json]
+        panel.message = "Sélectionner un fichier config JSON IRIS exporté"
+        if panel.runModal() == .OK, let url = panel.url {
+            do {
+                let data = try Data(contentsOf: url)
+                if let dict = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    var applied = 0
+                    for (key, value) in dict {
+                        UserDefaults.standard.set(value, forKey: key)
+                        applied += 1
+                    }
+                    importConfigStatus = "✅ Importé \(applied) clés"
+                } else {
+                    importConfigStatus = "⚠️ JSON format invalide"
+                }
+            } catch {
+                importConfigStatus = "⚠️ \(error.localizedDescription)"
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5) { importConfigStatus = nil }
         }
     }
 
