@@ -8,6 +8,7 @@ import AppKit
 /// v1.176 — Most-frequent kind past 1h insight banner.
 /// v1.181 — Auto-refresh 30s timer toggle to force window stats re-eval.
 /// v1.189 — CSV export per kind (1h/24h/all-time) to home dir.
+/// v1.193 — Stats footer (total + avg/h + earliest event date).
 
 struct BusStatsView: View {
     @Query(sort: \EventLog.timestamp, order: .reverse) private var allEvents: [EventLog]
@@ -44,6 +45,53 @@ struct BusStatsView: View {
         let total = events.count
         let percentage = Double(top.value) / Double(total) * 100
         return (top.key, top.value, percentage)
+    }
+
+    private var totalStats: (total: Int, avgPerHour: Double, earliest: Date?) {
+        let total = allEvents.count
+        let earliest = allEvents.min { $0.timestamp < $1.timestamp }?.timestamp
+        let avgPerHour: Double
+        if let earliest {
+            let hoursElapsed = max(1.0, Date().timeIntervalSince(earliest) / 3600)
+            avgPerHour = Double(total) / hoursElapsed
+        } else {
+            avgPerHour = 0
+        }
+        return (total, avgPerHour, earliest)
+    }
+
+    private var statsFooter: some View {
+        HStack(spacing: IRISTokens.spacing24) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text("TOTAL")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                Text("\(totalStats.total)")
+                    .font(.system(size: 14, weight: .light, design: .serif))
+                    .foregroundStyle(IRISTokens.aquaTint)
+            }
+            VStack(alignment: .leading, spacing: 1) {
+                Text("AVG/H")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                Text(String(format: "%.1f", totalStats.avgPerHour))
+                    .font(.system(size: 14, weight: .light, design: .serif))
+                    .foregroundStyle(IRISTokens.irisAccent)
+            }
+            if let earliest = totalStats.earliest {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("DEPUIS")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                    Text(earliest, format: .dateTime.day().month().year().hour().minute())
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+        }
+        .padding(IRISTokens.spacing16)
+        .background(.thinMaterial)
     }
 
     @ViewBuilder
@@ -93,6 +141,8 @@ struct BusStatsView: View {
                 cardSection(title: "Total all-time", total: allEvents.count, events: allEvents, accent: IRISTokens.goldAccent)
 
                 Spacer()
+
+                statsFooter
             }
             .padding(IRISTokens.spacing24)
         }

@@ -6,6 +6,7 @@ import SwiftData
 // v1.168 — Severity color left-border per row (red/gold/aqua/green).
 // v1.175 — Pause toggle freezes log view to a snapshot (logs accumulate but display stays).
 // v1.184 — Failures-only quick filter button (sets filterKind=agentFailure).
+// v1.191 — Horizontal stacked breakdown bar (kind colors) above logsList.
 
 struct LogsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -60,8 +61,82 @@ struct LogsView: View {
             Divider()
             filtersBar
             Divider()
+            if !filtered.isEmpty {
+                kindBreakdownBar
+                Divider()
+            }
             logsList
         }
+    }
+
+    // v1.191 — Color helper for kind (mirrors kindBadge switch)
+    private func colorForKind(_ kind: String) -> Color {
+        switch kind {
+        case "userInput": return IRISTokens.aquaTint
+        case "agentDispatched": return IRISTokens.irisAccent
+        case "agentResponse": return .green
+        case "signalEmitted": return IRISTokens.goldAccent
+        case "draftReady": return IRISTokens.irisAccent
+        case "actionRequested": return IRISTokens.goldAccent
+        case "actionApproved": return .green
+        case "actionRejected": return .red
+        case "actionExecuted": return .green
+        case "agentFailure": return .red
+        case "systemLog": return .secondary
+        default: return .secondary
+        }
+    }
+
+    // v1.191 — Breakdown of currently-filtered events by kind
+    var kindBreakdown: [(kind: String, count: Int, color: Color)] {
+        Self.kindOrder
+            .map { kind in
+                (kind: kind, count: filtered.filter { $0.kind == kind }.count, color: colorForKind(kind))
+            }
+            .filter { $0.count > 0 }
+            .sorted { $0.count > $1.count }
+    }
+
+    private var kindBreakdownBar: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("BREAKDOWN")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .tracking(1.4)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("\(filtered.count) events")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+            // Horizontal stacked bar
+            GeometryReader { proxy in
+                HStack(spacing: 1) {
+                    ForEach(Array(kindBreakdown.enumerated()), id: \.offset) { _, item in
+                        Rectangle()
+                            .fill(item.color)
+                            .frame(width: max(2, proxy.size.width * CGFloat(item.count) / CGFloat(max(1, filtered.count))))
+                    }
+                }
+            }
+            .frame(height: 6)
+            // Mini legend (max 6 most-common kinds)
+            HStack(spacing: 8) {
+                ForEach(Array(kindBreakdown.prefix(6).enumerated()), id: \.offset) { _, item in
+                    HStack(spacing: 3) {
+                        Circle()
+                            .fill(item.color)
+                            .frame(width: 6, height: 6)
+                        Text("\(item.kind) (\(item.count))")
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, IRISTokens.spacing16)
+        .padding(.vertical, 6)
+        .background(.thinMaterial)
     }
 
     private var header: some View {

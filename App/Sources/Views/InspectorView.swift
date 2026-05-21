@@ -7,6 +7,7 @@ import AppKit
 /// v1.172 — Drafts today counter badge in Quill section header.
 /// v1.179 — Witness "Block this app" quick action (appends to blocklist UserDefaults).
 /// v1.185 — Export today's drafts MD button in Quill section header.
+/// v1.192 — Copy verdict mini button on audit row (NSPasteboard).
 
 struct InspectorView: View {
     @Environment(IRISAppState.self) private var appState
@@ -41,6 +42,7 @@ struct InspectorView: View {
     @State private var composeTone: String = "formel-fr-client"
     @State private var blockStatus: String? = nil        // v1.179 — Witness block transient feedback
     @State private var exportDraftsStatus: String? = nil // v1.185 — Export today drafts transient feedback
+    @State private var copyVerdictStatus: String? = nil  // v1.192 — Copy verdict transient feedback
 
     var body: some View {
         ScrollView {
@@ -989,6 +991,19 @@ struct InspectorView: View {
                     }
                     .buttonStyle(.plain)
                     .help("Comparer cette audit avec le précédent du même projet (diff verdict + findings count)")
+                    // v1.192 — Copy verdict text only
+                    Button { copyVerdict(audit) } label: {
+                        Image(systemName: "doc.on.clipboard")
+                            .font(.system(size: 9))
+                            .foregroundStyle(IRISTokens.aquaTint.opacity(0.7))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Copier la verdict text dans presse-papier")
+                    if let status = copyVerdictStatus {
+                        Text(status)
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(status == "✅" ? .green : .secondary)
+                    }
                     // v1.73 — Copy markdown
                     Button {
                         let md = Self.formatAuditAsMarkdown(audit)
@@ -1018,6 +1033,19 @@ struct InspectorView: View {
                 expandedAuditIds.insert(audit.id)
             }
         }
+    }
+
+    // v1.192 — Copy verdict text only to pasteboard
+    private func copyVerdict(_ audit: AuditReport) {
+        guard !audit.verdict.isEmpty else {
+            copyVerdictStatus = "⚠️ vide"
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copyVerdictStatus = nil }
+            return
+        }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(audit.verdict, forType: .string)
+        copyVerdictStatus = "✅"
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copyVerdictStatus = nil }
     }
 
     // v1.62 — JSON parsing helpers pour AuditReport
