@@ -14,6 +14,7 @@ import AppKit
 /// v1.226 — Keyboard shortcuts cheatsheet augmented (Cmd+L, Cmd+F logs, Cmd+1..5 palette).
 /// v1.232 — Reset Sentinel intervals to defaults button.
 /// v1.238 — Burst alert threshold slider (@AppStorage shared with LogsView).
+/// v1.245 — Memory browser shortcuts added to cheatsheet.
 struct SettingsView: View {
     @Environment(IRISAppState.self) private var appState
     @Environment(\.modelContext) private var modelContext
@@ -689,6 +690,9 @@ struct SettingsView: View {
                 ("Logs",                                                  // v1.197 / v1.219
                  [("Cmd+L", "Clear filters (in Logs view)"),
                   ("Cmd+F", "Focus search field (in Logs view)")]
+                ),
+                ("Memory browser",                                        // v1.245
+                 [("⌘/", "Focus search field (in Memory browser)")]
                 ),
                 ("Système",
                  [("Cmd+,", "Settings"),

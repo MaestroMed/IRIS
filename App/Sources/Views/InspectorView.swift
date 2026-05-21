@@ -18,6 +18,7 @@ import AppKit
 /// v1.236 — Advisor briefings past 7d count badge (iris sun.max).
 /// v1.241 — Witness today captures count badge (aqua eye).
 /// v1.244 — Cartographer audited/total badge in section header.
+/// v1.247 — Drafts past 30d badge (aqua calendar) after the today/7d badges.
 
 struct InspectorView: View {
     @Environment(IRISAppState.self) private var appState
@@ -385,6 +386,30 @@ struct InspectorView: View {
         }
     }
 
+    // v1.247 — Drafts créés sur les 30 derniers jours (rolling window)
+    private var draftsPast30d: Int {
+        let cutoff = Date().addingTimeInterval(-30 * 86400)
+        return allDrafts.filter { $0.createdAt >= cutoff }.count
+    }
+
+    // v1.247 — Badge "X past 30d" inline pour Quill section header (aqua calendar, n'apparaît que si > past 7d)
+    @ViewBuilder
+    private var draftsPast30dBadge: some View {
+        if draftsPast30d > 0 && draftsPast30d != draftsPast7d {
+            HStack(spacing: 3) {
+                Image(systemName: "calendar")
+                    .font(.system(size: 8))
+                    .foregroundStyle(IRISTokens.aquaTint)
+                Text("\(draftsPast30d) past 30d")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(IRISTokens.aquaTint)
+            }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .background(Capsule().fill(IRISTokens.aquaTint.opacity(0.12)))
+        }
+    }
+
     // v1.236 — Briefings Advisor créés sur les 7 derniers jours (rolling window)
     private var briefingsPast7d: Int {
         let cutoff = Date().addingTimeInterval(-7 * 86400)
@@ -454,6 +479,8 @@ struct InspectorView: View {
                 draftsTodayBadge
                 Spacer().frame(width: 3)
                 draftsPast7dBadge
+                Spacer().frame(width: 3)
+                draftsPast30dBadge
                 Spacer()
                 // v1.185 — Export today's drafts as Markdown
                 Button {
