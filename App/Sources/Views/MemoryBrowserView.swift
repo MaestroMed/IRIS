@@ -19,6 +19,7 @@ import AppKit
 /// v1.251 — Search-text highlighting in memory rows (summary + expanded content).
 /// v1.264 — Hide tag cloud toggle (@AppStorage memoryHideTagCloud).
 /// v1.269 — Sort direction indicator icon next to Sort Picker.
+/// v1.275 — Visual relevance bar (40px max) next to retrieval score.
 /// Permet à Mehdi d'inspecter ce que Scribe sait, et de tester les requêtes de similarité.
 enum MemorySortMode: String, CaseIterable { case newest, oldest, type, name }
 
@@ -516,9 +517,15 @@ struct MemoryBrowserView: View {
                         .foregroundStyle(IRISTokens.irisAccent)
                 }
                 if let score {
-                    Text(String(format: "%.3f", score))
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(IRISTokens.goldAccent)
+                    HStack(spacing: 2) {
+                        Text(String(format: "%.3f", score))
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(IRISTokens.goldAccent)
+                        Rectangle()
+                            .fill(IRISTokens.goldAccent.opacity(0.6))
+                            .frame(width: max(2, CGFloat(min(1.0, max(0.0, score)) * 40)), height: 3)
+                            .cornerRadius(1.5)
+                    }
                 }
                 Text(memory.createdAt, format: .dateTime.day().month().hour().minute())
                     .font(.system(size: 9, design: .monospaced))

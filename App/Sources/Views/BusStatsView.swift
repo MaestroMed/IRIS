@@ -22,6 +22,7 @@ import AppKit
 /// v1.258 — Latest critical event timestamp badge (red if recent, green if none).
 /// v1.265 — Peak hour-of-day all-time badge (gold clock).
 /// v1.271 — Top agents by event count (from + to involvement) card.
+/// v1.276 — Hot kinds past 1h carousel card (top 3 colored cells).
 
 struct BusStatsView: View {
     @Query(sort: \EventLog.timestamp, order: .reverse) private var allEvents: [EventLog]
@@ -58,6 +59,76 @@ struct BusStatsView: View {
         let total = events.count
         let percentage = Double(top.value) / Double(total) * 100
         return (top.key, top.value, percentage)
+    }
+
+    private func colorForKind(_ kind: String) -> Color {
+        switch kind {
+        case "userInput": return IRISTokens.irisAccent
+        case "agentResponse": return IRISTokens.aquaTint
+        case "agentDispatched": return .blue
+        case "signalEmitted": return .purple
+        case "draftReady": return .teal
+        case "actionRequested": return .orange
+        case "actionApproved": return .green
+        case "actionRejected": return .red
+        case "actionExecuted": return IRISTokens.goldAccent
+        case "actionLogged": return .indigo
+        case "agentFailure": return .red
+        case "systemLog": return .gray
+        case "conductorChunk": return .mint
+        default: return .secondary
+        }
+    }
+
+    private var topKinds1h: [(kind: String, count: Int, color: Color)] {
+        let _ = refreshTick
+        let events = lastHour
+        guard !events.isEmpty else { return [] }
+        let groups = Dictionary(grouping: events, by: \.kind).mapValues { $0.count }
+        return groups
+            .sorted { $0.value > $1.value }
+            .prefix(3)
+            .map { (kind: $0.key, count: $0.value, color: colorForKind($0.key)) }
+    }
+
+    @ViewBuilder
+    private var hotKindsCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("HOT KINDS PAST 1H")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .tracking(1.4)
+                .foregroundStyle(.secondary)
+            if topKinds1h.isEmpty {
+                Text("Aucune activité dans la dernière heure.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            } else {
+                HStack(spacing: 8) {
+                    ForEach(Array(topKinds1h.enumerated()), id: \.offset) { idx, item in
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 3) {
+                                Text("#\(idx+1)")
+                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                                Circle().fill(item.color).frame(width: 6, height: 6)
+                            }
+                            Text(item.kind)
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                            Text("\(item.count) ev")
+                                .font(.system(size: 13, weight: .light, design: .serif))
+                                .foregroundStyle(item.color)
+                        }
+                        .padding(8)
+                        .background(RoundedRectangle(cornerRadius: 4).fill(item.color.opacity(0.06)))
+                        .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(item.color.opacity(0.3), lineWidth: 0.5))
+                    }
+                }
+            }
+        }
+        .padding(IRISTokens.spacing16)
+        .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
     }
 
     private var hourDelta: (current: Int, previous: Int, deltaPercent: Double) {
@@ -716,6 +787,8 @@ struct BusStatsView: View {
                 header
 
                 topKindBanner
+
+                hotKindsCard
 
                 throughputCard
 

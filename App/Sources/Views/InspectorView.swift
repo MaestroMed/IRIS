@@ -25,6 +25,7 @@ import AppKit
 /// v1.260 — Export all audits MD button in Auditor section header.
 /// v1.266 — Most audited project badge (gold flame).
 /// v1.272 — Drafts/hour avg today badge (aqua speedometer).
+/// v1.277 — Scribe retrievals today count badge (aqua magnifyingglass).
 
 struct InspectorView: View {
     @Environment(IRISAppState.self) private var appState
@@ -366,14 +367,69 @@ struct InspectorView: View {
         .background(RoundedRectangle(cornerRadius: 4).fill(.thinMaterial))
     }
 
+    // v1.277 — Scribe retrievals aujourd'hui.
+    // NB: Scribe.retrieve / Scribe.store ne loggent pas dans EventLog (cf Agents/Scribe.swift) ;
+    // pas de data source actuelle => fallback 0 en attendant que Scribe émette ses propres events.
+    private var scribeRetrievalsToday: Int {
+        0
+    }
+
+    // v1.277 — Badge "X today" inline pour Scribe section header (aqua magnifyingglass)
+    @ViewBuilder
+    private var scribeBadge: some View {
+        if scribeRetrievalsToday > 0 {
+            HStack(spacing: 3) {
+                Image(systemName: "magnifyingglass.circle.fill")
+                    .font(.system(size: 8))
+                    .foregroundStyle(IRISTokens.aquaTint)
+                Text("\(scribeRetrievalsToday) today")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(IRISTokens.aquaTint)
+            }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .background(Capsule().fill(IRISTokens.aquaTint.opacity(0.12)))
+        }
+    }
+
     // v1.105 — Scribe dedicated section : memory breakdown by type + latest stored
+    // v1.277 — Inlined header pour insérer scribeBadge à côté du titre.
     private var scribeSection: some View {
         let types = Dictionary(grouping: allMemoriesForScribe, by: \.type)
             .map { ($0.key, $0.value.count) }
             .sorted { $0.1 > $1.1 }
         let totalMemories = allMemoriesForScribe.count
         return VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
-            sectionHeader("Scribe", count: totalMemories, accent: IRISTokens.irisAccent, pinnable: .scribe)
+            HStack(spacing: 4) {
+                Text("SCRIBE")
+                    .font(.system(size: 10, weight: .semibold)).tracking(1.4).foregroundStyle(.secondary)
+                if totalMemories > 0 {
+                    Text("\(totalMemories)")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundStyle(IRISTokens.irisAccent)
+                }
+                scribeBadge
+                Spacer()
+                Button {
+                    copyAgentSummary(for: .scribe, count: totalMemories)
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Copy Scribe summary Markdown")
+                Button {
+                    pinned.toggle(.scribe)
+                } label: {
+                    Image(systemName: pinned.isPinned(.scribe) ? "pin.fill" : "pin")
+                        .font(.system(size: 10))
+                        .foregroundStyle(pinned.isPinned(.scribe) ? IRISTokens.irisAccent : .secondary)
+                }
+                .buttonStyle(.plain)
+                .help(pinned.isPinned(.scribe) ? "Désépingler section" : "Épingler section (toujours visible)")
+            }
+            .padding(.horizontal, IRISTokens.spacing4)
 
             HStack(spacing: 4) {
                 Image(systemName: AgentID.scribe.descriptor.symbol)
