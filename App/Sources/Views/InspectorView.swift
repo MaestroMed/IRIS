@@ -6,6 +6,7 @@ import AppKit
 // + Sections agent-spécifiques quand sélectionné : Cartographer / Auditor / Builder / Advisor.
 /// v1.172 — Drafts today counter badge in Quill section header.
 /// v1.179 — Witness "Block this app" quick action (appends to blocklist UserDefaults).
+/// v1.185 — Export today's drafts MD button in Quill section header.
 
 struct InspectorView: View {
     @Environment(IRISAppState.self) private var appState
@@ -39,6 +40,7 @@ struct InspectorView: View {
     @State private var composeChannel: String = "email"
     @State private var composeTone: String = "formel-fr-client"
     @State private var blockStatus: String? = nil        // v1.179 — Witness block transient feedback
+    @State private var exportDraftsStatus: String? = nil // v1.185 — Export today drafts transient feedback
 
     var body: some View {
         ScrollView {
@@ -364,6 +366,23 @@ struct InspectorView: View {
                 }
                 draftsTodayBadge
                 Spacer()
+                // v1.185 — Export today's drafts as Markdown
+                Button {
+                    exportTodaysDrafts()
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 9))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(IRISTokens.aquaTint.opacity(0.7))
+                .help("Export les drafts d'aujourd'hui en Markdown")
+                .disabled(draftsToday == 0)
+                if let exportDraftsStatus {
+                    Text(exportDraftsStatus)
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(exportDraftsStatus.hasPrefix("✅") ? .green : .red)
+                        .lineLimit(1)
+                }
                 Button {
                     copyAgentSummary(for: .quill, count: totalDrafts)
                 } label: {
@@ -1788,6 +1807,40 @@ struct InspectorView: View {
             await EventBus.shared.publish(
                 .signalEmitted(from: .sentinel, importance: .high, summary: summary, source: source)
             )
+        }
+    }
+
+    // v1.185 — Export tous les drafts créés aujourd'hui en un seul Markdown sur le home dir
+    private func exportTodaysDrafts() {
+        let todays = allDrafts.filter { Calendar.current.isDateInToday($0.createdAt) }
+        guard !todays.isEmpty else { return }
+
+        let dateHeader = Date().formatted(date: .complete, time: .omitted)
+        var md = "# IRIS Drafts — \(dateHeader)\n\n"
+        md += "_\(todays.count) drafts_\n\n"
+        md += "---\n\n"
+        for draft in todays {
+            let title = draft.subject ?? draft.tone
+            md += "## \(title.isEmpty ? "(no subject)" : title)\n\n"
+            md += "**Created:** \(draft.createdAt.formatted(.dateTime.hour().minute()))\n\n"
+            if !draft.tone.isEmpty {
+                md += "**Tone:** \(draft.tone)\n\n"
+            }
+            md += "```\n\(draft.content)\n```\n\n---\n\n"
+        }
+
+        let iso = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
+        let url = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("iris-drafts-today-\(iso).md")
+
+        do {
+            try md.write(to: url, atomically: true, encoding: .utf8)
+            exportDraftsStatus = "✅ → \(url.lastPathComponent)"
+        } catch {
+            exportDraftsStatus = "⚠️ \(error.localizedDescription)"
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+            exportDraftsStatus = nil
         }
     }
 

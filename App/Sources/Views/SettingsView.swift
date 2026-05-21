@@ -5,6 +5,7 @@ import AppKit
 /// v0.1 + v1.9 — Settings panel : API key Anthropic + skill marketplace + backup/restore + MIND import.
 /// v1.171 — Storage summary section (per-entity counts).
 /// v1.174 — Open Application Support folder in Finder.
+/// v1.187 — Witness Pause/Resume quick toggle (shares @AppStorage key with Witness.swift).
 struct SettingsView: View {
     @Environment(IRISAppState.self) private var appState
     @Environment(\.modelContext) private var modelContext
@@ -14,6 +15,7 @@ struct SettingsView: View {
     @State private var testStatus: TestStatus = .idle
     @State private var savedMessage: String?
     @State private var backupStatus: String?
+    @AppStorage("witnessPaused") private var witnessPaused: Bool = false  // v1.187
 
     // v1.171 — Storage summary @Query directives
     @Query private var allEventLogs: [EventLog]
@@ -797,6 +799,28 @@ struct SettingsView: View {
                 }
                 .controlSize(.small)
                 .help("Reveal le dossier Application Support IRIS dans Finder")
+            }
+
+            // v1.187 — Witness Pause/Resume quick toggle
+            HStack(spacing: IRISTokens.spacing8) {
+                Image(systemName: witnessPaused ? "eye.slash.fill" : "eye.fill")
+                    .foregroundStyle(witnessPaused ? .red.opacity(0.8) : .green.opacity(0.8))
+                    .font(.system(size: 14))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Witness").font(.system(size: 11, weight: .medium))
+                    Text(witnessPaused ? "Pause — pas de capture" : "Active — capture frontmost")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button {
+                    witnessPaused.toggle()
+                    Task { await Witness.shared.setPaused(witnessPaused) }
+                } label: {
+                    Text(witnessPaused ? "Resume" : "Pause").font(.system(size: 11))
+                }
+                .controlSize(.small)
+                .tint(witnessPaused ? .green : .red.opacity(0.8))
             }
         }
     }
