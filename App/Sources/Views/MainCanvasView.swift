@@ -249,6 +249,12 @@ struct MainCanvasView: View {
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+
+            // v1.132 — Hint dispatch help
+            Text("Tape `?` pour voir les commands directes (audit / scaffold / cherche / briefing…)")
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(IRISTokens.aquaTint.opacity(0.8))
+                .padding(.top, IRISTokens.spacing4)
         }
         .padding(.vertical, IRISTokens.spacing48)
         .frame(maxWidth: .infinity)

@@ -169,6 +169,16 @@ public actor Conductor {
         let eventId = UUID()
         irisLog(.info, "Conductor handling user input (\(text.prefix(40))…)", category: IRISLogger.conductor)
 
+        // v1.132 — Help command : list dispatch patterns (no LLM call)
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if trimmed == "?" || trimmed == "help" || trimmed == "aide" || trimmed == "/help" {
+            appendToHistory(Message(role: .user, content: text))
+            let help = Self.dispatchHelpMessage
+            appendToHistory(Message(role: .assistant, content: help))
+            await EventBus.shared.publish(.agentResponse(from: .conductor, content: help, eventId: eventId))
+            return
+        }
+
         // v1.130 — Intent classification : detect specialized agent target → dispatch
         if let intent = Self.classifyIntent(text) {
             irisLog(.info, "Conductor dispatch \(intent.agent) (target=\(intent.target ?? "-"))",
@@ -252,6 +262,24 @@ public actor Conductor {
               let captureRange = Range(match.range(at: 2), in: text) else { return nil }
         return String(text[captureRange]).trimmingCharacters(in: .whitespaces)
     }
+
+    /// v1.132 — Help message listant les patterns dispatch détectés sans LLM call.
+    public static let dispatchHelpMessage = """
+    🧭 **Commands directes (zero coût Opus, dispatch immédiat)**
+
+    | Pattern | Agent | Effet |
+    |---|---|---|
+    | `audit <codename>` | Auditor | Lance audit Sonnet 4.6 sur le projet (lit fichiers réels) |
+    | `scaffold <name>` | Builder | Crée projet via skill doc-first-project-scaffolding |
+    | `briefing` _ou_ `résume ma journée` | Advisor | Briefing Opus 4.7 immédiat |
+    | `refresh cartographer` | Cartographer | Re-scan ~/Developer + gh repo list |
+    | `cherche <query>` | Scribe | Retrieve top 5 mémoires NLEmbedding |
+    | `snapshot` _ou_ `vois ce que je fais` | Witness | Capture window + vision Haiku 4.5 |
+
+    Tout autre input → réponse Conductor Opus 4.7 standard (streaming, history multi-turn, Scribe context injection).
+
+    Raccourcis : `Cmd+K` palette · `Cmd+1..0` agents · `Cmd+Shift+B` briefing · `Cmd+Shift+R` refresh cartographer · `Cmd+.` stop stream.
+    """
 
     /// v1.131 — Helper Scribe retrieve formatté pour ack dispatch.
     /// Top 5 mémoires avec scores → markdown lisible pour transcript.
