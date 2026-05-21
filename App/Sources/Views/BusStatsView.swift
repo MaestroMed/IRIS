@@ -19,6 +19,7 @@ import AppKit
 /// v1.242 — Period comparisons card (1h/24h/7d vs previous period of same length).
 /// v1.249 — Avg events per session today card (events/sessions ratio).
 /// v1.253 — Live events/sec rate badge (past 10s window).
+/// v1.258 — Latest critical event timestamp badge (red if recent, green if none).
 
 struct BusStatsView: View {
     @Query(sort: \EventLog.timestamp, order: .reverse) private var allEvents: [EventLog]
@@ -166,6 +167,63 @@ struct BusStatsView: View {
         .padding(.horizontal, 6)
         .padding(.vertical, 2)
         .background(Capsule().fill(.thinMaterial))
+    }
+
+    private var latestCriticalEvent: EventLog? {
+        let _ = refreshTick
+        return allEvents.filter { event in
+            event.kind == "agentFailure"
+                || event.payloadJSON.contains("\"level\":\"error\"")
+                || event.payloadJSON.contains("\"level\":\"fault\"")
+        }
+        .sorted { $0.timestamp > $1.timestamp }
+        .first
+    }
+
+    @ViewBuilder
+    private var latestCriticalBadge: some View {
+        if let event = latestCriticalEvent {
+            let elapsed = Date().timeIntervalSince(event.timestamp)
+            let elapsedStr: String = {
+                if elapsed < 60 {
+                    return "\(Int(elapsed))s ago"
+                } else if elapsed < 3600 {
+                    return "\(Int(elapsed/60))m ago"
+                } else if elapsed < 86400 {
+                    return "\(Int(elapsed/3600))h ago"
+                } else {
+                    let formatter = DateFormatter()
+                    formatter.dateFormat = "yyyy-MM-dd HH:mm"
+                    return formatter.string(from: event.timestamp)
+                }
+            }()
+            HStack(spacing: 4) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.red)
+                    .font(.system(size: 11))
+                Text("Last critical: \(elapsedStr)")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.red)
+                Text("(\(event.kind))")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(.red.opacity(0.08)))
+        } else {
+            HStack(spacing: 4) {
+                Image(systemName: "checkmark.seal.fill")
+                    .foregroundStyle(.green)
+                    .font(.system(size: 11))
+                Text("Aucun critique")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(.thinMaterial))
+        }
     }
 
     @ViewBuilder
@@ -601,6 +659,7 @@ struct BusStatsView: View {
             activeSessionsBadge
             hourDeltaBadge
             liveRateBadge
+            latestCriticalBadge
             Button(action: exportMarkdown) {
                 Label("Export MD", systemImage: "square.and.arrow.up")
             }

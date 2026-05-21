@@ -16,6 +16,7 @@ import AppKit
 /// v1.238 — Burst alert threshold slider (@AppStorage shared with LogsView).
 /// v1.245 — Memory browser shortcuts added to cheatsheet.
 /// v1.252 — Max events displayed slider for LogsView (@AppStorage).
+/// v1.259 — Reset Witness vision counters button (daily quota + 30d cost history).
 struct SettingsView: View {
     @Environment(IRISAppState.self) private var appState
     @Environment(\.modelContext) private var modelContext
@@ -30,6 +31,7 @@ struct SettingsView: View {
     @AppStorage("burstAlertThreshold") private var burstAlertThreshold: Int = 50  // v1.238
     @AppStorage("logsMaxDisplay") private var logsMaxDisplay: Int = 500  // v1.252
     @State private var blocklistRefreshTick: Int = 0  // v1.212 — force re-render after unblock
+    @State private var resetVisionStatus: String?  // v1.259
 
     // v1.212 — Read live from UserDefaults, tied to blocklistRefreshTick for reactivity.
     private var blockedIds: [String] {
@@ -932,6 +934,25 @@ struct SettingsView: View {
                     .labelsHidden()
             }
 
+            // v1.259 — Reset Witness vision counters (daily quota + 30d cost)
+            HStack(spacing: 8) {
+                Button {
+                    resetVisionCounters()
+                } label: {
+                    Label("Reset vision counters", systemImage: "arrow.counterclockwise.circle")
+                        .font(.system(size: 11))
+                }
+                .controlSize(.small)
+                .tint(.secondary)
+                .help("Réinitialise les compteurs Witness vision (calls today + cost 30d rolling)")
+                if let status = resetVisionStatus {
+                    Text(status)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+
             // v1.238 — Burst alert threshold (LogsView burst banner trigger)
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
@@ -1553,6 +1574,24 @@ struct SettingsView: View {
         Task {
             try? await Task.sleep(nanoseconds: 3_000_000_000)
             await MainActor.run { sentinelResetStatus = nil }
+        }
+    }
+
+    // v1.259 — Reset Witness vision counters (daily quota + 30d cost history)
+    private func resetVisionCounters() {
+        let alert = NSAlert()
+        alert.messageText = "Reset compteurs Witness vision ?"
+        alert.informativeText = "Cela réinitialise le quota daily + l'historique cost 30d."
+        alert.addButton(withTitle: "Reset")
+        alert.addButton(withTitle: "Annuler")
+        if alert.runModal() == .alertFirstButtonReturn {
+            UserDefaults.standard.removeObject(forKey: "iris.witness.visionCallsToday")
+            UserDefaults.standard.removeObject(forKey: "iris.witness.visionCallsDayStamp")
+            UserDefaults.standard.removeObject(forKey: "iris.witness.visionCostByDay")
+            resetVisionStatus = "✅ Compteurs reset"
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                resetVisionStatus = nil
+            }
         }
     }
 

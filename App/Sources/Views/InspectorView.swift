@@ -21,6 +21,7 @@ import AppKit
 /// v1.247 — Drafts past 30d badge (aqua calendar) after the today/7d badges.
 /// v1.248 — Auditor "RED only" quick filter toggle (.red capsule when active).
 /// v1.254 — Builder total scaffolds count badge (gold hammer).
+/// v1.257 — Envoy pending actions count badge (gold hourglass).
 
 struct InspectorView: View {
     @Environment(IRISAppState.self) private var appState
@@ -39,6 +40,16 @@ struct InspectorView: View {
         sort: \EventLog.timestamp,
         order: .reverse
     ) private var advisorBriefings: [EventLog]
+
+    // v1.257 — Envoy action lifecycle events (actionRequested/actionApproved/actionRejected)
+    // pour calculer le nombre d'actions encore en attente de décision.
+    // NB: prédicat `kind.starts(with: "action")` au lieu de `||` triple — `#Predicate` ne digère
+    // pas bien la chaîne OR sur SwiftData EventLog.
+    @Query(
+        filter: #Predicate<EventLog> { $0.kind.starts(with: "action") },
+        sort: \EventLog.timestamp,
+        order: .reverse
+    ) private var allEnvoyEvents: [EventLog]
 
     @State private var scaffoldProjectName: String = ""
     @State private var scaffoldSelectedSkill: String = "doc-first-project-scaffolding"
@@ -222,14 +233,77 @@ struct InspectorView: View {
         }
     }
 
+    // v1.257 — Compte les actionRequested non résolus (pas de actionApproved/actionRejected matchant le correlationId).
+    private var envoyPendingCount: Int {
+        let resolvedIds: Set<UUID> = Set(
+            allEnvoyEvents
+                .filter { $0.kind == "actionApproved" || $0.kind == "actionRejected" }
+                .compactMap { $0.correlationId }
+        )
+        return allEnvoyEvents.reduce(into: 0) { count, event in
+            guard event.kind == "actionRequested", let cid = event.correlationId else { return }
+            if !resolvedIds.contains(cid) {
+                count += 1
+            }
+        }
+    }
+
+    // v1.257 — Badge "X pending" inline pour Envoy section header (gold hourglass)
+    @ViewBuilder
+    private var envoyPendingBadge: some View {
+        if envoyPendingCount > 0 {
+            HStack(spacing: 3) {
+                Image(systemName: "hourglass")
+                    .font(.system(size: 8))
+                    .foregroundStyle(IRISTokens.goldAccent)
+                Text("\(envoyPendingCount) pending")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(IRISTokens.goldAccent)
+            }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .background(Capsule().fill(IRISTokens.goldAccent.opacity(0.12)))
+        }
+    }
+
     // v1.104 — Envoy dedicated section : pending actions + executed history
+    // v1.257 — Inlined section header to inject "X pending" badge between title/count and pin buttons
     private var envoySection: some View {
         let envoyActions = allActionLogs.filter { $0.agentId == AgentID.envoy.rawValue }
         let total = envoyActions.count
         let successful = envoyActions.filter { $0.success }.count
         let approved = envoyActions.filter { $0.executedByUserApproval }.count
         return VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
-            sectionHeader("Envoy", count: total, accent: IRISTokens.irisAccent, pinnable: .envoy)
+            HStack(spacing: 4) {
+                Text("ENVOY")
+                    .font(.system(size: 10, weight: .semibold)).tracking(1.4).foregroundStyle(.secondary)
+                if total > 0 {
+                    Text("\(total)")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundStyle(IRISTokens.irisAccent)
+                }
+                envoyPendingBadge
+                Spacer()
+                Button {
+                    copyAgentSummary(for: .envoy, count: total)
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Copy \(AgentID.envoy.descriptor.displayName) summary Markdown")
+                Button {
+                    pinned.toggle(.envoy)
+                } label: {
+                    Image(systemName: pinned.isPinned(.envoy) ? "pin.fill" : "pin")
+                        .font(.system(size: 10))
+                        .foregroundStyle(pinned.isPinned(.envoy) ? IRISTokens.irisAccent : .secondary)
+                }
+                .buttonStyle(.plain)
+                .help(pinned.isPinned(.envoy) ? "Désépingler section" : "Épingler section (toujours visible)")
+            }
+            .padding(.horizontal, IRISTokens.spacing4)
 
             HStack(spacing: 4) {
                 Image(systemName: AgentID.envoy.descriptor.symbol)
