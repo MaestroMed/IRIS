@@ -3,6 +3,7 @@ import SwiftData
 
 // IRIS v1.10 — DashboardView : vue globale quand aucun agent sélectionné.
 // 4 cards stats Liquid Glass : Memory by type, Signals 24h by source, Drafts by status, Audits by verdict + Cost session.
+/// v1.170 — Top dispatched agents past 24h card.
 
 struct DashboardView: View {
     @Environment(IRISAppState.self) private var appState
@@ -90,6 +91,9 @@ struct DashboardView: View {
                 // v1.151 — Dispatch frequency 24h (par agent target)
                 dispatchFrequencyBanner
 
+                // v1.170 — Top dispatched agents past 24h (top 3 podium)
+                topAgentsCard
+
                 // v1.92 — Snippet du dernier briefing Advisor
                 if let latest = advisorBriefings.first {
                     advisorBriefingCard(latest)
@@ -142,6 +146,52 @@ struct DashboardView: View {
             .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusMedium).fill(.regularMaterial))
             .overlay(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusMedium).strokeBorder(IRISTokens.irisAccent.opacity(0.15), lineWidth: 0.5))
         }
+    }
+
+    // v1.170 — Top dispatched agents past 24h (top 3, horizontal mini-bars)
+    private var topDispatchedAgents24h: [(agent: String, count: Int)] {
+        let cutoff = Date().addingTimeInterval(-86400)
+        let recent = dispatchedEvents.filter { $0.timestamp >= cutoff }
+        let grouped = Dictionary(grouping: recent, by: { $0.toAgent ?? "(unknown)" })
+            .map { (agent: $0.key, count: $0.value.count) }
+            .sorted { $0.count > $1.count }
+        return Array(grouped.prefix(3))
+    }
+
+    private var topAgentsCard: some View {
+        let top = topDispatchedAgents24h
+        let maxCount = max(1, top.first?.count ?? 1)
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("DISPATCHES PAST 24H")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .tracking(1.4)
+                .foregroundStyle(.secondary)
+            if top.isEmpty {
+                Text("Aucun dispatch dans les 24h.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(Array(top.enumerated()), id: \.offset) { idx, item in
+                    HStack(spacing: 6) {
+                        Text("#\(idx + 1)")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                        Text(item.agent)
+                            .font(.system(size: 12, weight: .medium))
+                        Spacer()
+                        Text("\(item.count)")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(IRISTokens.irisAccent)
+                        Rectangle()
+                            .fill(IRISTokens.irisAccent.opacity(0.3 + Double(item.count) / Double(maxCount) * 0.7))
+                            .frame(width: max(20, CGFloat(item.count) / CGFloat(maxCount) * 80), height: 4)
+                            .cornerRadius(2)
+                    }
+                }
+            }
+        }
+        .padding(IRISTokens.spacing16)
+        .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
     }
 
     // v1.160 — Agent activity dots banner (10 agents avec status dot live)

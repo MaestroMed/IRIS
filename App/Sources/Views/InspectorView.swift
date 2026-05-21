@@ -4,6 +4,7 @@ import AppKit
 
 // IRIS v1.0.A — Inspector dédié par agent sélectionné. Sections globales (pending actions / drafts / signals) toujours visibles.
 // + Sections agent-spécifiques quand sélectionné : Cartographer / Auditor / Builder / Advisor.
+/// v1.172 — Drafts today counter badge in Quill section header.
 
 struct InspectorView: View {
     @Environment(IRISAppState.self) private var appState
@@ -320,14 +321,67 @@ struct InspectorView: View {
         }
     }
 
+    // v1.172 — Drafts créés aujourd'hui (filter Quill section badge)
+    private var draftsToday: Int {
+        allDrafts.filter { Calendar.current.isDateInToday($0.createdAt) }.count
+    }
+
+    // v1.172 — Badge "X today" inline pour Quill section header
+    @ViewBuilder
+    private var draftsTodayBadge: some View {
+        if draftsToday > 0 {
+            HStack(spacing: 3) {
+                Image(systemName: "sun.max")
+                    .font(.system(size: 8))
+                    .foregroundStyle(IRISTokens.irisAccent)
+                Text("\(draftsToday) today")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(IRISTokens.irisAccent)
+            }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .background(Capsule().fill(IRISTokens.irisAccent.opacity(0.12)))
+        }
+    }
+
     // v1.101 — Quill dedicated section : last drafts + Sonnet routing badge + cost-this-session
+    // v1.172 — Inlined section header to inject "X today" badge between title/count and pin buttons
     private var quillSection: some View {
         let recentDrafts = Array(allDrafts.prefix(8))
         let totalDrafts = allDrafts.count
         let pendingDrafts = allDrafts.filter { $0.status == "pending" }.count
         let sonnetCost = appState.costByModel["claude-sonnet-4-6"] ?? 0
         return VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
-            sectionHeader("Quill", count: totalDrafts, accent: IRISTokens.irisAccent, pinnable: .quill)
+            HStack(spacing: 4) {
+                Text("QUILL")
+                    .font(.system(size: 10, weight: .semibold)).tracking(1.4).foregroundStyle(.secondary)
+                if totalDrafts > 0 {
+                    Text("\(totalDrafts)")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundStyle(IRISTokens.irisAccent)
+                }
+                draftsTodayBadge
+                Spacer()
+                Button {
+                    copyAgentSummary(for: .quill, count: totalDrafts)
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Copy \(AgentID.quill.descriptor.displayName) summary Markdown")
+                Button {
+                    pinned.toggle(.quill)
+                } label: {
+                    Image(systemName: pinned.isPinned(.quill) ? "pin.fill" : "pin")
+                        .font(.system(size: 10))
+                        .foregroundStyle(pinned.isPinned(.quill) ? IRISTokens.irisAccent : .secondary)
+                }
+                .buttonStyle(.plain)
+                .help(pinned.isPinned(.quill) ? "Désépingler section" : "Épingler section (toujours visible)")
+            }
+            .padding(.horizontal, IRISTokens.spacing4)
 
             HStack(spacing: 4) {
                 Image(systemName: AgentID.quill.descriptor.symbol)

@@ -3,6 +3,7 @@ import SwiftData
 import AppKit
 
 /// v0.1 + v1.9 — Settings panel : API key Anthropic + skill marketplace + backup/restore + MIND import.
+/// v1.171 — Storage summary section (per-entity counts).
 struct SettingsView: View {
     @Environment(IRISAppState.self) private var appState
     @Environment(\.modelContext) private var modelContext
@@ -12,6 +13,15 @@ struct SettingsView: View {
     @State private var testStatus: TestStatus = .idle
     @State private var savedMessage: String?
     @State private var backupStatus: String?
+
+    // v1.171 — Storage summary @Query directives
+    @Query private var allEventLogs: [EventLog]
+    @Query private var allMemories: [Memory]
+    @Query private var allAuditReports: [AuditReport]
+    @Query private var allDrafts: [Draft]
+    @Query private var allSignals: [Signal]
+    @Query private var allProjectRecords: [ProjectRecord]
+    @Query private var allActionLogs: [ActionLog]
 
     enum TestStatus: Equatable {
         case idle
@@ -71,6 +81,10 @@ struct SettingsView: View {
             Divider()
 
             shortcutsCheatsheetSection  // v1.142
+
+            Divider()
+
+            storageSection  // v1.171
 
             Divider()
 
@@ -754,6 +768,42 @@ struct SettingsView: View {
             let parent = url.deletingLastPathComponent()
             NSWorkspace.shared.open(parent)
         }
+    }
+
+    // v1.171 — Storage summary (per-entity counts)
+    private var storageSection: some View {
+        VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
+            sectionTitle(
+                "Stockage",
+                subtitle: "Compteurs SwiftData par type d'entité — vue diagnostique."
+            )
+
+            VStack(spacing: IRISTokens.spacing4) {
+                storageRow(icon: "list.bullet.rectangle", name: "EventLog", count: allEventLogs.count)
+                storageRow(icon: "books.vertical", name: "Memory", count: allMemories.count)
+                storageRow(icon: "checkmark.shield", name: "AuditReport", count: allAuditReports.count)
+                storageRow(icon: "pencil.and.scribble", name: "Draft", count: allDrafts.count)
+                storageRow(icon: "eye.circle", name: "Signal", count: allSignals.count)
+                storageRow(icon: "folder.fill", name: "ProjectRecord", count: allProjectRecords.count)
+                storageRow(icon: "hand.raised", name: "ActionLog", count: allActionLogs.count)
+            }
+        }
+    }
+
+    private func storageRow(icon: String, name: String, count: Int) -> some View {
+        HStack(spacing: IRISTokens.spacing8) {
+            Image(systemName: icon)
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .frame(width: 18, alignment: .center)
+            Text(name)
+                .font(.system(size: 12))
+            Spacer()
+            Text("\(count)")
+                .font(.system(size: 16, weight: .medium, design: .monospaced))
+                .foregroundStyle(IRISTokens.irisAccent)
+        }
+        .padding(.vertical, 2)
     }
 
     private var dangerZoneSection: some View {
