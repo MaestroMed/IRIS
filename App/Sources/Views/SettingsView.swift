@@ -240,6 +240,8 @@ struct SettingsView: View {
     @State private var auditorMonthlyAuto: Bool = false    // v1.93
     @State private var advisorHour: Int = 8                // v1.103
     @State private var conductorHistoryPairs: Double = 10  // v1.106
+    @State private var auditorPerFile: Double = 4   // v1.122 — KB
+    @State private var auditorTotal: Double = 15    // v1.122 — KB
 
     private var modelsRoutingSection: some View {
         VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
@@ -389,6 +391,39 @@ struct SettingsView: View {
             }
             .padding(.leading, IRISTokens.spacing16)
 
+            // v1.122 — Auditor file budget sliders (per-file cap + total budget)
+            HStack {
+                Text("Auditor per-file cap")
+                    .font(.system(size: 11))
+                Slider(value: $auditorPerFile, in: 1...20, step: 1)
+                    .frame(maxWidth: 160)
+                Text("\(Int(auditorPerFile)) KB")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 50, alignment: .trailing)
+                    .onChange(of: auditorPerFile) { _, v in
+                        Auditor.setPerFileCapBytes(Int(v * 1000))
+                    }
+                Spacer()
+            }
+            .padding(.leading, IRISTokens.spacing16)
+
+            HStack {
+                Text("Auditor total budget")
+                    .font(.system(size: 11))
+                Slider(value: $auditorTotal, in: 5...100, step: 5)
+                    .frame(maxWidth: 160)
+                Text("\(Int(auditorTotal)) KB")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 50, alignment: .trailing)
+                    .onChange(of: auditorTotal) { _, v in
+                        Auditor.setTotalBudgetBytes(Int(v * 1000))
+                    }
+                Spacer()
+            }
+            .padding(.leading, IRISTokens.spacing16)
+
             // v1.93 — Auditor monthly auto-audit toggle
             HStack {
                 Toggle(isOn: $auditorMonthlyAuto) {
@@ -480,6 +515,8 @@ struct SettingsView: View {
             witnessVisionMaxPerDay = Double(Witness.maxVisionCallsPerDay)  // v1.111
             conductorMaxTokens = Double(Conductor.currentMaxTokens)  // v1.61
             conductorHistoryPairs = Double(Conductor.currentMaxHistoryPairs)  // v1.106
+            auditorPerFile = Double(Auditor.perFileCapBytes) / 1000  // v1.122
+            auditorTotal = Double(Auditor.totalBudgetBytes) / 1000   // v1.122
             costLimitUSD = IRISAppState.costLimitUSD                     // v1.72
             auditorMonthlyAuto = Auditor.monthlyAutoEnabled              // v1.93
             advisorHour = Advisor.scheduledHour                          // v1.103

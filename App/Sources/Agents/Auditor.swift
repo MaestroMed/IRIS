@@ -107,6 +107,29 @@ public actor Auditor {
         UserDefaults.standard.set(model.rawValue, forKey: modelKey)
     }
 
+    // MARK: — v1.122 Audit depth (file budget tuning)
+
+    private static let auditPerFileKey = "iris.auditor.perFileCapBytes"
+    private static let auditTotalKey = "iris.auditor.totalBudgetBytes"
+
+    public static var perFileCapBytes: Int {
+        let raw = UserDefaults.standard.integer(forKey: auditPerFileKey)
+        return raw > 0 ? raw : 4_000
+    }
+
+    public static func setPerFileCapBytes(_ v: Int) {
+        UserDefaults.standard.set(max(500, min(20_000, v)), forKey: auditPerFileKey)
+    }
+
+    public static var totalBudgetBytes: Int {
+        let raw = UserDefaults.standard.integer(forKey: auditTotalKey)
+        return raw > 0 ? raw : 15_000
+    }
+
+    public static func setTotalBudgetBytes(_ v: Int) {
+        UserDefaults.standard.set(max(2_000, min(100_000, v)), forKey: auditTotalKey)
+    }
+
     /// Lance un audit. v1.18 : vrai audit via Claude Sonnet si API key, sinon fallback mock v0.7.
     public func auditProject(codename: String) async {
         irisLog(.info, "Auditor starting audit for \(codename)", category: IRISLogger.agents)
@@ -351,8 +374,8 @@ public actor Auditor {
 
         var sections: [String] = []
         var totalBytes = 0
-        let totalBudget = 15_000
-        let perFileCapBytes = 4_000
+        let totalBudget = Self.totalBudgetBytes  // v1.122 — UserDefaults
+        let perFileCapBytes = Self.perFileCapBytes
 
         for name in priorityNames {
             if totalBytes >= totalBudget { break }
