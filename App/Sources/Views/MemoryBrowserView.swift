@@ -53,6 +53,7 @@ struct MemoryBrowserView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
+            tagCloud
             Divider()
             retrievalBar
             Divider()
@@ -105,6 +106,51 @@ struct MemoryBrowserView: View {
                 .frame(maxWidth: 240)
         }
         .padding(IRISTokens.spacing16)
+    }
+
+    // v1.165 — Tag cloud row (capsules avec count, toggle tagFilter au click)
+    private var tagCloud: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("TAGS")
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .tracking(1.4)
+                .foregroundStyle(.secondary)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(availableTags, id: \.self) { tag in
+                        let count = allMemories.filter {
+                            $0.tagsCSV.lowercased().contains(tag.lowercased())
+                        }.count
+                        let isSelected = tagFilter == tag
+                        Button {
+                            tagFilter = isSelected ? "" : tag
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text(tag)
+                                    .font(.system(size: 11, weight: .medium))
+                                Text("\(count)")
+                                    .font(.system(size: 9, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(
+                                Capsule().fill(
+                                    isSelected
+                                        ? IRISTokens.aquaTint
+                                        : Color.secondary.opacity(0.10)
+                                )
+                            )
+                            .foregroundStyle(isSelected ? .white : .primary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, IRISTokens.spacing16)
+            }
+        }
+        .padding(.top, 4)
+        .padding(.bottom, IRISTokens.spacing8)
     }
 
     private var retrievalBar: some View {

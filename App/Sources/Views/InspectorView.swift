@@ -847,6 +847,19 @@ struct InspectorView: View {
                     }
                     .buttonStyle(.plain)
                     .help("Re-audit ce projet (force bypass fingerprint cache)")
+                    // v1.166 — Compare with previous audit
+                    Button {
+                        let diff = Self.diffWithPreviousAudit(current: audit, allAudits: allAudits)
+                        let pb = NSPasteboard.general
+                        pb.clearContents()
+                        pb.setString(diff, forType: .string)
+                    } label: {
+                        Image(systemName: "arrow.left.arrow.right.square")
+                            .font(.system(size: 10))
+                            .foregroundStyle(IRISTokens.goldAccent)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Comparer cette audit avec le précédent du même projet (diff verdict + findings count)")
                     // v1.73 — Copy markdown
                     Button {
                         let md = Self.formatAuditAsMarkdown(audit)
@@ -890,6 +903,38 @@ struct InspectorView: View {
               let arr = try? JSONSerialization.jsonObject(with: data) as? [String]
         else { return [] }
         return arr
+    }
+
+    // v1.166 — Diff audit avec le précédent du même projet
+    private static func diffWithPreviousAudit(current: AuditReport, allAudits: [AuditReport]) -> String {
+        let previous = allAudits
+            .filter { $0.projectCodename == current.projectCodename && $0.createdAt < current.createdAt }
+            .sorted { $0.createdAt > $1.createdAt }
+            .first
+        guard let prev = previous else {
+            return "Pas d'audit précédent pour \(current.projectCodename)."
+        }
+        let prevFindings = parseStringArray(prev.findingsJSON).count
+        let curFindings = parseStringArray(current.findingsJSON).count
+        let delta = curFindings - prevFindings
+        let findingsLine: String
+        if delta > 0 {
+            findingsLine = "+\(delta) finding\(delta == 1 ? "" : "s")"
+        } else if delta < 0 {
+            let absD = -delta
+            findingsLine = "-\(absD) finding\(absD == 1 ? "" : "s")"
+        } else {
+            findingsLine = "(stable)"
+        }
+        let verdictLine = prev.verdict == current.verdict
+            ? "(verdict stable: \(current.verdict))"
+            : "\(prev.verdict) → \(current.verdict)"
+        var md = "# Diff audit — \(current.projectCodename)\n\n"
+        md += "**Verdict** : \(verdictLine)\n"
+        md += "**Findings** : \(findingsLine) (\(prevFindings) → \(curFindings))\n\n"
+        md += "**Previous headline** : \(prev.headline)\n"
+        md += "**Current headline** : \(current.headline)\n"
+        return md
     }
 
     // v1.73 — Audit → Markdown formaté

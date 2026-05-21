@@ -1,8 +1,10 @@
 import SwiftUI
 import SwiftData
+import AppKit
 
 // IRIS v1.36 — Panel stats Bus : compteurs events par kind sur 3 fenêtres temporelles.
 // Affiché quand sidebar System > Stats sélectionné.
+// IRIS v1.164 — Export bus stats snapshot to Markdown (~/iris-busstats-<ISO>.md).
 
 struct BusStatsView: View {
     @Query(sort: \EventLog.timestamp, order: .reverse) private var allEvents: [EventLog]
@@ -42,11 +44,55 @@ struct BusStatsView: View {
                 .foregroundStyle(IRISTokens.irisAccent)
             Text("Bus Stats")
                 .font(.system(size: 22, weight: .light, design: .serif))
+            Button(action: exportMarkdown) {
+                Label("Export MD", systemImage: "square.and.arrow.up")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .help("Export stats current snapshot Markdown")
             Spacer()
             Text("\(allEvents.count) events tracés")
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundStyle(.secondary)
         }
+    }
+
+    private func exportMarkdown() {
+        let isoFormatter = ISO8601DateFormatter()
+        isoFormatter.formatOptions = [.withInternetDateTime]
+        let nowDate = Date()
+        let isoStamp = isoFormatter.string(from: nowDate).replacingOccurrences(of: ":", with: "-")
+
+        var md = "# IRIS Bus Stats — \(isoFormatter.string(from: nowDate))\n\n"
+        md += renderSection(title: "1h window", events: lastHour)
+        md += "\n"
+        md += renderSection(title: "24h window", events: lastDay)
+        md += "\n"
+        md += renderSection(title: "All-time", events: allEvents)
+
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let url = home.appendingPathComponent("iris-busstats-\(isoStamp).md")
+        do {
+            try md.write(to: url, atomically: true, encoding: .utf8)
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        } catch {
+            NSLog("[BusStatsView] export failed: \(error)")
+        }
+    }
+
+    private func renderSection(title: String, events: [EventLog]) -> String {
+        let groups = Dictionary(grouping: events, by: \.kind)
+        let lines = Self.kindOrder.compactMap { kind -> String? in
+            let count = groups[kind]?.count ?? 0
+            return count > 0 ? "- \(kind) : \(count)" : nil
+        }
+        var section = "## \(title)\n"
+        if lines.isEmpty {
+            section += "- (none)\n"
+        } else {
+            section += lines.joined(separator: "\n") + "\n"
+        }
+        return section
     }
 
     private func cardSection(title: String, total: Int, events: [EventLog], accent: Color) -> some View {
