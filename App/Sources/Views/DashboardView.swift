@@ -24,6 +24,7 @@ import SwiftData
 /// v1.297 — Pinned memories quick view card (top 3 via "pinned" tag).
 /// v1.303 — Recent Quill drafts card (last 3 with tone + subject + content preview).
 /// v1.309 — This week summary card (events/signals/audits/drafts since week-start).
+/// v1.315 — Activity 7d × time-of-day heatmap card (morning/afternoon/evening × 7 days).
 
 struct DashboardView: View {
     @Environment(IRISAppState.self) private var appState
@@ -161,6 +162,9 @@ struct DashboardView: View {
 
                 // v1.180 — Weekly events trend (7d bar chart sparkline)
                 weeklyTrendCard
+
+                // v1.315 — Activity 7d × time-of-day heatmap (morning/afternoon/evening)
+                weekDayHeatmapCard
 
                 // v1.309 — This week summary (events/signals/audits/drafts since week-start)
                 currentWeekCard
@@ -414,6 +418,76 @@ struct DashboardView: View {
     private func dayLabel(_ date: Date) -> String {
         if Calendar.current.isDateInToday(date) { return "Today" }
         return date.formatted(.dateTime.weekday(.abbreviated))
+    }
+
+    // v1.315 — Activity 7d × time-of-day heatmap (rows: oldest→today, cols: morning/afternoon/evening)
+    private var activityHeatmap7d3: [[Int]] {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        // Build 7 day buckets, oldest=0 ... today=6
+        var grid: [[Int]] = Array(repeating: Array(repeating: 0, count: 3), count: 7)
+        let cutoff = cal.date(byAdding: .day, value: -6, to: today) ?? today
+        for event in allEvents where event.timestamp >= cutoff {
+            let dayStart = cal.startOfDay(for: event.timestamp)
+            let daysFromOldest = cal.dateComponents([.day], from: cutoff, to: dayStart).day ?? 0
+            guard daysFromOldest >= 0 && daysFromOldest < 7 else { continue }
+            let hour = cal.component(.hour, from: event.timestamp)
+            let todIdx: Int
+            switch hour {
+            case 5...11: todIdx = 0
+            case 12...17: todIdx = 1
+            case 18...23, 0...4: todIdx = 2
+            default: continue
+            }
+            grid[daysFromOldest][todIdx] += 1
+        }
+        return grid
+    }
+
+    private func dayShortLabel(_ idx: Int) -> String {
+        let date = Calendar.current.date(byAdding: .day, value: -(6 - idx), to: Date()) ?? Date()
+        return date.formatted(.dateTime.weekday(.abbreviated))
+    }
+
+    private var weekDayHeatmapCard: some View {
+        let grid = activityHeatmap7d3
+        let maxV = grid.flatMap { $0 }.max() ?? 1
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("ACTIVITY 7D × TIME-OF-DAY")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .tracking(1.4)
+                .foregroundStyle(.secondary)
+            HStack(spacing: 4) {
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("").font(.system(size: 8)) // header row alignment
+                    Text("morning")
+                        .font(.system(size: 7, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                    Text("afternoon")
+                        .font(.system(size: 7, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                    Text("evening")
+                        .font(.system(size: 7, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(0..<7, id: \.self) { dayIdx in
+                    VStack(spacing: 2) {
+                        Text(dayShortLabel(dayIdx))
+                            .font(.system(size: 7, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                        ForEach(0..<3, id: \.self) { todIdx in
+                            Rectangle()
+                                .fill(IRISTokens.aquaTint.opacity(maxV > 0 ? 0.15 + (Double(grid[dayIdx][todIdx]) / Double(maxV)) * 0.85 : 0.1))
+                                .frame(width: 24, height: 14)
+                                .cornerRadius(2)
+                        }
+                    }
+                }
+                Spacer()
+            }
+        }
+        .padding(IRISTokens.spacing16)
+        .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
     }
 
     // v1.309 — Current calendar-week stats (Monday → today, locale-aware via Calendar.current)

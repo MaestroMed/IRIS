@@ -24,6 +24,7 @@ import AppKit
 /// v1.295 — Notification threshold Picker (importance-driven, UI only).
 /// v1.304 — Clear UserDefaults caches button (preserves API keys + data).
 /// v1.310 — Verbose logs toggle (@AppStorage shared with LogsView).
+/// v1.316 — Reset agent visibility button (restore all defaults).
 struct SettingsView: View {
     @Environment(IRISAppState.self) private var appState
     @Environment(\.modelContext) private var modelContext
@@ -45,6 +46,7 @@ struct SettingsView: View {
     @State private var resetVisionStatus: String?  // v1.259
     @State private var importConfigStatus: String?  // v1.274
     @State private var clearCacheStatus: String?  // v1.304
+    @State private var agentResetStatus: String?  // v1.316
 
     // v1.212 — Read live from UserDefaults, tied to blocklistRefreshTick for reactivity.
     private var blockedIds: [String] {
@@ -1481,6 +1483,34 @@ struct SettingsView: View {
                     }
                 }
             }
+
+            HStack(spacing: 6) {
+                Button {
+                    resetAgentVisibility()
+                } label: {
+                    Label("Reset agent visibility", systemImage: "arrow.counterclockwise")
+                        .font(.system(size: 11))
+                }
+                .controlSize(.small)
+                .tint(.secondary)
+                .help("Restaure tous les agents sidebar à leur état visible par défaut")
+
+                if let status = agentResetStatus {
+                    Text(status)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    // v1.316 — Reset all sidebar agents to visible (clear hiddenAgents set).
+    private func resetAgentVisibility() {
+        AgentVisibility.shared.hiddenAgents = []
+        agentResetStatus = "✅ Reset"
+        Task {
+            try? await Task.sleep(for: .seconds(3))
+            await MainActor.run { agentResetStatus = nil }
         }
     }
 

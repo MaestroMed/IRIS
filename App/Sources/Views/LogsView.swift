@@ -27,6 +27,7 @@ import SwiftData
 // v1.302 — Cmd+P keyboard shortcut on Pause toggle button.
 // v1.308 — Cmd+Shift+A cycles agent filter (Tous → each agent → wrap).
 // v1.310 — Verbose logs toggle affects payload preview truncation (200→1000).
+// v1.314 — Click row to show full payload sheet.
 
 struct LogsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -63,6 +64,9 @@ struct LogsView: View {
 
     // v1.224 — Paste UUID buffer for direct correlation chain filter
     @State private var correlationPaste: String = ""
+
+    // v1.314 — Inspected event for full payload sheet
+    @State private var inspectedEvent: EventLog?
 
     private static let kindOrder = [
         "userInput", "agentDispatched", "agentResponse",
@@ -145,6 +149,33 @@ struct LogsView: View {
                 Divider()
             }
             logsList
+        }
+        .sheet(item: $inspectedEvent) { event in
+            VStack(alignment: .leading, spacing: IRISTokens.spacing16) {
+                HStack {
+                    Text("Event payload").font(.system(size: 16, weight: .light, design: .serif))
+                    Spacer()
+                    Button("Close") { inspectedEvent = nil }.keyboardShortcut(.cancelAction)
+                }
+                Divider()
+                HStack {
+                    Text(event.timestamp, format: .dateTime.day().month().year().hour().minute().second()).font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
+                    Text(event.kind).font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    if let from = event.fromAgent { Text("from: \(from)").font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary) }
+                    if let to = event.toAgent { Text("→ \(to)").font(.system(size: 10, design: .monospaced)).foregroundStyle(IRISTokens.aquaTint) }
+                }
+                ScrollView {
+                    Text(event.payloadJSON)
+                        .font(.system(size: 11, design: .monospaced))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(IRISTokens.spacing8)
+                        .background(Color.secondary.opacity(0.05))
+                        .cornerRadius(4)
+                }
+            }
+            .padding(IRISTokens.spacing24)
+            .frame(minWidth: 600, idealWidth: 700, minHeight: 400, idealHeight: 500)
         }
     }
 
@@ -709,6 +740,8 @@ struct LogsView: View {
         .padding(.vertical, 3)
         .padding(.horizontal, 6)
         .background(RoundedRectangle(cornerRadius: 4).fill(.thinMaterial))
+        .contentShape(Rectangle())
+        .onTapGesture { inspectedEvent = event }
     }
 
     private func kindBadge(_ kind: String) -> some View {
