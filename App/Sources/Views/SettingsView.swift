@@ -4,6 +4,7 @@ import AppKit
 
 /// v0.1 + v1.9 — Settings panel : API key Anthropic + skill marketplace + backup/restore + MIND import.
 /// v1.171 — Storage summary section (per-entity counts).
+/// v1.174 — Open Application Support folder in Finder.
 struct SettingsView: View {
     @Environment(IRISAppState.self) private var appState
     @Environment(\.modelContext) private var modelContext
@@ -787,7 +788,26 @@ struct SettingsView: View {
                 storageRow(icon: "folder.fill", name: "ProjectRecord", count: allProjectRecords.count)
                 storageRow(icon: "hand.raised", name: "ActionLog", count: allActionLogs.count)
             }
+
+            // v1.174 — Reveal Application Support folder in Finder
+            HStack {
+                Button { revealDataFolder() } label: {
+                    Label("Open data folder", systemImage: "folder.fill")
+                        .font(.system(size: 11))
+                }
+                .controlSize(.small)
+                .help("Reveal le dossier Application Support IRIS dans Finder")
+            }
         }
+    }
+
+    // v1.174 — Reveal the SwiftData store location in Finder
+    private func revealDataFolder() {
+        guard var url = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            return
+        }
+        url.appendPathComponent(Bundle.main.bundleIdentifier ?? "iris.app")
+        NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
     private func storageRow(icon: String, name: String, count: Int) -> some View {

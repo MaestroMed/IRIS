@@ -4,6 +4,7 @@ import SwiftData
 // IRIS v1.10 — DashboardView : vue globale quand aucun agent sélectionné.
 // 4 cards stats Liquid Glass : Memory by type, Signals 24h by source, Drafts by status, Audits by verdict + Cost session.
 /// v1.170 — Top dispatched agents past 24h card.
+/// v1.173 — Alerts last 1h card (failures + critical signals).
 
 struct DashboardView: View {
     @Environment(IRISAppState.self) private var appState
@@ -14,6 +15,9 @@ struct DashboardView: View {
     @Query private var allAudits: [AuditReport]
     @Query private var allProjects: [ProjectRecord]
     @Query(sort: \ActionLog.executedAt, order: .reverse) private var allActions: [ActionLog]
+
+    // v1.173 — All events pour alerts last 1h (agentFailure count)
+    @Query private var allEvents: [EventLog]
 
     // v1.151 — agentDispatched events pour dispatch frequency analytics
     @Query(
@@ -70,6 +74,9 @@ struct DashboardView: View {
                         .onTapGesture { appState.selection = .agent(.cartographer) }
                         .help("Cliquer → Cartographer")
                 }
+
+                // v1.173 — Alerts last 1h (failures + critical signals)
+                alertsCard
 
                 // v1.102 — Currently focused project (latest Witness signal with project scope)
                 if let focus = latestFocusedSignal {
@@ -192,6 +199,61 @@ struct DashboardView: View {
         }
         .padding(IRISTokens.spacing16)
         .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
+    }
+
+    // v1.173 — Alerts last 1h (agentFailure events + critical/high importance signals)
+    private var agentFailures1h: Int {
+        let cutoff = Date().addingTimeInterval(-3600)
+        return allEvents.filter { $0.kind == "agentFailure" && $0.timestamp >= cutoff }.count
+    }
+
+    private var criticalSignals1h: Int {
+        let cutoff = Date().addingTimeInterval(-3600)
+        // Model uses Int importance (5=critical, 4=high)
+        return allSignals.filter { ($0.importance >= 4) && $0.emittedAt >= cutoff }.count
+    }
+
+    private var alertsCard: some View {
+        let totalAlerts = agentFailures1h + criticalSignals1h
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 12))
+                    .foregroundStyle(totalAlerts > 0 ? .red : .secondary)
+                Text("ALERTS LAST 1H")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .tracking(1.4)
+                    .foregroundStyle(.secondary)
+            }
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(agentFailures1h)")
+                        .font(.system(size: 22, weight: .light, design: .serif))
+                        .foregroundStyle(agentFailures1h > 0 ? .red : .secondary)
+                    Text("FAILURES")
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(criticalSignals1h)")
+                        .font(.system(size: 22, weight: .light, design: .serif))
+                        .foregroundStyle(criticalSignals1h > 0 ? IRISTokens.goldAccent : .secondary)
+                    Text("CRITICAL")
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            if totalAlerts == 0 {
+                Text("Tout va bien.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.green)
+                    .opacity(0.7)
+            }
+        }
+        .padding(IRISTokens.spacing16)
+        .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
+        .overlay(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).strokeBorder(totalAlerts > 0 ? Color.red.opacity(0.6) : Color.clear, lineWidth: 1.5))
     }
 
     // v1.160 — Agent activity dots banner (10 agents avec status dot live)

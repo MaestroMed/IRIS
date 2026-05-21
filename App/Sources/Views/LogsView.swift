@@ -4,6 +4,7 @@ import SwiftData
 // IRIS v1.16 — Panel logs runtime affiché quand sidebar System > Logs sélectionné.
 // @Query EventLog sorted desc + filtres par agent + kind + search.
 // v1.168 — Severity color left-border per row (red/gold/aqua/green).
+// v1.175 — Pause toggle freezes log view to a snapshot (logs accumulate but display stays).
 
 struct LogsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -17,6 +18,10 @@ struct LogsView: View {
     @State private var searchText: String = ""
     @State private var exportStatus: String?
 
+    // v1.175 — Pause freeze
+    @State private var isPaused: Bool = false
+    @State private var pausedSnapshot: [EventLog] = []
+
     private static let kindOrder = [
         "userInput", "agentDispatched", "agentResponse",
         "signalEmitted", "draftReady", "actionRequested",
@@ -27,7 +32,8 @@ struct LogsView: View {
     private static let levelOrder = ["debug", "info", "notice", "warning", "error", "fault"]
 
     var filtered: [EventLog] {
-        allEvents.lazy
+        let source: [EventLog] = (isPaused && !pausedSnapshot.isEmpty) ? pausedSnapshot : allEvents
+        return source.lazy
             .filter { filterAgent.isEmpty || $0.fromAgent == filterAgent || $0.toAgent == filterAgent }
             .filter { filterKind.isEmpty || $0.kind == filterKind }
             .filter { filterLevel.isEmpty || $0.payloadJSON.contains("\"level\":\"\(filterLevel)\"") }
@@ -35,6 +41,16 @@ struct LogsView: View {
             .filter { searchText.isEmpty || $0.payloadJSON.localizedCaseInsensitiveContains(searchText) || $0.kind.localizedCaseInsensitiveContains(searchText) }
             .prefix(500)
             .map { $0 }
+    }
+
+    private func togglePause() {
+        if isPaused {
+            pausedSnapshot = []
+            isPaused = false
+        } else {
+            pausedSnapshot = allEvents
+            isPaused = true
+        }
     }
 
     var body: some View {
@@ -57,6 +73,15 @@ struct LogsView: View {
             Text("\(filtered.count)/\(allEvents.count)")
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundStyle(.secondary)
+            if isPaused {
+                Text("PAUSED")
+                    .font(.system(size: 9, design: .monospaced))
+                    .tracking(1.4)
+                    .foregroundStyle(IRISTokens.goldAccent)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(Capsule().fill(IRISTokens.goldAccent.opacity(0.15)))
+            }
         }
         .padding(.horizontal, IRISTokens.spacing24)
         .padding(.vertical, IRISTokens.spacing16)
@@ -132,6 +157,17 @@ struct LogsView: View {
             }
             .controlSize(.small)
             .disabled(filterAgent.isEmpty && filterKind.isEmpty && filterLevel.isEmpty && filterCorrelationId == nil && searchText.isEmpty)
+
+            // v1.175 — Pause toggle (freeze view to snapshot)
+            Button {
+                togglePause()
+            } label: {
+                Label(isPaused ? "Resume" : "Pause", systemImage: isPaused ? "play.fill" : "pause.fill")
+                    .font(.system(size: 11))
+            }
+            .controlSize(.small)
+            .tint(isPaused ? IRISTokens.goldAccent : .secondary)
+            .help(isPaused ? "Resume live log updates" : "Pause les logs au snapshot actuel (figer la vue)")
 
             // v1.161 — Dispatches quick filter
             Button {
