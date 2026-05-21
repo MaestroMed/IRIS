@@ -18,6 +18,7 @@ import SwiftData
 // v1.243 — Since-launch stat in header (uptime + events since bootstrap).
 // v1.252 — Max display events configurable via @AppStorage logsMaxDisplay.
 // v1.256 — JSON export filtered events button.
+// v1.263 — Sort direction toggle (asc/desc) via @State sortAscending.
 
 struct LogsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -41,6 +42,9 @@ struct LogsView: View {
     // v1.206 — Past-hour quick filter
     @State private var pastHourOnly: Bool = false
 
+    // v1.263 — Sort direction toggle (default desc to preserve existing behavior)
+    @State private var sortAscending: Bool = false
+
     // v1.219 — Cmd+F focuses search TextField
     @FocusState private var searchFieldFocused: Bool
 
@@ -58,15 +62,15 @@ struct LogsView: View {
 
     var filtered: [EventLog] {
         let source: [EventLog] = (isPaused && !pausedSnapshot.isEmpty) ? pausedSnapshot : allEvents
-        return source.lazy
+        let arr: [EventLog] = Array(source.lazy
             .filter { filterAgent.isEmpty || $0.fromAgent == filterAgent || $0.toAgent == filterAgent }
             .filter { filterKind.isEmpty || $0.kind == filterKind }
             .filter { filterLevel.isEmpty || $0.payloadJSON.contains("\"level\":\"\(filterLevel)\"") }
             .filter { filterCorrelationId == nil || $0.correlationId == filterCorrelationId }
             .filter { !pastHourOnly || $0.timestamp >= Date().addingTimeInterval(-3600) }
             .filter { searchText.isEmpty || $0.payloadJSON.localizedCaseInsensitiveContains(searchText) || $0.kind.localizedCaseInsensitiveContains(searchText) }
-            .prefix(logsMaxDisplay)
-            .map { $0 }
+            .prefix(logsMaxDisplay))
+        return sortAscending ? arr.reversed() : arr
     }
 
     private func togglePause() {
@@ -462,6 +466,17 @@ struct LogsView: View {
             .controlSize(.small)
             .tint(pastHourOnly ? IRISTokens.aquaTint : .secondary)
             .help(pastHourOnly ? "Show all-time events" : "Limit to past 60 minutes")
+
+            // v1.263 — Sort direction toggle
+            Button {
+                sortAscending.toggle()
+            } label: {
+                Label(sortAscending ? "Asc" : "Desc", systemImage: sortAscending ? "arrow.up" : "arrow.down")
+                    .font(.system(size: 11))
+            }
+            .controlSize(.small)
+            .tint(.secondary)
+            .help(sortAscending ? "Sort oldest first → newest" : "Sort newest first → oldest")
 
             // v1.39 — Export filtered logs Markdown
             Button {

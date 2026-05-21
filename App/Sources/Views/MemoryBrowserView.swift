@@ -17,6 +17,7 @@ import AppKit
 /// v1.233 — Expandable rows with full content (chevron toggle, textSelection enabled).
 /// v1.239 — Cmd+/ focus search TextField (hidden Button).
 /// v1.251 — Search-text highlighting in memory rows (summary + expanded content).
+/// v1.264 — Hide tag cloud toggle (@AppStorage memoryHideTagCloud).
 /// Permet à Mehdi d'inspecter ce que Scribe sait, et de tester les requêtes de similarité.
 enum MemorySortMode: String, CaseIterable { case newest, oldest, type, name }
 
@@ -38,6 +39,7 @@ struct MemoryBrowserView: View {
     @State private var bulkTagStatus: String?  // v1.227
     @State private var expandedIds: Set<UUID> = []  // v1.233
     @FocusState private var searchFieldFocused: Bool  // v1.239
+    @AppStorage("memoryHideTagCloud") private var hideTagCloud: Bool = false  // v1.264
 
     private var availableTypes: [String] {
         Array(Set(allMemories.map(\.type))).sorted()
@@ -164,8 +166,10 @@ struct MemoryBrowserView: View {
                 .opacity(0)
                 .frame(width: 0, height: 0)
             header
-            tagCloud
-            Divider()
+            if !hideTagCloud {
+                tagCloud
+                Divider()
+            }
             retrievalBar
             Divider()
             if !retrievalResults.isEmpty {
@@ -334,6 +338,15 @@ struct MemoryBrowserView: View {
                 .controlSize(.small)
                 .frame(maxWidth: 240)
                 .focused($searchFieldFocused)
+
+            // v1.264 — Hide tag cloud toggle (compact mode)
+            Button { hideTagCloud.toggle() } label: {
+                Image(systemName: hideTagCloud ? "tag.slash" : "tag.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary.opacity(0.7))
+            }
+            .buttonStyle(.plain)
+            .help(hideTagCloud ? "Show tag cloud" : "Hide tag cloud (compact mode)")
         }
         .padding(IRISTokens.spacing16)
     }

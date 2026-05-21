@@ -20,6 +20,7 @@ import AppKit
 /// v1.249 — Avg events per session today card (events/sessions ratio).
 /// v1.253 — Live events/sec rate badge (past 10s window).
 /// v1.258 — Latest critical event timestamp badge (red if recent, green if none).
+/// v1.265 — Peak hour-of-day all-time badge (gold clock).
 
 struct BusStatsView: View {
     @Query(sort: \EventLog.timestamp, order: .reverse) private var allEvents: [EventLog]
@@ -428,6 +429,47 @@ struct BusStatsView: View {
         }
     }
 
+    private var peakHourAllTime: (hour: Int, count: Int)? {
+        let _ = refreshTick
+        var counts: [Int: Int] = [:]
+        for event in allEvents {
+            let hour = Calendar.current.component(.hour, from: event.timestamp)
+            counts[hour, default: 0] += 1
+        }
+        guard let top = counts.max(by: { $0.value < $1.value }), top.value > 0 else { return nil }
+        return (hour: top.key, count: top.value)
+    }
+
+    @ViewBuilder
+    private var peakHourAllTimeBadge: some View {
+        if let peak = peakHourAllTime {
+            HStack(spacing: 4) {
+                Image(systemName: "clock.badge.checkmark")
+                    .foregroundStyle(IRISTokens.goldAccent)
+                    .font(.system(size: 12))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("PEAK HOUR-OF-DAY (ALL-TIME)")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .tracking(1.2)
+                        .foregroundStyle(.secondary)
+                    HStack(spacing: 6) {
+                        Text(String(format: "%02d:00 - %02d:59", peak.hour, peak.hour))
+                            .font(.system(size: 13, weight: .medium))
+                        Text("\(peak.count) events")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(IRISTokens.goldAccent)
+                    }
+                }
+                Spacer()
+            }
+            .padding(.horizontal, IRISTokens.spacing16)
+            .padding(.vertical, 6)
+            .background(IRISTokens.goldAccent.opacity(0.05))
+        } else {
+            EmptyView()
+        }
+    }
+
     private var throughputStats: [(window: String, count: Int, rate: Double)] {
         let _ = refreshTick
         let nowDate = Date()
@@ -630,6 +672,8 @@ struct BusStatsView: View {
                 topHoursCard
 
                 peakDayBadge
+
+                peakHourAllTimeBadge
 
                 heatmap24hCard
 
