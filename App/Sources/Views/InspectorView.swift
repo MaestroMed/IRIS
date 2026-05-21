@@ -29,6 +29,7 @@ import AppKit
 /// v1.279 — Scribe "last memory written" relative timestamp row.
 /// v1.284 — Quill cost today badge (gold dollar) in section header.
 /// v1.290 — Cartographer per-project audit count + latest verdict color dot inline.
+/// v1.294 — Cartographer project status Picker (All/Active/Archived/Experimental).
 
 struct InspectorView: View {
     @Environment(IRISAppState.self) private var appState
@@ -76,6 +77,7 @@ struct InspectorView: View {
     @State private var exportDraftsStatus: String? = nil // v1.185 — Export today drafts transient feedback
     @State private var copyVerdictStatus: String? = nil  // v1.192 — Copy verdict transient feedback
     @State private var cartographerSearch: String = ""   // v1.204 — Cartographer search field
+    @State private var cartoStatusFilter: String = ""    // v1.294 — Cartographer status Picker (All/Active/Archived/Experimental)
     @State private var exportAuditsStatus: String? = nil // v1.260 — Export all audits MD transient feedback
 
     var body: some View {
@@ -1144,12 +1146,19 @@ struct InspectorView: View {
 
     private var filteredProjects: [ProjectRecord] {
         let q = cartographerSearch
-        guard !q.isEmpty else { return Array(allProjects) }
-        return allProjects.filter {
-            $0.codename.localizedCaseInsensitiveContains(q)
-                || ($0.localPath?.localizedCaseInsensitiveContains(q) ?? false)
-                || ($0.repoURL?.localizedCaseInsensitiveContains(q) ?? false)
+        let searched: [ProjectRecord]
+        if q.isEmpty {
+            searched = Array(allProjects)
+        } else {
+            searched = allProjects.filter {
+                $0.codename.localizedCaseInsensitiveContains(q)
+                    || ($0.localPath?.localizedCaseInsensitiveContains(q) ?? false)
+                    || ($0.repoURL?.localizedCaseInsensitiveContains(q) ?? false)
+            }
         }
+        // v1.294 — chain Cartographer status Picker filter (status field on ProjectRecord)
+        guard !cartoStatusFilter.isEmpty else { return searched }
+        return searched.filter { $0.status == cartoStatusFilter }
     }
 
     // v1.244 — Cartographer audited/total ratio (projects with ≥1 AuditReport).
@@ -1284,10 +1293,23 @@ struct InspectorView: View {
             }
             .padding(.horizontal, IRISTokens.spacing4)
 
-            TextField("Filter projects by codename/path…", text: $cartographerSearch)
-                .textFieldStyle(.roundedBorder)
+            HStack(spacing: IRISTokens.spacing4) {
+                TextField("Filter projects by codename/path…", text: $cartographerSearch)
+                    .textFieldStyle(.roundedBorder)
+                    .controlSize(.small)
+                // v1.294 — Cartographer status Picker (All/Active/Archived/Experimental)
+                Picker("Status", selection: $cartoStatusFilter) {
+                    Text("All").tag("")
+                    Text("Active").tag("active")
+                    Text("Archived").tag("archived")
+                    Text("Experimental").tag("experimental")
+                }
+                .labelsHidden()
                 .controlSize(.small)
-                .padding(.horizontal, IRISTokens.spacing8)
+                .frame(maxWidth: 100)
+                .pickerStyle(.menu)
+            }
+            .padding(.horizontal, IRISTokens.spacing8)
 
             HStack {
                 Button {

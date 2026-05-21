@@ -26,6 +26,7 @@ import AppKit
 /// v1.280 — Burstiest minute past 24h card (gold bolt + count + time).
 /// v1.283 — Total records in DB card (per-model counts horizontal).
 /// v1.288 — Period stats selector card (1h/24h/7d/all) with live event count.
+/// v1.293 — Hot kinds card: per-kind cell now shows latest event preview (timestamp + payload).
 
 struct BusStatsView: View {
     @Query(sort: \EventLog.timestamp, order: .reverse) private var allEvents: [EventLog]
@@ -151,6 +152,11 @@ struct BusStatsView: View {
             .map { (kind: $0.key, count: $0.value, color: colorForKind($0.key)) }
     }
 
+    private func latestEventOfKind(_ kind: String) -> EventLog? {
+        let _ = refreshTick
+        return allEvents.first { $0.kind == kind }
+    }
+
     @ViewBuilder
     private var hotKindsCard: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -179,6 +185,15 @@ struct BusStatsView: View {
                             Text("\(item.count) ev")
                                 .font(.system(size: 13, weight: .light, design: .serif))
                                 .foregroundStyle(item.color)
+                            if let latest = latestEventOfKind(item.kind) {
+                                Text(latest.timestamp, format: .dateTime.hour().minute().second())
+                                    .font(.system(size: 8, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                                Text(String(latest.payloadJSON.prefix(40)))
+                                    .font(.system(size: 8, design: .monospaced))
+                                    .foregroundStyle(.secondary.opacity(0.6))
+                                    .lineLimit(1)
+                            }
                         }
                         .padding(8)
                         .background(RoundedRectangle(cornerRadius: 4).fill(item.color.opacity(0.06)))

@@ -21,6 +21,7 @@ import AppKit
 /// v1.268 — Witness vision daily quota slider (@AppStorage shared with Witness.swift).
 /// v1.274 — Import config from JSON button (NSOpenPanel + UserDefaults restore).
 /// v1.289 — Auto-backup frequency Picker (off/hourly/daily/weekly).
+/// v1.295 — Notification threshold Picker (importance-driven, UI only).
 struct SettingsView: View {
     @Environment(IRISAppState.self) private var appState
     @Environment(\.modelContext) private var modelContext
@@ -36,6 +37,7 @@ struct SettingsView: View {
     @AppStorage("logsMaxDisplay") private var logsMaxDisplay: Int = 500  // v1.252
     @AppStorage("iris.witness.visionMaxCallsPerDay") private var witnessVisionDailyCap: Int = 100  // v1.268
     @AppStorage("backupAutoFrequency") private var backupAutoFrequency: String = "daily"  // v1.289
+    @AppStorage("notificationMinImportance") private var notificationMinImportance: Int = 5  // v1.295
     @State private var blocklistRefreshTick: Int = 0  // v1.212 — force re-render after unblock
     @State private var resetVisionStatus: String?  // v1.259
     @State private var importConfigStatus: String?  // v1.274
@@ -1316,6 +1318,32 @@ struct SettingsView: View {
                 Text(notifsStatus)
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundStyle(notifsStatus.hasPrefix("✅") ? .green : .secondary)
+            }
+
+            // v1.295 — Notification threshold Picker (UI only)
+            // TODO: wire notification threshold to NotificationCenter triggers (Sentinel signalEmitted handler).
+            HStack(spacing: 8) {
+                Image(systemName: "bell.badge")
+                    .foregroundStyle(IRISTokens.aquaTint)
+                    .font(.system(size: 12))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Notification threshold").font(.system(size: 11, weight: .medium))
+                    Text("Notify pour signals importance >= seuil")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Picker("", selection: $notificationMinImportance) {
+                    Text("Off").tag(99)
+                    Text("Critical (5)").tag(5)
+                    Text("High (4)").tag(4)
+                    Text("Normal (3)").tag(3)
+                    Text("All (>=1)").tag(1)
+                }
+                .labelsHidden()
+                .controlSize(.small)
+                .frame(maxWidth: 120)
+                .pickerStyle(.menu)
             }
         }
         .onAppear {
