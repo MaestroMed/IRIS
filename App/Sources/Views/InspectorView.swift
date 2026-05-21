@@ -22,6 +22,7 @@ import AppKit
 /// v1.248 — Auditor "RED only" quick filter toggle (.red capsule when active).
 /// v1.254 — Builder total scaffolds count badge (gold hammer).
 /// v1.257 — Envoy pending actions count badge (gold hourglass).
+/// v1.260 — Export all audits MD button in Auditor section header.
 
 struct InspectorView: View {
     @Environment(IRISAppState.self) private var appState
@@ -69,6 +70,7 @@ struct InspectorView: View {
     @State private var exportDraftsStatus: String? = nil // v1.185 — Export today drafts transient feedback
     @State private var copyVerdictStatus: String? = nil  // v1.192 — Copy verdict transient feedback
     @State private var cartographerSearch: String = ""   // v1.204 — Cartographer search field
+    @State private var exportAuditsStatus: String? = nil // v1.260 — Export all audits MD transient feedback
 
     var body: some View {
         ScrollView {
@@ -1322,6 +1324,21 @@ struct InspectorView: View {
                 .background(Capsule().fill(auditRedOnly ? .red.opacity(0.15) : Color.clear))
                 .help(auditRedOnly ? "Show all audits" : "Show only RED audits")
                 Spacer()
+                // v1.260 — Export all audits in one Markdown file (home dir)
+                Button { exportAllAuditsMD() } label: {
+                    Image(systemName: "square.and.arrow.up.on.square")
+                        .font(.system(size: 9))
+                        .foregroundStyle(IRISTokens.aquaTint.opacity(0.7))
+                }
+                .buttonStyle(.plain)
+                .help("Export TOUS les audits en un Markdown unique")
+                .disabled(allAudits.isEmpty)
+                if let exportAuditsStatus {
+                    Text(exportAuditsStatus)
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(exportAuditsStatus.hasPrefix("✅") ? .green : .red)
+                        .lineLimit(1)
+                }
                 Button {
                     copyAgentSummary(for: .auditor, count: allAudits.count)
                 } label: {
@@ -2434,6 +2451,54 @@ struct InspectorView: View {
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
             exportDraftsStatus = nil
+        }
+    }
+
+    // v1.260 — Export TOUS les audits en un seul Markdown sur le home dir
+    private func exportAllAuditsMD() {
+        guard !allAudits.isEmpty else { return }
+
+        let header = "# IRIS Audits Export — \(Date().formatted(date: .complete, time: .shortened))\n\n"
+        var md = header
+        md += "_\(allAudits.count) audits_\n\n"
+        md += "---\n\n"
+
+        for audit in allAudits {
+            md += "## \(audit.projectCodename) · \(audit.verdict)\n\n"
+            md += "**Created:** \(audit.createdAt.formatted(.dateTime.day().month().year().hour().minute()))\n\n"
+            md += "**Model:** \(audit.modelUsed) · **Cost:** $\(String(format: "%.3f", audit.costUSD))\n\n"
+
+            let findings = Self.parseStringArray(audit.findingsJSON)
+            if !findings.isEmpty {
+                md += "**Findings:**\n"
+                for f in findings { md += "- \(f)\n" }
+                md += "\n"
+            }
+
+            let topActions = Self.parseActionObjects(audit.topActionsJSON)
+            if !topActions.isEmpty {
+                md += "**Top actions:**\n"
+                for a in topActions {
+                    md += "- \(a.action) _(effort: \(a.effort) · impact: \(a.impact))_\n"
+                }
+                md += "\n"
+            }
+
+            md += "---\n\n"
+        }
+
+        let iso = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
+        let url = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("iris-audits-\(iso).md")
+
+        do {
+            try md.write(to: url, atomically: true, encoding: .utf8)
+            exportAuditsStatus = "✅ → \(url.lastPathComponent)"
+        } catch {
+            exportAuditsStatus = "⚠️ \(error.localizedDescription)"
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+            exportAuditsStatus = nil
         }
     }
 

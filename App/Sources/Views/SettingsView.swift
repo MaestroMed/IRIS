@@ -17,6 +17,7 @@ import AppKit
 /// v1.245 — Memory browser shortcuts added to cheatsheet.
 /// v1.252 — Max events displayed slider for LogsView (@AppStorage).
 /// v1.259 — Reset Witness vision counters button (daily quota + 30d cost history).
+/// v1.262 — Quick-select chips (5/10/20/50) for Conductor history max pairs.
 struct SettingsView: View {
     @Environment(IRISAppState.self) private var appState
     @Environment(\.modelContext) private var modelContext
@@ -524,6 +525,30 @@ struct SettingsView: View {
                     .onChange(of: conductorHistoryPairs) { _, newValue in
                         Conductor.setMaxHistoryPairs(Int(newValue))
                     }
+            }
+            .padding(.leading, IRISTokens.spacing16)
+
+            // v1.262 — Quick-select chips for Conductor history max pairs
+            HStack(spacing: 4) {
+                Text("Quick:")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                ForEach([5, 10, 20, 50], id: \.self) { value in
+                    Button {
+                        conductorHistoryPairs = Double(value)
+                        Conductor.setMaxHistoryPairs(value)
+                    } label: {
+                        Text("\(value)")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(Int(conductorHistoryPairs) == value ? .white : .primary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(Capsule().fill(Int(conductorHistoryPairs) == value ? IRISTokens.aquaTint : Color.secondary.opacity(0.1)))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Set max history pairs to \(value)")
+                }
+                Spacer()
             }
             .padding(.leading, IRISTokens.spacing16)
 

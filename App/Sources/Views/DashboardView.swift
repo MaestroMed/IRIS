@@ -17,6 +17,7 @@ import SwiftData
 /// v1.240 — Hourly avg + peak hour past 24h card (aqua + gold).
 /// v1.250 — Today's signals importance stacked bar (critical/high/normal/low).
 /// v1.255 — Cost stack bar inside costTodayCard (per-model colored).
+/// v1.261 — Live window Picker (5/15/30/60min) driving the live count badge.
 
 struct DashboardView: View {
     @Environment(IRISAppState.self) private var appState
@@ -44,6 +45,9 @@ struct DashboardView: View {
         sort: \EventLog.timestamp,
         order: .reverse
     ) private var advisorBriefings: [EventLog]
+
+    // v1.261 — User-adjustable live event count window (min). Default 5min.
+    @AppStorage("dashboardLiveWindowMin") private var liveWindowMin: Int = 5
 
     var body: some View {
         ScrollView {
@@ -1049,24 +1053,24 @@ struct DashboardView: View {
         MCPManager.shared.servers.count
     }
 
-    // v1.229 — Live count of EventLog entries in past 5 minutes (300s)
-    private var eventsPast5Min: Int {
-        let cutoff = Date().addingTimeInterval(-300)
+    // v1.229 — Live count of EventLog entries in past N minutes (window adjustable v1.261)
+    private var eventsPastWindow: Int {
+        let cutoff = Date().addingTimeInterval(-Double(liveWindowMin) * 60)
         return allEvents.filter { $0.timestamp >= cutoff }.count
     }
 
     @ViewBuilder
-    private var live5MinBadge: some View {
+    private var liveWindowBadge: some View {
         HStack(spacing: 4) {
-            if eventsPast5Min > 0 {
+            if eventsPastWindow > 0 {
                 Circle().fill(IRISTokens.aquaTint).frame(width: 6, height: 6)
             } else {
                 Circle().fill(.secondary.opacity(0.4)).frame(width: 6, height: 6)
             }
-            Text("+\(eventsPast5Min)")
+            Text("+\(eventsPastWindow)")
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .foregroundStyle(eventsPast5Min > 0 ? IRISTokens.aquaTint : .secondary)
-            Text("past 5min")
+                .foregroundStyle(eventsPastWindow > 0 ? IRISTokens.aquaTint : .secondary)
+            Text("past \(liveWindowMin)min")
                 .font(.system(size: 9, design: .monospaced))
                 .foregroundStyle(.secondary.opacity(0.7))
         }
@@ -1117,8 +1121,18 @@ struct DashboardView: View {
                     .font(.system(size: 9, design: .monospaced))
                     .foregroundStyle(.secondary)
             }
-            // v1.229 — Live "+N past 5min" event count badge
-            live5MinBadge
+            // v1.229 — Live "+N past Nmin" event count badge + v1.261 window Picker
+            liveWindowBadge
+            Picker("Window", selection: $liveWindowMin) {
+                Text("5min").tag(5)
+                Text("15min").tag(15)
+                Text("30min").tag(30)
+                Text("60min").tag(60)
+            }
+            .labelsHidden()
+            .controlSize(.small)
+            .frame(maxWidth: 80)
+            .pickerStyle(.menu)
             Spacer()
         }
         .padding(IRISTokens.spacing8)
