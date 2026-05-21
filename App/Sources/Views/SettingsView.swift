@@ -1078,6 +1078,18 @@ struct SettingsView: View {
                     subtitle: "Lit ~/Library/Application Support/Claude/claude_desktop_config.json (config partagée avec Claude Desktop)."
                 )
                 Spacer()
+                // v1.136 — Test all servers en parallèle
+                if !servers.isEmpty {
+                    Button {
+                        runMCPTestAll(servers: servers)
+                    } label: {
+                        Image(systemName: "play.rectangle.on.rectangle")
+                            .font(.system(size: 12))
+                            .foregroundStyle(IRISTokens.aquaTint)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Test all servers en parallèle (initialize + tools/list)")
+                }
                 Button {
                     _ = MCPManager.shared.discover()
                     mcpServersTick += 1
@@ -1188,6 +1200,24 @@ struct SettingsView: View {
         Task {
             let result = await MCPManager.shared.testConnection(server)
             mcpTestResults[server.name] = result
+            mcpTestingServer = nil
+        }
+    }
+
+    // v1.136 — Test all servers en parallèle via TaskGroup
+    private func runMCPTestAll(servers: [MCPManager.ServerConfig]) {
+        mcpTestingServer = "all"
+        Task {
+            await withTaskGroup(of: MCPManager.TestResult.self) { group in
+                for server in servers {
+                    group.addTask {
+                        await MCPManager.shared.testConnection(server)
+                    }
+                }
+                for await result in group {
+                    mcpTestResults[result.serverName] = result
+                }
+            }
             mcpTestingServer = nil
         }
     }

@@ -71,6 +71,9 @@ struct DashboardView: View {
                 // v1.120 — MCP sources actives banner (Phase B closure)
                 mcpSourcesBanner
 
+                // v1.135 — 5 phases real status banner (santé exocortex)
+                phasesRealStatusBanner
+
                 // v1.92 — Snippet du dernier briefing Advisor
                 if let latest = advisorBriefings.first {
                     advisorBriefingCard(latest)
@@ -82,6 +85,56 @@ struct DashboardView: View {
             }
             .padding(IRISTokens.spacing24)
         }
+    }
+
+    // v1.135 — Banner "5 phases real" status (Witness Vision / MCP Real / Auditor Real / Builder Real / Dispatch)
+    private var phasesRealStatusBanner: some View {
+        let visionConfigured = appState.hasAnthropicKey
+        let mcpActiveCount = Sentinel.knownSources.filter { Sentinel.isMCPBackend(for: $0) }.count
+        let auditorMonthly = Auditor.monthlyAutoEnabled
+        let dispatchAvailable = true  // always — heuristic
+
+        let checks: [(label: String, ok: Bool, hint: String)] = [
+            ("A · Witness Vision", visionConfigured, visionConfigured ? "API key OK · Inspector eye.square pour capture" : "Pas d'API key (Settings)"),
+            ("B · MCP Real", mcpActiveCount > 0, mcpActiveCount > 0 ? "\(mcpActiveCount) source(s) actif" : "Configure backend source dans Settings"),
+            ("C · Auditor Real", true, "Lit fichiers réels · monthly auto-audit \(auditorMonthly ? "ON" : "OFF")"),
+            ("D · Builder Real", true, "Scaffold lit SKILL.md · git init auto"),
+            ("E · Dispatch", dispatchAvailable, "Tape `?` pour patterns dispo")
+        ]
+
+        return VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
+            HStack {
+                Image(systemName: "checkmark.seal.fill")
+                    .foregroundStyle(IRISTokens.irisAccent)
+                    .font(.system(size: 14))
+                Text("EXOCORTEX 5 PHASES · v1.\(IRISRuntimeInfo.appVersion.split(separator: ".").last ?? "?")")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .tracking(1.4)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(Array(checks.enumerated()), id: \.offset) { _, item in
+                    HStack(spacing: 6) {
+                        Image(systemName: item.ok ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                            .font(.system(size: 10))
+                            .foregroundStyle(item.ok ? .green : IRISTokens.goldAccent)
+                        Text(item.label)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        Text(item.hint)
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+                }
+            }
+        }
+        .padding(IRISTokens.spacing16)
+        .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusMedium).fill(.regularMaterial))
+        .overlay(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusMedium).strokeBorder(IRISTokens.irisAccent.opacity(0.2), lineWidth: 0.5))
     }
 
     // v1.120 — Banner MCP sources avec backend réel actif

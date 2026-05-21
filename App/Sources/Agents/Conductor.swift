@@ -250,6 +250,11 @@ public actor Conductor {
             return DetectedIntent(agent: .witness, target: nil, original: raw)
         }
 
+        // 7. Quill : "drafte X", "rédige X", "réponse à X", "draft email X"
+        if let m = matchFirstCaptureRest(low, pattern: #"^(drafte|rédige|réponse à|draft email|draft|écris)\s+(.+)$"#) {
+            return DetectedIntent(agent: .quill, target: m, original: raw)
+        }
+
         return nil
     }
 
@@ -275,6 +280,7 @@ public actor Conductor {
     | `refresh cartographer` | Cartographer | Re-scan ~/Developer + gh repo list |
     | `cherche <query>` | Scribe | Retrieve top 5 mémoires NLEmbedding |
     | `snapshot` _ou_ `vois ce que je fais` | Witness | Capture window + vision Haiku 4.5 |
+    | `drafte <contexte>` _ou_ `rédige <contexte>` | Quill | Génère draft Sonnet 4.6 via signal manuel high |
 
     Tout autre input → réponse Conductor Opus 4.7 standard (streaming, history multi-turn, Scribe context injection).
 
@@ -349,6 +355,19 @@ public actor Conductor {
         case .witness:
             ack = "👁️ Dispatch → Witness capture immédiate (frontmost window + vision si configuré)."
             Task { await Witness.shared.captureWithVision() }
+
+        case .quill:
+            let subject = intent.target ?? "(sans contexte)"
+            ack = "✍️ Dispatch → Quill via signal high importance : `\(subject)`. Le draft Sonnet 4.6 arrive dans quelques secondes (visible Inspector Quill section)."
+            // Inject un signal manuel haute importance → Quill subscriber le prend
+            Task {
+                await Sentinel.shared.injectManualSignal(
+                    source: "manual",
+                    importance: .high,
+                    summary: subject,
+                    projectScope: nil
+                )
+            }
 
         default:
             ack = "Dispatch \(intent.agent.rawValue) non implémenté — fallback Conductor solo."
