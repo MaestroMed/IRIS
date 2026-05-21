@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import CryptoKit  // v1.124 — project fingerprint hash
 
 /// Auditor v0.7 — audit projets via skill damage-control.
 /// v0.7 : MOCK report (verdict random + findings + actions hardcoded).
@@ -130,9 +131,76 @@ public actor Auditor {
         UserDefaults.standard.set(max(2_000, min(100_000, v)), forKey: auditTotalKey)
     }
 
+    // MARK: — v1.124 Project fingerprint cache (skip re-audit if unchanged)
+
+    private static let fingerprintCacheKey = "iris.auditor.fingerprintCache"  // [codename: hash]
+
+    /// Compute un fingerprint léger : SHA256 des top-level entries + mtimes triées.
+    /// Change si fichiers ajoutés / supprimés / modifiés au top-level. Skip sous-dirs
+    /// pour rester rapide (sub-dir mtime hérite des inner changes sur APFS).
+    public static func projectFingerprint(at path: String) -> String? {
+        let fm = FileManager.default
+        guard let entries = try? fm.contentsOfDirectory(at: URL(fileURLWithPath: path),
+                                                         includingPropertiesForKeys: [.contentModificationDateKey],
+                                                         options: [.skipsHiddenFiles]) else {
+            return nil
+        }
+        let parts: [String] = entries
+            .filter { !["node_modules", ".git", "DerivedData", ".build"].contains($0.lastPathComponent) }
+            .compactMap { url -> String? in
+                guard let mtime = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate else { return nil }
+                return "\(url.lastPathComponent):\(Int(mtime.timeIntervalSince1970))"
+            }
+            .sorted()
+        let combined = parts.joined(separator: "|")
+        let digest = SHA256.hash(data: Data(combined.utf8))
+        return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    public static func cachedFingerprint(codename: String) -> String? {
+        let map = (UserDefaults.standard.dictionary(forKey: fingerprintCacheKey) as? [String: String]) ?? [:]
+        return map[codename]
+    }
+
+    public static func storeFingerprint(codename: String, fingerprint: String) {
+        var map = (UserDefaults.standard.dictionary(forKey: fingerprintCacheKey) as? [String: String]) ?? [:]
+        map[codename] = fingerprint
+        UserDefaults.standard.set(map, forKey: fingerprintCacheKey)
+    }
+
+    public static func clearFingerprintCache(codename: String? = nil) {
+        if let codename {
+            var map = (UserDefaults.standard.dictionary(forKey: fingerprintCacheKey) as? [String: String]) ?? [:]
+            map.removeValue(forKey: codename)
+            UserDefaults.standard.set(map, forKey: fingerprintCacheKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: fingerprintCacheKey)
+        }
+    }
+
     /// Lance un audit. v1.18 : vrai audit via Claude Sonnet si API key, sinon fallback mock v0.7.
-    public func auditProject(codename: String) async {
-        irisLog(.info, "Auditor starting audit for \(codename)", category: IRISLogger.agents)
+    /// v1.124 — `force` bypass le fingerprint cache (re-audit même si projet pas changé).
+    public func auditProject(codename: String, force: Bool = false) async {
+        irisLog(.info, "Auditor starting audit for \(codename) (force=\(force))", category: IRISLogger.agents)
+
+        // v1.124 — Skip si fingerprint inchangé depuis last audit (sauf force)
+        if !force, let info = await fetchProjectInfo(codename: codename), let path = info.localPath {
+            let current = Self.projectFingerprint(at: path)
+            let cached = Self.cachedFingerprint(codename: codename)
+            if let current, let cached, current == cached {
+                irisLog(.info, "Auditor skip \(codename) — fingerprint unchanged (use force pour bypass)",
+                        category: IRISLogger.agents)
+                await EventBus.shared.publish(
+                    .signalEmitted(
+                        from: .auditor,
+                        importance: .trivial,
+                        summary: "Audit \(codename) skipped (projet inchangé depuis last audit)",
+                        source: "auditor"
+                    )
+                )
+                return
+            }
+        }
 
         let start = Date()
         await EventBus.shared.publish(
@@ -144,12 +212,18 @@ public actor Auditor {
             )
         )
 
-        // v1.18 : route real vs mock
         let useReal = IRISKeychain.shared.hasAnthropicAPIKey()
         if useReal {
             await runRealAudit(codename: codename, start: start)
         } else {
             await runMockAudit(codename: codename, start: start)
+        }
+
+        // v1.124 — store fingerprint après audit successful
+        if let info = await fetchProjectInfo(codename: codename),
+           let path = info.localPath,
+           let fp = Self.projectFingerprint(at: path) {
+            Self.storeFingerprint(codename: codename, fingerprint: fp)
         }
     }
 

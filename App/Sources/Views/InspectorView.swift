@@ -801,17 +801,17 @@ struct InspectorView: View {
                     Text("cost: $\(String(format: "%.4f", audit.costUSD))")
                     Text("\(Int(audit.durationSeconds))s")
                     Spacer()
-                    // v1.77 — Rerun audit (re-execute Auditor sur même projet)
+                    // v1.77 + v1.124 — Rerun audit avec force=true pour bypass fingerprint cache
                     Button {
                         let codename = audit.projectCodename
-                        Task { await Auditor.shared.auditProject(codename: codename) }
+                        Task { await Auditor.shared.auditProject(codename: codename, force: true) }
                     } label: {
                         Image(systemName: "arrow.clockwise")
                             .font(.system(size: 10))
                             .foregroundStyle(IRISTokens.aquaTint)
                     }
                     .buttonStyle(.plain)
-                    .help("Re-audit ce projet (re-run Auditor)")
+                    .help("Re-audit ce projet (force bypass fingerprint cache)")
                     // v1.73 — Copy markdown
                     Button {
                         let md = Self.formatAuditAsMarkdown(audit)
