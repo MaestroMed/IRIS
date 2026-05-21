@@ -301,6 +301,7 @@ public actor Auditor {
 
         // Liste top-level files si localPath dispo (FS scan léger)
         var topLevel: [String] = []
+        var keyFilesExtract = ""
         if let path = info.localPath {
             let url = URL(fileURLWithPath: path)
             topLevel = ((try? FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])) ?? [])
@@ -308,9 +309,12 @@ public actor Auditor {
                 .filter { !$0.hasPrefix(".") && $0 != "node_modules" }
                 .prefix(30)
                 .map { $0 }
+
+            // v1.121 — Read actual key files content (cap 4KB each, ~15KB total)
+            keyFilesExtract = readKeyFiles(at: path)
         }
 
-        return """
+        var prompt = """
         Audit projet `\(codename)` :
 
         - Status : \(info.status)
@@ -318,9 +322,57 @@ public actor Auditor {
         - Stack : \(info.stackJSON)
         - Local path : \(info.localPath ?? "(non clonage local)")
         - Top-level files : \(topLevel.joined(separator: ", "))
-
-        Produis le rapport JSON 8 axes selon le format spécifié.
         """
+
+        if !keyFilesExtract.isEmpty {
+            prompt += "\n\n" + keyFilesExtract
+        }
+
+        prompt += "\n\nProduis le rapport JSON 8 axes selon le format spécifié. Base les findings sur le contenu réel des fichiers ci-dessus quand c'est possible (cite file paths)."
+        return prompt
+    }
+
+    /// v1.121 — Lit le contenu de fichiers clés (README, manifests, CLAUDE.md, main src).
+    /// Cap 4KB par fichier, total ~15KB budget. Skip si > 100KB (binaire/lock).
+    private static func readKeyFiles(at projectPath: String) -> String {
+        let fm = FileManager.default
+        // Priorité top : si présents au top-level, on les lit en premier
+        let priorityNames: [String] = [
+            "README.md", "README", "readme.md",
+            "CLAUDE.md", "AGENTS.md",
+            "package.json", "Package.swift",
+            "pyproject.toml", "Cargo.toml", "Gemfile",
+            "next.config.js", "next.config.mjs", "vite.config.ts",
+            ".env.example",
+            "src/index.ts", "src/index.tsx", "src/index.js",
+            "src/main.swift", "App/Sources/IRISApp.swift",
+            "main.py", "app.py"
+        ]
+
+        var sections: [String] = []
+        var totalBytes = 0
+        let totalBudget = 15_000
+        let perFileCapBytes = 4_000
+
+        for name in priorityNames {
+            if totalBytes >= totalBudget { break }
+            let fullPath = (projectPath as NSString).appendingPathComponent(name)
+            guard fm.fileExists(atPath: fullPath) else { continue }
+            guard let attrs = try? fm.attributesOfItem(atPath: fullPath),
+                  let sizeNum = attrs[.size] as? NSNumber else { continue }
+            let size = sizeNum.intValue
+            if size > 100_000 { continue }  // skip lockfiles / binaires
+            guard let data = try? Data(contentsOf: URL(fileURLWithPath: fullPath)) else { continue }
+            let head = data.prefix(perFileCapBytes)
+            guard let text = String(data: head, encoding: .utf8) else { continue }
+
+            let truncationNote = size > perFileCapBytes ? "\n[…tronqué \(size - perFileCapBytes) bytes…]" : ""
+            sections.append("### \(name) (\(size) bytes)\n```\n\(text)\(truncationNote)\n```")
+            totalBytes += head.count
+        }
+
+        guard !sections.isEmpty else { return "" }
+        return "## Key files extract (cap 4KB/file)\n\n" + sections.joined(separator: "\n\n")
     }
 
     // MARK: — Output parser
