@@ -32,6 +32,7 @@ import AppKit
 /// v1.294 — Cartographer project status Picker (All/Active/Archived/Experimental).
 /// v1.299 — Witness most-used app today badge (iris app.fill).
 /// v1.305 — Compact mode toggle for InspectorView (collapse all section bodies).
+/// v1.311 — Auditor verdict trend stacked bar (30d green/yellow/red ratio).
 
 struct InspectorView: View {
     @Environment(IRISAppState.self) private var appState
@@ -1603,6 +1604,37 @@ struct InspectorView: View {
         }
     }
 
+    // v1.311 — Horizontal stacked bar visualizing GREEN/YELLOW/RED ratio over past 30d.
+    @ViewBuilder
+    private var verdictTrendBar: some View {
+        let total = verdictCounts.green + verdictCounts.yellow + verdictCounts.red
+        if total > 0 {
+            GeometryReader { proxy in
+                HStack(spacing: 1) {
+                    if verdictCounts.green > 0 {
+                        Rectangle()
+                            .fill(.green)
+                            .frame(width: proxy.size.width * CGFloat(verdictCounts.green) / CGFloat(total))
+                    }
+                    if verdictCounts.yellow > 0 {
+                        Rectangle()
+                            .fill(IRISTokens.goldAccent)
+                            .frame(width: proxy.size.width * CGFloat(verdictCounts.yellow) / CGFloat(total))
+                    }
+                    if verdictCounts.red > 0 {
+                        Rectangle()
+                            .fill(.red)
+                            .frame(width: proxy.size.width * CGFloat(verdictCounts.red) / CGFloat(total))
+                    }
+                }
+            }
+            .frame(height: 4)
+            .cornerRadius(2)
+        } else {
+            EmptyView()
+        }
+    }
+
     // v1.209 — Badge "$X.XXX today" inline pour Auditor section header (gold, n'apparaît que si > 0).
     @ViewBuilder
     private var auditorCostBadge: some View {
@@ -1624,6 +1656,8 @@ struct InspectorView: View {
     private var auditorSection: some View {
         VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
             // v1.209 — inlined section header to inject cost-today badge near title/count.
+            // v1.311 — Header + verdict trend bar wrapped in VStack so bar sits under badges row.
+            VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 4) {
                 Text("AUDITOR")
                     .font(.system(size: 10, weight: .semibold)).tracking(1.4).foregroundStyle(.secondary)
@@ -1686,6 +1720,9 @@ struct InspectorView: View {
                 .help(pinned.isPinned(.auditor) ? "Désépingler section" : "Épingler section (toujours visible)")
             }
             .padding(.horizontal, IRISTokens.spacing4)
+            verdictTrendBar
+                .padding(.horizontal, IRISTokens.spacing4)
+            }
 
             HStack(spacing: IRISTokens.spacing8) {
                 Picker("Projet", selection: $auditPickedProject) {

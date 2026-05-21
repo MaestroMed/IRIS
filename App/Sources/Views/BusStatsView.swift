@@ -29,6 +29,7 @@ import AppKit
 /// v1.293 — Hot kinds card: per-kind cell now shows latest event preview (timestamp + payload).
 /// v1.298 — Quietest hour past 24h badge (moon.zzz aqua).
 /// v1.307 — Top 3 correlation chains past 1h card.
+/// v1.313 — Growth rate badge (current vs all-time avg ratio).
 
 struct BusStatsView: View {
     @Query(sort: \EventLog.timestamp, order: .reverse) private var allEvents: [EventLog]
@@ -338,6 +339,44 @@ struct BusStatsView: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
+        .background(Capsule().fill(.thinMaterial))
+    }
+
+    private var growthRate: (current: Double, avg: Double, ratio: Double) {
+        let _ = refreshTick
+        let cutoff = Date().addingTimeInterval(-60)
+        let count = allEvents.filter { $0.timestamp >= cutoff }.count
+        let current = Double(count) / 60.0
+        let avg = totalStats.avgPerHour / 3600
+        let ratio: Double
+        if avg > 0 {
+            ratio = current / avg
+        } else if current > 0 {
+            ratio = 999
+        } else {
+            ratio = 0
+        }
+        return (current, avg, ratio)
+    }
+
+    @ViewBuilder
+    private var growthRateBadge: some View {
+        HStack(spacing: 4) {
+            Image(systemName: growthRate.ratio > 1.5 ? "arrow.up.circle.fill" : (growthRate.ratio < 0.5 ? "arrow.down.circle.fill" : "minus.circle.fill"))
+                .font(.system(size: 12))
+                .foregroundStyle(growthRate.ratio > 1.5 ? .green : (growthRate.ratio < 0.5 ? .red : .secondary))
+            VStack(alignment: .leading, spacing: 0) {
+                Text(String(format: "%.1fx avg", growthRate.ratio))
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(growthRate.ratio > 1.5 ? .green : (growthRate.ratio < 0.5 ? .red : .secondary))
+                Text("GROWTH RATE")
+                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                    .tracking(1.2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
         .background(Capsule().fill(.thinMaterial))
     }
 
@@ -1140,6 +1179,7 @@ struct BusStatsView: View {
             activeSessionsBadge
             hourDeltaBadge
             liveRateBadge
+            growthRateBadge
             latestCriticalBadge
             Button(action: exportMarkdown) {
                 Label("Export MD", systemImage: "square.and.arrow.up")

@@ -24,6 +24,7 @@ import AppKit
 /// v1.291 — Regex search mode toggle (NSRegularExpression case-insensitive).
 /// v1.300 — Duplicate memory names detection banner (gold triangle).
 /// v1.306 — Jump-to-top floating button for memories list.
+/// v1.312 — Date range filter Picker (all/7d/30d/90d) on memories.
 /// Permet à Mehdi d'inspecter ce que Scribe sait, et de tester les requêtes de similarité.
 enum MemorySortMode: String, CaseIterable { case newest, oldest, type, name }
 
@@ -35,6 +36,7 @@ struct MemoryBrowserView: View {
     @State private var searchText: String = ""
     @State private var regexMode: Bool = false  // v1.291
     @State private var tagFilter: String = ""  // v1.84
+    @State private var dateRangeFilter: String = "all"  // v1.312
     @State private var pinnedOnly: Bool = false  // v1.182
     @State private var sortMode: MemorySortMode = .newest  // v1.198
     @State private var retrievalQuery: String = ""
@@ -101,6 +103,17 @@ struct MemoryBrowserView: View {
         }
         if pinnedOnly {
             items = items.filter { isPinned($0) }
+        }
+        let cutoff: Date? = {
+            switch dateRangeFilter {
+            case "7d": return Date().addingTimeInterval(-7 * 86400)
+            case "30d": return Date().addingTimeInterval(-30 * 86400)
+            case "90d": return Date().addingTimeInterval(-90 * 86400)
+            default: return nil
+            }
+        }()
+        if let cutoff {
+            items = items.filter { $0.createdAt >= cutoff }
         }
         return items.sorted { lhs, rhs in
             if isPinned(lhs) != isPinned(rhs) { return isPinned(lhs) }
@@ -315,6 +328,18 @@ struct MemoryBrowserView: View {
             .labelsHidden()
             .controlSize(.small)
             .frame(maxWidth: 140)
+
+            // v1.312 — Date range filter Picker
+            Picker("Date", selection: $dateRangeFilter) {
+                Text("All time").tag("all")
+                Text("Past 7d").tag("7d")
+                Text("Past 30d").tag("30d")
+                Text("Past 90d").tag("90d")
+            }
+            .labelsHidden()
+            .controlSize(.small)
+            .frame(maxWidth: 100)
+            .pickerStyle(.menu)
 
             // v1.182 — Pinned-only filter toggle
             Button {
