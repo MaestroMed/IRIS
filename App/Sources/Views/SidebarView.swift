@@ -3,12 +3,24 @@ import SwiftData
 
 // IRIS v0.0.2 — Sidebar gauche. Liste des 10 agents + section System.
 // v1.53 — badges count signals 1h par agent.
+// v1.329 — Sidebar live activity green dot (events past 60s per agent).
 
 struct SidebarView: View {
     @Environment(IRISAppState.self) private var appState
 
     // v1.53 — Signaux dernière heure pour badges count
     @Query(sort: \Signal.emittedAt, order: .reverse) private var recentSignals: [Signal]
+
+    // v1.329 — EventLog pour pulse activité 60s
+    @Query(sort: \EventLog.timestamp, order: .reverse) private var allSidebarEvents: [EventLog]
+
+    private func isAgentActive60s(_ agent: AgentID) -> Bool {
+        let cutoff = Date().addingTimeInterval(-60)
+        return allSidebarEvents.contains { event in
+            event.timestamp >= cutoff &&
+            (event.fromAgent == agent.rawValue || event.toAgent == agent.rawValue)
+        }
+    }
 
     /// Map source signal → AgentID émetteur (Sentinel pour data feeds, Witness pour screen).
     private static let sourceToAgent: [String: AgentID] = [
@@ -40,7 +52,8 @@ struct SidebarView: View {
                     AgentRow(
                         descriptor: agent.descriptor,
                         status: appState.agentStatus(agent),
-                        signalCount1h: counts[agent] ?? 0
+                        signalCount1h: counts[agent] ?? 0,
+                        isActive60s: isAgentActive60s(agent)
                     )
                         .tag(SidebarSelection.agent(agent))
                 }
@@ -96,6 +109,7 @@ private struct AgentRow: View {
     let descriptor: AgentDescriptor
     let status: AgentStatus
     let signalCount1h: Int  // v1.53
+    let isActive60s: Bool   // v1.329
 
     var body: some View {
         HStack(spacing: IRISTokens.spacing8) {
@@ -131,6 +145,14 @@ private struct AgentRow: View {
                 .fill(status.dotColor)
                 .frame(width: 6, height: 6)
                 .accessibilityLabel("Statut : \(status.rawValue)")
+
+            // v1.329 — pulse vert si event dans les 60 dernières secondes
+            if isActive60s {
+                Circle()
+                    .fill(.green)
+                    .frame(width: 5, height: 5)
+                    .help("Active dans les 60 dernières secondes")
+            }
         }
         .padding(.vertical, 2)
         .contentShape(Rectangle())

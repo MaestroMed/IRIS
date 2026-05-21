@@ -35,6 +35,7 @@ import AppKit
 /// v1.311 — Auditor verdict trend stacked bar (30d green/yellow/red ratio).
 /// v1.320 — Auditor verdict timeline (chronological dots last 20 audits 30d).
 /// v1.326 — Witness "Now:" current frontmost row at top of section.
+/// v1.330 — Conductor today stats row (count + last query timestamp).
 
 struct InspectorView: View {
     @Environment(IRISAppState.self) private var appState
@@ -63,6 +64,9 @@ struct InspectorView: View {
         sort: \EventLog.timestamp,
         order: .reverse
     ) private var allEnvoyEvents: [EventLog]
+
+    // v1.330 — All EventLog entries (used for conductorTodayStats userInput filter)
+    @Query(sort: \EventLog.timestamp, order: .reverse) private var allEvents: [EventLog]
 
     @State private var scaffoldProjectName: String = ""
     @State private var scaffoldSelectedSkill: String = "doc-first-project-scaffolding"
@@ -949,6 +953,39 @@ struct InspectorView: View {
         .foregroundStyle(color)
     }
 
+    // v1.330 — Today's userInput events count + most recent timestamp
+    private var conductorTodayStats: (count: Int, lastQuery: Date?) {
+        let today = allEvents.filter {
+            $0.kind == "userInput" && Calendar.current.isDateInToday($0.timestamp)
+        }
+        let last = today.map { $0.timestamp }.max()
+        return (today.count, last)
+    }
+
+    // v1.330 — Inline row at top of Conductor section (queries today + last timestamp)
+    @ViewBuilder
+    private var conductorStatsRow: some View {
+        if conductorTodayStats.count > 0 {
+            HStack(spacing: 6) {
+                Image(systemName: "bubble.left.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(IRISTokens.aquaTint)
+                Text("\(conductorTodayStats.count) queries today")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(IRISTokens.aquaTint)
+                if let last = conductorTodayStats.lastQuery {
+                    Text("last: \(last, format: .dateTime.hour().minute())")
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+            .padding(.horizontal, IRISTokens.spacing8)
+            .padding(.vertical, 3)
+            .background(IRISTokens.aquaTint.opacity(0.06))
+        }
+    }
+
     // MARK: — v1.38 Conductor session stats
 
     private var conductorSection: some View {
@@ -963,6 +1000,8 @@ struct InspectorView: View {
 
         return VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
             sectionHeader("Conductor", count: messageCount, accent: IRISTokens.irisAccent, pinnable: .conductor)
+
+            conductorStatsRow  // v1.330
 
             VStack(alignment: .leading, spacing: 4) {
                 conductorStatRow(label: "Messages user", value: "\(userMessages)", color: IRISTokens.aquaTint)

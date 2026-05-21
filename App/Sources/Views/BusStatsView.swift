@@ -33,6 +33,7 @@ import AppKit
 /// v1.318 — Top event senders (fromAgent only) card.
 /// v1.322 — First event delay badge (boot → first event time).
 /// v1.325 — Short-term ratio badge (5min/1h rates comparison).
+/// v1.331 — DB size estimate card (UTF-8 bytes of contents in MB).
 
 struct BusStatsView: View {
     @Query(sort: \EventLog.timestamp, order: .reverse) private var allEvents: [EventLog]
@@ -1183,6 +1184,42 @@ struct BusStatsView: View {
         .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
     }
 
+    private var dbSizeEstimateMB: Double {
+        let eventBytes = allEvents.reduce(0) { $0 + $1.payloadJSON.utf8.count + ($1.fromAgent?.utf8.count ?? 0) + ($1.toAgent?.utf8.count ?? 0) + 100 }
+        let memoryBytes = allMemories.reduce(0) { $0 + $1.content.utf8.count + $1.summary.utf8.count + $1.name.utf8.count + $1.tagsCSV.utf8.count + 100 }
+        let auditBytes = allAudits.reduce(0) { $0 + $1.findingsJSON.utf8.count + $1.topActionsJSON.utf8.count + $1.verdict.utf8.count + $1.headline.utf8.count + 100 }
+        let draftBytes = allDrafts.reduce(0) { $0 + $1.content.utf8.count + 100 }
+        let totalBytes = eventBytes + memoryBytes + auditBytes + draftBytes
+        return Double(totalBytes) / (1024 * 1024)
+    }
+
+    @ViewBuilder
+    private var dbSizeCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Image(systemName: "internaldrive")
+                    .foregroundStyle(IRISTokens.aquaTint)
+                Text("DB SIZE ESTIMATE")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .tracking(1.4)
+                    .foregroundStyle(.secondary)
+            }
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text(String(format: "%.2f", dbSizeEstimateMB))
+                    .font(.system(size: 24, weight: .light, design: .serif))
+                    .foregroundStyle(IRISTokens.aquaTint)
+                Text("MB")
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+            Text("Estimation basée sur le UTF-8 des contenus (sans overhead SQLite).")
+                .font(.system(size: 9))
+                .foregroundStyle(.secondary.opacity(0.7))
+        }
+        .padding(IRISTokens.spacing16)
+        .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
+    }
+
     private var statsFooter: some View {
         HStack(spacing: IRISTokens.spacing24) {
             VStack(alignment: .leading, spacing: 1) {
@@ -1298,6 +1335,8 @@ struct BusStatsView: View {
                 statsFooter
 
                 totalRecordsCard
+
+                dbSizeCard
             }
             .padding(IRISTokens.spacing24)
         }
