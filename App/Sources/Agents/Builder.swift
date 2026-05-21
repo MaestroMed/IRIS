@@ -155,6 +155,14 @@ public actor Builder {
             skillContent = "(SKILL.md introuvable ou non-UTF8 à \(skillMdPath))"
         }
 
+        // v1.127 — Parse frontmatter pour pré-remplir le project context
+        let frontmatter = Self.parseSkillFrontmatter(skillContent)
+        let description = (frontmatter["description"] as? String) ?? ""
+        let metadata = (frontmatter["metadata"] as? [String: Any]) ?? [:]
+        let skillType = (metadata["type"] as? String) ?? "(non précisé)"
+        let stackArray = (metadata["stack"] as? [String]) ?? []
+        let stackList = stackArray.isEmpty ? "(non précisé — à remplir)" : stackArray.joined(separator: ", ")
+
         // 1. CLAUDE.md — source de vérité projet, hérite le skill
         let claudeMd = """
         # \(project)
@@ -169,14 +177,14 @@ public actor Builder {
 
         ---
 
-        ## Project-specific context
+        ## Project-specific context (v1.127 — pré-rempli depuis SKILL.md frontmatter)
 
-        _À compléter au fur et à mesure._
-
-        - Stack :
-        - Domaine :
-        - Client / use case :
-        - Liens utiles :
+        - **Type** : \(skillType)
+        - **Stack** (du skill) : \(stackList)
+        - **Description du skill** : \(description.isEmpty ? "(vide dans frontmatter)" : description)
+        - **Domaine** : _à préciser pour ce projet_
+        - **Client / use case** : _à préciser_
+        - **Liens utiles** : _à ajouter_
         """
 
         // 2. README.md générique
@@ -327,6 +335,73 @@ public actor Builder {
         }
 
         return ScaffoldResult(success: true, filesCreated: filesCreated, message: "OK")
+    }
+
+    // v1.127 — Parse YAML frontmatter d'un SKILL.md (entre les deux `---`)
+    /// Retourne un dict avec keys top-level (name, description, metadata). Simple parser :
+    /// `key: value` (string) ou `key: [item1, item2]` (array). `metadata:` nested support.
+    nonisolated static func parseSkillFrontmatter(_ content: String) -> [String: Any] {
+        let lines = content.components(separatedBy: .newlines)
+        guard lines.first == "---" else { return [:] }
+        // Trouve la fin du frontmatter
+        var endIdx = -1
+        for i in 1..<lines.count {
+            if lines[i] == "---" {
+                endIdx = i
+                break
+            }
+        }
+        guard endIdx > 0 else { return [:] }
+        let frontLines = Array(lines[1..<endIdx])
+
+        var result: [String: Any] = [:]
+        var currentNestedKey: String?
+        var nestedDict: [String: Any] = [:]
+
+        for rawLine in frontLines {
+            // Détection indentation nested (2-4 spaces)
+            let trimmed = rawLine.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty { continue }
+            let isNested = rawLine.hasPrefix("  ") || rawLine.hasPrefix("    ")
+
+            if isNested, let key = currentNestedKey {
+                // Parse "  subkey: value" ou "  subkey: [a, b]"
+                let parts = trimmed.split(separator: ":", maxSplits: 1).map { String($0).trimmingCharacters(in: .whitespaces) }
+                guard parts.count == 2 else { continue }
+                let subkey = parts[0]
+                let value = parts[1]
+                if value.hasPrefix("[") && value.hasSuffix("]") {
+                    let inner = value.dropFirst().dropLast()
+                    let items = inner.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "\"'")) }
+                    nestedDict[subkey] = items
+                } else {
+                    nestedDict[subkey] = value.trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+                }
+                result[key] = nestedDict
+            } else {
+                // Top-level key
+                let parts = trimmed.split(separator: ":", maxSplits: 1).map { String($0).trimmingCharacters(in: .whitespaces) }
+                guard parts.count >= 1 else { continue }
+                let key = parts[0]
+                let value = parts.count == 2 ? parts[1] : ""
+                if value.isEmpty {
+                    // Probable nested section qui suit
+                    currentNestedKey = key
+                    nestedDict = [:]
+                    result[key] = nestedDict
+                } else {
+                    currentNestedKey = nil
+                    if value.hasPrefix("[") && value.hasSuffix("]") {
+                        let inner = value.dropFirst().dropLast()
+                        let items = inner.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "\"'")) }
+                        result[key] = items
+                    } else {
+                        result[key] = value.trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+                    }
+                }
+            }
+        }
+        return result
     }
 
     nonisolated private static func isoNow() -> String {
