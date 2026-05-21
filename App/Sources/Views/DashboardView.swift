@@ -14,6 +14,7 @@ import SwiftData
 /// v1.222 — Auditor cost today card (total + per-model breakdown).
 /// v1.229 — Live "+N past 5min" event count badge (aqua circle pulse hint).
 /// v1.234 — Failure rate past 7d card (fails/total + % color-coded green/gold/red).
+/// v1.240 — Hourly avg + peak hour past 24h card (aqua + gold).
 
 struct DashboardView: View {
     @Environment(IRISAppState.self) private var appState
@@ -129,6 +130,9 @@ struct DashboardView: View {
 
                 // v1.216 — Avg response time by agent (dispatched→response delay)
                 avgResponseTimeCard
+
+                // v1.240 — Hourly avg + peak hour past 24h
+                hourlyAvgCard
 
                 // v1.180 — Weekly events trend (7d bar chart sparkline)
                 weeklyTrendCard
@@ -474,6 +478,60 @@ struct DashboardView: View {
         .padding(IRISTokens.spacing16)
         .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
         .overlay(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).strokeBorder(totalAlerts > 0 ? Color.red.opacity(0.6) : Color.clear, lineWidth: 1.5))
+    }
+
+    // v1.240 — Hourly avg + peak past 24h (24 sliding hour buckets ending at now)
+    private var hourlyAvg24h: (avg: Double, max: Int) {
+        let now = Date()
+        var counts: [Int] = []
+        counts.reserveCapacity(24)
+        for i in 0..<24 {
+            let bucketEnd = now.addingTimeInterval(-Double(i) * 3600)
+            let bucketStart = bucketEnd.addingTimeInterval(-3600)
+            let count = allEvents.filter { $0.timestamp >= bucketStart && $0.timestamp < bucketEnd }.count
+            counts.append(count)
+        }
+        let sum = counts.reduce(0, +)
+        let avg = Double(sum) / 24.0
+        let peak = counts.max() ?? 0
+        return (avg: avg, max: peak)
+    }
+
+    private var hourlyAvgCard: some View {
+        let stats = hourlyAvg24h
+        return HStack(spacing: IRISTokens.spacing24) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("HOURLY AVG")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .tracking(1.4)
+                    .foregroundStyle(.secondary)
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(String(format: "%.1f", stats.avg))
+                        .font(.system(size: 22, weight: .light, design: .serif))
+                        .foregroundStyle(IRISTokens.aquaTint)
+                    Text("ev/hour")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("PEAK HOUR")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .tracking(1.4)
+                    .foregroundStyle(.secondary)
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text("\(stats.max)")
+                        .font(.system(size: 22, weight: .light, design: .serif))
+                        .foregroundStyle(IRISTokens.goldAccent)
+                    Text("ev")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(IRISTokens.spacing16)
+        .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
     }
 
     // v1.234 — Failure rate past 7d (per-agent: fails / dispatches → %)

@@ -15,6 +15,7 @@ import AppKit
 /// v1.221 — Divider with "UNPINNED" label between pinned and unpinned groups in mainList.
 /// v1.227 — Bulk add-tag to filtered memories.
 /// v1.233 — Expandable rows with full content (chevron toggle, textSelection enabled).
+/// v1.239 — Cmd+/ focus search TextField (hidden Button).
 /// Permet à Mehdi d'inspecter ce que Scribe sait, et de tester les requêtes de similarité.
 enum MemorySortMode: String, CaseIterable { case newest, oldest, type, name }
 
@@ -35,6 +36,7 @@ struct MemoryBrowserView: View {
     @State private var bulkTagInput: String = ""  // v1.227
     @State private var bulkTagStatus: String?  // v1.227
     @State private var expandedIds: Set<UUID> = []  // v1.233
+    @FocusState private var searchFieldFocused: Bool  // v1.239
 
     private var availableTypes: [String] {
         Array(Set(allMemories.map(\.type))).sorted()
@@ -155,6 +157,11 @@ struct MemoryBrowserView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // v1.239 — Hidden Cmd+/ shortcut to focus search field
+            Button("") { searchFieldFocused = true }
+                .keyboardShortcut(KeyEquivalent("/"), modifiers: .command)
+                .opacity(0)
+                .frame(width: 0, height: 0)
             header
             tagCloud
             Divider()
@@ -325,6 +332,7 @@ struct MemoryBrowserView: View {
                 .textFieldStyle(.roundedBorder)
                 .controlSize(.small)
                 .frame(maxWidth: 240)
+                .focused($searchFieldFocused)
         }
         .padding(IRISTokens.spacing16)
     }

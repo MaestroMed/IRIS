@@ -16,6 +16,7 @@ import AppKit
 /// v1.223 — Bulk "Audit all" button in Cartographer header (sequential 2s delay).
 /// v1.228 — Per-draft model tag (Opus/Sonnet/Haiku capsule color-coded).
 /// v1.236 — Advisor briefings past 7d count badge (iris sun.max).
+/// v1.241 — Witness today captures count badge (aqua eye).
 
 struct InspectorView: View {
     @Environment(IRISAppState.self) private var appState
@@ -407,6 +408,32 @@ struct InspectorView: View {
         }
     }
 
+    // v1.241 — Captures Witness émises aujourd'hui (source="screen" ou "screen-vision")
+    private var witnessTodayCount: Int {
+        allSignals.filter {
+            ($0.source == "screen" || $0.source == "screen-vision")
+                && Calendar.current.isDateInToday($0.emittedAt)
+        }.count
+    }
+
+    // v1.241 — Badge "X today" inline pour Witness section header (aqua eye)
+    @ViewBuilder
+    private var witnessTodayBadge: some View {
+        if witnessTodayCount > 0 {
+            HStack(spacing: 3) {
+                Image(systemName: "eye.fill")
+                    .font(.system(size: 8))
+                    .foregroundStyle(IRISTokens.aquaTint)
+                Text("\(witnessTodayCount) today")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(IRISTokens.aquaTint)
+            }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .background(Capsule().fill(IRISTokens.aquaTint.opacity(0.12)))
+        }
+    }
+
     // v1.101 — Quill dedicated section : last drafts + Sonnet routing badge + cost-this-session
     // v1.172 — Inlined section header to inject "X today" badge between title/count and pin buttons
     private var quillSection: some View {
@@ -616,7 +643,37 @@ struct InspectorView: View {
         // v1.153 — Vision history (source="screen-vision" depuis captureWithVision)
         let visionSignals = allSignals.filter { $0.source == "screen-vision" }.prefix(5)
         return VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
-            sectionHeader("Witness", count: screenSignals.count, accent: IRISTokens.irisAccent, pinnable: .witness)
+            // v1.241 — Inlined section header to inject "X today" Witness captures badge
+            HStack(spacing: 4) {
+                Text("WITNESS")
+                    .font(.system(size: 10, weight: .semibold)).tracking(1.4).foregroundStyle(.secondary)
+                if screenSignals.count > 0 {
+                    Text("\(screenSignals.count)")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundStyle(IRISTokens.irisAccent)
+                }
+                witnessTodayBadge
+                Spacer()
+                Button {
+                    copyAgentSummary(for: .witness, count: screenSignals.count)
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Copy Witness summary Markdown")
+                Button {
+                    pinned.toggle(.witness)
+                } label: {
+                    Image(systemName: pinned.isPinned(.witness) ? "pin.fill" : "pin")
+                        .font(.system(size: 10))
+                        .foregroundStyle(pinned.isPinned(.witness) ? IRISTokens.irisAccent : .secondary)
+                }
+                .buttonStyle(.plain)
+                .help(pinned.isPinned(.witness) ? "Désépingler section" : "Épingler section (toujours visible)")
+            }
+            .padding(.horizontal, IRISTokens.spacing4)
 
             // v1.179 — transient block confirmation feedback
             if let status = blockStatus {
