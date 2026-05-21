@@ -16,6 +16,7 @@ import SwiftData
 /// v1.234 — Failure rate past 7d card (fails/total + % color-coded green/gold/red).
 /// v1.240 — Hourly avg + peak hour past 24h card (aqua + gold).
 /// v1.250 — Today's signals importance stacked bar (critical/high/normal/low).
+/// v1.255 — Cost stack bar inside costTodayCard (per-model colored).
 
 struct DashboardView: View {
     @Environment(IRISAppState.self) private var appState
@@ -698,6 +699,21 @@ struct DashboardView: View {
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
             } else {
+                // v1.255 — Stacked bar per-model cost share
+                let total = costTodayBreakdown.map(\.cost).reduce(0, +)
+                if total > 0 {
+                    GeometryReader { proxy in
+                        HStack(spacing: 1) {
+                            ForEach(Array(costTodayBreakdown.enumerated()), id: \.offset) { _, item in
+                                Rectangle()
+                                    .fill(modelColor(item.model))
+                                    .frame(width: proxy.size.width * CGFloat(item.cost / total))
+                            }
+                        }
+                    }
+                    .frame(height: 6)
+                    .cornerRadius(2)
+                }
                 ForEach(Array(costTodayBreakdown.enumerated()), id: \.offset) { _, item in
                     HStack {
                         Text(item.model)
@@ -1389,7 +1405,7 @@ struct DashboardView: View {
     private func modelColor(_ raw: String) -> Color {
         if raw.contains("opus") { return IRISTokens.irisAccent }
         if raw.contains("sonnet") { return IRISTokens.aquaTint }
-        if raw.contains("haiku") { return .secondary }
+        if raw.contains("haiku") { return IRISTokens.goldAccent }
         return .secondary
     }
 

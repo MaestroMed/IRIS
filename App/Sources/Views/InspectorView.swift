@@ -20,6 +20,7 @@ import AppKit
 /// v1.244 — Cartographer audited/total badge in section header.
 /// v1.247 — Drafts past 30d badge (aqua calendar) after the today/7d badges.
 /// v1.248 — Auditor "RED only" quick filter toggle (.red capsule when active).
+/// v1.254 — Builder total scaffolds count badge (gold hammer).
 
 struct InspectorView: View {
     @Environment(IRISAppState.self) private var appState
@@ -459,6 +460,29 @@ struct InspectorView: View {
             .padding(.horizontal, 4)
             .padding(.vertical, 1)
             .background(Capsule().fill(IRISTokens.aquaTint.opacity(0.12)))
+        }
+    }
+
+    // v1.254 — Total scaffolds run via Builder (ActionLog actionType contains "scaffold")
+    private var builderScaffoldCount: Int {
+        allActionLogs.filter { $0.actionType.contains("scaffold") }.count
+    }
+
+    // v1.254 — Badge "X total" inline pour Builder section header (gold hammer)
+    @ViewBuilder
+    private var builderCountBadge: some View {
+        if builderScaffoldCount > 0 {
+            HStack(spacing: 3) {
+                Image(systemName: "hammer.fill")
+                    .font(.system(size: 8))
+                    .foregroundStyle(IRISTokens.goldAccent)
+                Text("\(builderScaffoldCount) total")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(IRISTokens.goldAccent)
+            }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .background(Capsule().fill(IRISTokens.goldAccent.opacity(0.12)))
         }
     }
 
@@ -1524,7 +1548,37 @@ struct InspectorView: View {
 
     private var builderSection: some View {
         VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
-            sectionHeader("Builder", count: Builder.availableSkills.count, accent: IRISTokens.irisAccent, pinnable: .builder)
+            // v1.254 — Inlined section header to inject "X total" scaffolds badge
+            HStack(spacing: 4) {
+                Text("BUILDER")
+                    .font(.system(size: 10, weight: .semibold)).tracking(1.4).foregroundStyle(.secondary)
+                if Builder.availableSkills.count > 0 {
+                    Text("\(Builder.availableSkills.count)")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundStyle(IRISTokens.irisAccent)
+                }
+                builderCountBadge
+                Spacer()
+                Button {
+                    copyAgentSummary(for: .builder, count: Builder.availableSkills.count)
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Copy Builder summary Markdown")
+                Button {
+                    pinned.toggle(.builder)
+                } label: {
+                    Image(systemName: pinned.isPinned(.builder) ? "pin.fill" : "pin")
+                        .font(.system(size: 10))
+                        .foregroundStyle(pinned.isPinned(.builder) ? IRISTokens.irisAccent : .secondary)
+                }
+                .buttonStyle(.plain)
+                .help(pinned.isPinned(.builder) ? "Désépingler section" : "Épingler section (toujours visible)")
+            }
+            .padding(.horizontal, IRISTokens.spacing4)
 
             Picker("Skill", selection: $scaffoldSelectedSkill) {
                 ForEach(Builder.availableSkills) { skill in
