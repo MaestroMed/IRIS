@@ -16,6 +16,7 @@ import AppKit
 /// v1.225 — 24h heatmap card (one cell per hour, aqua intensity).
 /// v1.231 — Throughput card (events/min × 4 windows: 1m/5m/1h/24h).
 /// v1.237 — Peak day past 7d banner (gold crown).
+/// v1.242 — Period comparisons card (1h/24h/7d vs previous period of same length).
 
 struct BusStatsView: View {
     @Query(sort: \EventLog.timestamp, order: .reverse) private var allEvents: [EventLog]
@@ -347,6 +348,64 @@ struct BusStatsView: View {
         .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
     }
 
+    private var windowTrends: [(window: String, current: Int, previous: Int, deltaPercent: Double)] {
+        let _ = refreshTick
+        let nowDate = Date()
+        let windows: [(String, TimeInterval)] = [
+            ("1h", 3600),
+            ("24h", 86400),
+            ("7d", 7 * 86400)
+        ]
+        return windows.map { label, seconds in
+            let currentCutoff = nowDate.addingTimeInterval(-seconds)
+            let previousCutoff = nowDate.addingTimeInterval(-2 * seconds)
+            let current = allEvents.filter { $0.timestamp >= currentCutoff }.count
+            let previous = allEvents.filter { $0.timestamp >= previousCutoff && $0.timestamp < currentCutoff }.count
+            let deltaPercent: Double
+            if previous > 0 {
+                deltaPercent = (Double(current) - Double(previous)) / Double(previous) * 100
+            } else if current > 0 {
+                deltaPercent = 100
+            } else {
+                deltaPercent = 0
+            }
+            return (window: label, current: current, previous: previous, deltaPercent: deltaPercent)
+        }
+    }
+
+    @ViewBuilder
+    private var windowTrendsCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("PERIOD COMPARISONS")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .tracking(1.4)
+                .foregroundStyle(.secondary)
+            ForEach(Array(windowTrends.enumerated()), id: \.offset) { _, item in
+                HStack {
+                    Text(item.window)
+                        .font(.system(size: 11, weight: .medium))
+                        .frame(width: 40, alignment: .leading)
+                    Text("\(item.current)")
+                        .font(.system(size: 13, design: .monospaced))
+                        .foregroundStyle(IRISTokens.aquaTint)
+                    Text("vs \(item.previous)")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    HStack(spacing: 3) {
+                        Image(systemName: item.current > item.previous ? "arrow.up.right" : (item.current < item.previous ? "arrow.down.right" : "minus"))
+                            .font(.system(size: 10))
+                        Text(String(format: "%+.0f%%", item.deltaPercent))
+                            .font(.system(size: 11, design: .monospaced))
+                    }
+                    .foregroundStyle(item.current > item.previous ? .green : (item.current < item.previous ? .red : .secondary))
+                }
+            }
+        }
+        .padding(IRISTokens.spacing16)
+        .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
+    }
+
     private var totalStats: (total: Int, avgPerHour: Double, earliest: Date?) {
         let total = allEvents.count
         let earliest = allEvents.min { $0.timestamp < $1.timestamp }?.timestamp
@@ -439,6 +498,8 @@ struct BusStatsView: View {
                 throughputCard
 
                 todayVsYesterdayCard
+
+                windowTrendsCard
 
                 topHoursCard
 

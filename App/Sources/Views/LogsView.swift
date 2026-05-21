@@ -15,6 +15,7 @@ import SwiftData
 // v1.230 — Burst detector banner (red alert if >50 events past 60s).
 // v1.235 — Active filters summary chip row (each removable, with color per filter type).
 // v1.238 — Burst threshold now configurable via @AppStorage burstAlertThreshold.
+// v1.243 — Since-launch stat in header (uptime + events since bootstrap).
 
 struct LogsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -253,6 +254,36 @@ struct LogsView: View {
         .background(Capsule().fill(color.opacity(0.12)))
     }
 
+    // v1.243 — Since launch: uptime + event count since bootstrap
+    var sinceLaunchStats: (uptime: String, eventCount: Int) {
+        guard let bootstrapAt = IRISRuntimeInfo.bootstrapAt else {
+            return ("—", 0)
+        }
+        let uptime = Date().timeIntervalSince(bootstrapAt)
+        let formatted: String
+        if uptime < 60 {
+            formatted = "\(Int(uptime))s"
+        } else if uptime < 3600 {
+            formatted = "\(Int(uptime / 60))m \(Int(uptime.truncatingRemainder(dividingBy: 60)))s"
+        } else {
+            formatted = "\(Int(uptime / 3600))h \(Int((uptime.truncatingRemainder(dividingBy: 3600)) / 60))m"
+        }
+        let count = allEvents.filter { $0.timestamp >= bootstrapAt }.count
+        return (formatted, count)
+    }
+
+    @ViewBuilder
+    private var sinceLaunchBadge: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "power")
+                .font(.system(size: 10))
+                .foregroundStyle(IRISTokens.aquaTint.opacity(0.7))
+            Text("Since launch: \(sinceLaunchStats.uptime) · \(sinceLaunchStats.eventCount) events")
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(.secondary)
+        }
+    }
+
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
             Image(systemName: "list.bullet.rectangle")
@@ -263,6 +294,7 @@ struct LogsView: View {
             Text("\(filtered.count)/\(allEvents.count)")
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundStyle(.secondary)
+            sinceLaunchBadge
             if isPaused {
                 Text("PAUSED")
                     .font(.system(size: 9, design: .monospaced))

@@ -17,6 +17,7 @@ import AppKit
 /// v1.228 — Per-draft model tag (Opus/Sonnet/Haiku capsule color-coded).
 /// v1.236 — Advisor briefings past 7d count badge (iris sun.max).
 /// v1.241 — Witness today captures count badge (aqua eye).
+/// v1.244 — Cartographer audited/total badge in section header.
 
 struct InspectorView: View {
     @Environment(IRISAppState.self) private var appState
@@ -854,6 +855,31 @@ struct InspectorView: View {
         }
     }
 
+    // v1.244 — Cartographer audited/total ratio (projects with ≥1 AuditReport).
+    private var auditedProjectCount: (audited: Int, total: Int) {
+        let auditedCodenames = Set(allAudits.map(\.projectCodename))
+        let audited = allProjects.filter { auditedCodenames.contains($0.codename) }.count
+        return (audited: audited, total: allProjects.count)
+    }
+
+    // v1.244 — Badge "X/Y audited" inline pour Cartographer section header (aqua shield)
+    @ViewBuilder
+    private var auditedBadge: some View {
+        if auditedProjectCount.total > 0 {
+            HStack(spacing: 3) {
+                Image(systemName: "checkmark.shield.fill")
+                    .font(.system(size: 8))
+                    .foregroundStyle(IRISTokens.aquaTint)
+                Text("\(auditedProjectCount.audited)/\(auditedProjectCount.total) audited")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(IRISTokens.aquaTint)
+            }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .background(Capsule().fill(IRISTokens.aquaTint.opacity(0.12)))
+        }
+    }
+
     private var cartographerSection: some View {
         // v1.79 — filter status
         let availableStatuses = Array(Set(allProjects.map(\.status))).sorted()
@@ -863,8 +889,16 @@ struct InspectorView: View {
             : searchScoped.filter { $0.status == projectStatusFilter }
         let limited = Array(filtered.prefix(8))
         return VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
-            HStack {
-                sectionHeader("Cartographer", count: filtered.count, accent: IRISTokens.irisAccent, pinnable: .cartographer)
+            // v1.244 — Inlined header to inject "X/Y audited" badge next to title
+            HStack(spacing: 4) {
+                Text("CARTOGRAPHER")
+                    .font(.system(size: 10, weight: .semibold)).tracking(1.4).foregroundStyle(.secondary)
+                if filtered.count > 0 {
+                    Text("\(filtered.count)")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundStyle(IRISTokens.irisAccent)
+                }
+                auditedBadge
                 Spacer()
                 // v1.223 — Bulk audit all visible projects
                 Button { auditAllProjects() } label: {
@@ -875,7 +909,27 @@ struct InspectorView: View {
                 .tint(IRISTokens.aquaTint)
                 .help("Lancer un audit sur tous les projets visibles (filteredProjects, force: true)")
                 .disabled(filteredProjects.isEmpty)
+                // v1.158 — Copy stats summary to clipboard (Markdown)
+                Button {
+                    copyAgentSummary(for: .cartographer, count: filtered.count)
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Copy Cartographer summary Markdown")
+                Button {
+                    pinned.toggle(.cartographer)
+                } label: {
+                    Image(systemName: pinned.isPinned(.cartographer) ? "pin.fill" : "pin")
+                        .font(.system(size: 10))
+                        .foregroundStyle(pinned.isPinned(.cartographer) ? IRISTokens.irisAccent : .secondary)
+                }
+                .buttonStyle(.plain)
+                .help(pinned.isPinned(.cartographer) ? "Désépingler section" : "Épingler section (toujours visible)")
             }
+            .padding(.horizontal, IRISTokens.spacing4)
 
             TextField("Filter projects by codename/path…", text: $cartographerSearch)
                 .textFieldStyle(.roundedBorder)
