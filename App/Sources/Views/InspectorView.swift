@@ -990,12 +990,47 @@ struct InspectorView: View {
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(.secondary)
 
-            if let selected = Builder.availableSkills.first(where: { $0.name == scaffoldSelectedSkill }) {
-                Text(selected.summary)
+            if let adapter = Builder.availableSkills.first(where: { $0.name == scaffoldSelectedSkill }),
+               let entry = SkillRegistry.shared.allSkills.first(where: { $0.name == adapter.name }) {
+                // v1.144 — Badges priorité + source + path
+                HStack(spacing: 4) {
+                    Text(entry.priority.rawValue)
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundStyle(skillPriorityColor(entry.priority))
+                        .padding(.horizontal, 5).padding(.vertical, 1)
+                        .background(skillPriorityColor(entry.priority).opacity(0.15))
+                        .clipShape(Capsule())
+                    Text(entry.source.rawValue)
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    // v1.144 — Bouton reveal SKILL.md dans Finder
+                    Button {
+                        let path = ("~/.claude/skills/\(entry.name)/SKILL.md" as NSString).expandingTildeInPath
+                        if FileManager.default.fileExists(atPath: path) {
+                            NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+                        }
+                    } label: {
+                        Image(systemName: "folder")
+                            .font(.system(size: 10))
+                            .foregroundStyle(IRISTokens.aquaTint)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Reveal SKILL.md dans Finder")
+                }
+                Text(adapter.summary)
                     .font(.system(size: 11))
                     .foregroundStyle(.primary.opacity(0.8))
                     .fixedSize(horizontal: false, vertical: true)
             }
+        }
+    }
+
+    private func skillPriorityColor(_ priority: SkillPriority) -> Color {
+        switch priority {
+        case .high: return IRISTokens.irisAccent
+        case .medium: return IRISTokens.aquaTint
+        case .low: return .secondary
         }
     }
 

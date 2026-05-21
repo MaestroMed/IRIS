@@ -499,6 +499,22 @@ struct DashboardView: View {
                         .foregroundStyle(appState.sessionCostUSD > 0.5 ? IRISTokens.goldAccent : .primary)
                 }
 
+                // v1.145 — Burn rate sparkline 24h (audits + drafts persistés, par tranche horaire)
+                let burnBuckets = costBurnHourlyBuckets()
+                if burnBuckets.contains(where: { $0 > 0 }) {
+                    costSparkline(buckets: burnBuckets)
+                        .frame(height: 24)
+                    HStack {
+                        Text("burn 24h (audits+drafts)")
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Text("$\(String(format: "%.4f", burnBuckets.reduce(0, +)))")
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(IRISTokens.goldAccent)
+                    }
+                }
+
                 // v1.24 — Breakdown par modèle
                 if !appState.costByModel.isEmpty {
                     Divider().padding(.vertical, 2)
@@ -529,6 +545,37 @@ struct DashboardView: View {
                     Text("Mode mock — ajoute clé via Cmd+,")
                         .font(.system(size: 9, design: .monospaced))
                         .foregroundStyle(IRISTokens.goldAccent)
+                }
+            }
+        }
+    }
+
+    // v1.145 — Cost burn rate sparkline 24 buckets horaires (audits + drafts persistés)
+    private func costBurnHourlyBuckets() -> [Double] {
+        var buckets = Array(repeating: 0.0, count: 24)
+        let now = Date()
+        for audit in allAudits where audit.createdAt > now.addingTimeInterval(-86400) {
+            let elapsed = Int(now.timeIntervalSince(audit.createdAt) / 3600)
+            guard elapsed >= 0 && elapsed < 24 else { continue }
+            buckets[23 - elapsed] += audit.costUSD
+        }
+        for draft in allDrafts where draft.createdAt > now.addingTimeInterval(-86400) {
+            let elapsed = Int(now.timeIntervalSince(draft.createdAt) / 3600)
+            guard elapsed >= 0 && elapsed < 24 else { continue }
+            buckets[23 - elapsed] += draft.costUSD
+        }
+        return buckets
+    }
+
+    private func costSparkline(buckets: [Double]) -> some View {
+        let maxVal = max(0.001, buckets.max() ?? 0.001)
+        return GeometryReader { geo in
+            HStack(alignment: .bottom, spacing: 1) {
+                ForEach(Array(buckets.enumerated()), id: \.offset) { _, val in
+                    let ratio = CGFloat(val / maxVal)
+                    Rectangle()
+                        .fill(IRISTokens.goldAccent.opacity(val > 0 ? 0.7 : 0.15))
+                        .frame(height: max(2, geo.size.height * ratio))
                 }
             }
         }

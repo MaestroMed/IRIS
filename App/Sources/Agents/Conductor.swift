@@ -179,6 +179,16 @@ public actor Conductor {
             return
         }
 
+        // v1.143 — /clear command : reset history + transcript (équivalent du bouton Nouvelle conversation)
+        if trimmed == "/clear" || trimmed == "/reset" || trimmed == "nouvelle conversation" {
+            conversationHistory.removeAll()
+            await EventBus.shared.publish(
+                .agentResponse(from: .conductor, content: "🧭 Conversation reset (history vidée). Continue.", eventId: eventId)
+            )
+            irisLog(.info, "Conductor /clear executed", category: IRISLogger.conductor)
+            return
+        }
+
         // v1.130 — Intent classification : detect specialized agent target → dispatch
         if let intent = Self.classifyIntent(text) {
             irisLog(.info, "Conductor dispatch \(intent.agent) (target=\(intent.target ?? "-"))",
@@ -288,6 +298,7 @@ public actor Conductor {
     | `snapshot` _ou_ `vois ce que je fais` | Witness | Capture window + vision Haiku 4.5 |
     | `drafte <contexte>` _ou_ `rédige <contexte>` | Quill | Génère draft Sonnet 4.6 via signal manuel high |
     | `approve last` _ou_ `envoie` | Envoy | Rappel pour vérifier Inspector Pending Actions |
+    | `/clear` _ou_ `/reset` | — | Vide history conversation (zéro coût) |
 
     Tout autre input → réponse Conductor Opus 4.7 standard (streaming, history multi-turn, Scribe context injection).
 
