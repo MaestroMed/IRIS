@@ -229,7 +229,48 @@ public actor Conductor {
             return DetectedIntent(agent: .cartographer, target: nil, original: raw)
         }
 
+        // 5. Scribe : "cherche X", "search X", "rappelle-moi X", "souviens X"
+        if let m = matchFirstCaptureRest(low, pattern: #"^(cherche|search|rappelle-moi|souviens)\s+(.+)$"#) {
+            return DetectedIntent(agent: .scribe, target: m, original: raw)
+        }
+
+        // 6. Witness : "snapshot", "capture window", "vois ce que je fais"
+        if low.hasPrefix("snapshot") || low.contains("capture window")
+            || low.contains("vois ce que je fais") {
+            return DetectedIntent(agent: .witness, target: nil, original: raw)
+        }
+
         return nil
+    }
+
+    /// Helper regex : retourne la suite après le verbe (pour patterns avec query libre).
+    private static func matchFirstCaptureRest(_ text: String, pattern: String) -> String? {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else { return nil }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        guard let match = regex.firstMatch(in: text, options: [], range: range),
+              match.numberOfRanges >= 3,
+              let captureRange = Range(match.range(at: 2), in: text) else { return nil }
+        return String(text[captureRange]).trimmingCharacters(in: .whitespaces)
+    }
+
+    /// v1.131 — Helper Scribe retrieve formatté pour ack dispatch.
+    /// Top 5 mémoires avec scores → markdown lisible pour transcript.
+    @MainActor
+    private static func scribeRetrievalAck(container: ModelContainer, query: String) async -> String {
+        let context = container.mainContext
+        let results = await Scribe.retrieve(query: query, topK: 5, type: nil, projectScope: nil, in: context)
+        if results.isEmpty {
+            return "🧠 Scribe → 0 résultat pour `\(query)`. Les mémoires existantes n'ont pas de match sémantique."
+        }
+        var out = "🧠 Scribe top \(results.count) pour `\(query)` :\n\n"
+        for (idx, item) in results.enumerated() {
+            let (memory, score) = item
+            let scope = memory.projectScope.map { " [\($0)]" } ?? ""
+            out += "**\(idx + 1). \(memory.name)\(scope)** — similarité `\(String(format: "%.2f", score))`\n"
+            let preview = (memory.summary.isEmpty ? memory.content : memory.summary).prefix(120)
+            out += "> \(preview)\n\n"
+        }
+        return out
     }
 
     /// Helper regex : retourne le 2ème groupe capturé (l'argument après le verbe).
@@ -267,6 +308,19 @@ public actor Conductor {
         case .cartographer:
             ack = "🗺️ Dispatch → Cartographer pour refresh complet (~/Developer + gh repo list)."
             Task { await Cartographer.shared.refresh() }
+
+        case .scribe:
+            let query = intent.target ?? ""
+            if let container = modelContainer, !query.isEmpty {
+                let results = await Self.scribeRetrievalAck(container: container, query: query)
+                ack = results
+            } else {
+                ack = "🧠 Dispatch → Scribe mais query vide ou modelContainer indisponible."
+            }
+
+        case .witness:
+            ack = "👁️ Dispatch → Witness capture immédiate (frontmost window + vision si configuré)."
+            Task { await Witness.shared.captureWithVision() }
 
         default:
             ack = "Dispatch \(intent.agent.rawValue) non implémenté — fallback Conductor solo."
