@@ -31,6 +31,7 @@ import AppKit
 /// v1.290 — Cartographer per-project audit count + latest verdict color dot inline.
 /// v1.294 — Cartographer project status Picker (All/Active/Archived/Experimental).
 /// v1.299 — Witness most-used app today badge (iris app.fill).
+/// v1.305 — Compact mode toggle for InspectorView (collapse all section bodies).
 
 struct InspectorView: View {
     @Environment(IRISAppState.self) private var appState
@@ -80,10 +81,30 @@ struct InspectorView: View {
     @State private var cartographerSearch: String = ""   // v1.204 — Cartographer search field
     @State private var cartoStatusFilter: String = ""    // v1.294 — Cartographer status Picker (All/Active/Archived/Experimental)
     @State private var exportAuditsStatus: String? = nil // v1.260 — Export all audits MD transient feedback
+    @AppStorage("inspectorCompactMode") private var compactMode: Bool = false  // v1.305 — collapse all section bodies
+    // TODO: wire compactMode to per-section body conditionals
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: IRISTokens.spacing24) {
+                HStack {
+                    Button {
+                        compactMode.toggle()
+                    } label: {
+                        Label(
+                            compactMode ? "Show details" : "Collapse all",
+                            systemImage: compactMode ? "rectangle.expand.vertical" : "rectangle.compress.vertical"
+                        )
+                        .font(.system(size: 11))
+                    }
+                    .controlSize(.small)
+                    .tint(.secondary)
+                    .help(compactMode ? "Afficher détails de toutes les sections" : "Cacher les corps de sections (mode compact)")
+                    Spacer()
+                }
+                .padding(.horizontal, IRISTokens.spacing16)
+                .padding(.vertical, 4)
+
                 if !appState.pendingActions.isEmpty {
                     pendingActionsSection
                 }

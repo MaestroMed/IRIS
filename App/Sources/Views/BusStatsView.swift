@@ -28,6 +28,7 @@ import AppKit
 /// v1.288 — Period stats selector card (1h/24h/7d/all) with live event count.
 /// v1.293 — Hot kinds card: per-kind cell now shows latest event preview (timestamp + payload).
 /// v1.298 — Quietest hour past 24h badge (moon.zzz aqua).
+/// v1.307 — Top 3 correlation chains past 1h card.
 
 struct BusStatsView: View {
     @Query(sort: \EventLog.timestamp, order: .reverse) private var allEvents: [EventLog]
@@ -229,6 +230,53 @@ struct BusStatsView: View {
         let cutoff = Date().addingTimeInterval(-3600)
         let filtered = allEvents.filter { $0.timestamp >= cutoff }
         return Set(filtered.compactMap { $0.correlationId }).count
+    }
+
+    private var topCorrelationChains1h: [(correlationId: UUID, count: Int)] {
+        let _ = refreshTick
+        let cutoff = Date().addingTimeInterval(-3600)
+        let filtered = allEvents.filter { $0.timestamp >= cutoff && $0.correlationId != nil }
+        let groups = Dictionary(grouping: filtered) { $0.correlationId! }
+            .mapValues { $0.count }
+        return groups
+            .sorted { $0.value > $1.value }
+            .prefix(3)
+            .map { (correlationId: $0.key, count: $0.value) }
+    }
+
+    @ViewBuilder
+    private var topChainsCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("TOP CORRELATION CHAINS PAST 1H")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .tracking(1.4)
+                .foregroundStyle(.secondary)
+            if topCorrelationChains1h.isEmpty {
+                Text("Aucune chaîne corrélée 1h.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(Array(topCorrelationChains1h.enumerated()), id: \.offset) { idx, item in
+                    HStack(spacing: 6) {
+                        Text("#\(idx+1)")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundStyle(IRISTokens.aquaTint)
+                            .frame(width: 24, alignment: .leading)
+                        Image(systemName: "link.circle")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.secondary)
+                        Text(item.correlationId.uuidString.prefix(8))
+                            .font(.system(size: 11, design: .monospaced))
+                        Spacer()
+                        Text("\(item.count) events")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(IRISTokens.aquaTint)
+                    }
+                }
+            }
+        }
+        .padding(IRISTokens.spacing16)
+        .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
     }
 
     private var avgEventsPerSession: (events: Int, sessions: Int, avg: Double) {
@@ -1043,6 +1091,8 @@ struct BusStatsView: View {
                 hotKindsCard
 
                 throughputCard
+
+                topChainsCard
 
                 todayVsYesterdayCard
 

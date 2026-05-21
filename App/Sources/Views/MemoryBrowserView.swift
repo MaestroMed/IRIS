@@ -23,6 +23,7 @@ import AppKit
 /// v1.285 — Per-row "copy UUID" button (number.circle icon).
 /// v1.291 — Regex search mode toggle (NSRegularExpression case-insensitive).
 /// v1.300 — Duplicate memory names detection banner (gold triangle).
+/// v1.306 — Jump-to-top floating button for memories list.
 /// Permet à Mehdi d'inspecter ce que Scribe sait, et de tester les requêtes de similarité.
 enum MemorySortMode: String, CaseIterable { case newest, oldest, type, name }
 
@@ -514,39 +515,62 @@ struct MemoryBrowserView: View {
     }
 
     private var mainList: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 4) {
-                if filtered.isEmpty {
-                    Text("Aucune mémoire correspondante.")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .padding(IRISTokens.spacing24)
-                } else {
-                    let pinned = filtered.filter { isPinned($0) }
-                    let unpinned = filtered.filter { !isPinned($0) }
-                    if !pinned.isEmpty {
-                        ForEach(pinned) { memory in
-                            memoryRow(memory, score: nil, rank: nil)
-                        }
-                        if !unpinned.isEmpty {
-                            HStack(spacing: 4) {
-                                Rectangle().fill(Color.secondary.opacity(0.15)).frame(height: 1)
-                                Text("UNPINNED")
-                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                    .tracking(1.4)
-                                    .foregroundStyle(.secondary.opacity(0.6))
-                                Rectangle().fill(Color.secondary.opacity(0.15)).frame(height: 1)
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 4) {
+                    if filtered.isEmpty {
+                        Text("Aucune mémoire correspondante.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .padding(IRISTokens.spacing24)
+                            .id("top")
+                    } else {
+                        let pinned = filtered.filter { isPinned($0) }
+                        let unpinned = filtered.filter { !isPinned($0) }
+                        if let firstPinned = pinned.first {
+                            memoryRow(firstPinned, score: nil, rank: nil).id("top")
+                            ForEach(pinned.dropFirst()) { memory in
+                                memoryRow(memory, score: nil, rank: nil)
                             }
-                            .padding(.horizontal, IRISTokens.spacing8)
-                            .padding(.vertical, 6)
+                            if !unpinned.isEmpty {
+                                HStack(spacing: 4) {
+                                    Rectangle().fill(Color.secondary.opacity(0.15)).frame(height: 1)
+                                    Text("UNPINNED")
+                                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                        .tracking(1.4)
+                                        .foregroundStyle(.secondary.opacity(0.6))
+                                    Rectangle().fill(Color.secondary.opacity(0.15)).frame(height: 1)
+                                }
+                                .padding(.horizontal, IRISTokens.spacing8)
+                                .padding(.vertical, 6)
+                            }
+                            ForEach(unpinned) { memory in
+                                memoryRow(memory, score: nil, rank: nil)
+                            }
+                        } else if let firstUnpinned = unpinned.first {
+                            memoryRow(firstUnpinned, score: nil, rank: nil).id("top")
+                            ForEach(unpinned.dropFirst()) { memory in
+                                memoryRow(memory, score: nil, rank: nil)
+                            }
                         }
-                    }
-                    ForEach(unpinned) { memory in
-                        memoryRow(memory, score: nil, rank: nil)
                     }
                 }
+                .padding(IRISTokens.spacing8)
             }
-            .padding(IRISTokens.spacing8)
+            .overlay(alignment: .bottomTrailing) {
+                // v1.306 — Jump-to-top floating button
+                Button {
+                    withAnimation { proxy.scrollTo("top", anchor: .top) }
+                } label: {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.system(size: 24))
+                        .foregroundStyle(IRISTokens.aquaTint)
+                        .background(Circle().fill(.regularMaterial))
+                }
+                .buttonStyle(.plain)
+                .padding(IRISTokens.spacing16)
+                .help("Jump to top of memories list")
+            }
         }
     }
 
