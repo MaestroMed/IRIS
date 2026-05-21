@@ -81,6 +81,9 @@ struct DashboardView: View {
                 // v1.135 — 5 phases real status banner (santé exocortex)
                 phasesRealStatusBanner
 
+                // v1.160 — Agent activity dots banner (10 agents live status)
+                agentActivityBanner
+
                 // v1.138 — Quick actions row (most-used)
                 quickActionsRow
 
@@ -139,6 +142,49 @@ struct DashboardView: View {
             .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusMedium).fill(.regularMaterial))
             .overlay(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusMedium).strokeBorder(IRISTokens.irisAccent.opacity(0.15), lineWidth: 0.5))
         }
+    }
+
+    // v1.160 — Agent activity dots banner (10 agents avec status dot live)
+    private var agentActivityBanner: some View {
+        let agents = AgentID.allCases.filter { $0 != .system }
+        return VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
+            HStack {
+                Image(systemName: "circle.hexagongrid.fill")
+                    .foregroundStyle(IRISTokens.irisAccent)
+                    .font(.system(size: 12))
+                Text("AGENTS LIVE")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .tracking(1.4)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            HStack(spacing: 6) {
+                ForEach(agents) { agent in
+                    let status = appState.agentStatus(agent)
+                    HStack(spacing: 4) {
+                        Image(systemName: agent.descriptor.symbol)
+                            .font(.system(size: 10))
+                            .foregroundStyle(.primary)
+                        Text(agent.descriptor.displayName)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.primary)
+                        Circle()
+                            .fill(status.dotColor)
+                            .frame(width: 6, height: 6)
+                    }
+                    .padding(.horizontal, 6).padding(.vertical, 3)
+                    .background(IRISTokens.irisAccent.opacity(0.08))
+                    .clipShape(Capsule())
+                    .contentShape(Capsule())
+                    .onTapGesture { appState.selection = .agent(agent) }
+                    .help("\(agent.descriptor.displayName) — \(status.rawValue)")
+                }
+                Spacer()
+            }
+        }
+        .padding(IRISTokens.spacing16)
+        .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusMedium).fill(.regularMaterial))
+        .overlay(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusMedium).strokeBorder(IRISTokens.irisAccent.opacity(0.15), lineWidth: 0.5))
     }
 
     // v1.138 — Quick actions row (raccourcis aux actions les plus fréquentes)

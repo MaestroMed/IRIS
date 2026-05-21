@@ -1642,6 +1642,21 @@ struct InspectorView: View {
         sectionHeader(title, count: count, accent: accent, pinnable: nil)
     }
 
+    // v1.158 — Copy agent stats summary to clipboard (utile pour share debug ou Notion)
+    private func copyAgentSummary(for id: AgentID, count: Int) {
+        let date = DateFormatter()
+        date.dateFormat = "yyyy-MM-dd HH:mm"
+        let descriptor = id.descriptor
+        var md = "## \(descriptor.displayName) (`\(id.rawValue)`)\n\n"
+        md += "_\(descriptor.tagline)_\n\n"
+        md += "- **Count** : \(count)\n"
+        md += "- **Status** : \(appState.agentStatus(id).rawValue)\n"
+        md += "- **Date snapshot** : \(date.string(from: Date()))\n"
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(md, forType: .string)
+    }
+
     // v1.48 — Header avec bouton pin pour agent sections
     @ViewBuilder
     private func sectionHeader(_ title: String, count: Int, accent: Color, pinnable agentId: AgentID?) -> some View {
@@ -1653,6 +1668,16 @@ struct InspectorView: View {
             }
             Spacer()
             if let agentId {
+                // v1.158 — Copy stats summary to clipboard (Markdown)
+                Button {
+                    copyAgentSummary(for: agentId, count: count)
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Copy \(agentId.descriptor.displayName) summary Markdown")
                 Button {
                     pinned.toggle(agentId)
                 } label: {

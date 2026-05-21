@@ -763,23 +763,36 @@ struct SettingsView: View {
                 subtitle: "Reset complet — supprime UserDefaults iris.* + Keychain Anthropic. Action irréversible."
             )
 
-            Button(role: .destructive) {
-                let alert = NSAlert()
-                alert.messageText = "Reset complet IRIS ?"
-                alert.informativeText = "Cela supprime : API key Anthropic, config skills, sentinel intervals, sidebar visibility, system prompt, model pickers. Les données SwiftData (memories, signals, drafts, audits) restent. Continuer ?"
-                alert.alertStyle = .warning
-                alert.addButton(withTitle: "Reset")
-                alert.addButton(withTitle: "Annuler")
-                if alert.runModal() == .alertFirstButtonReturn {
-                    resetAllSettings()
+            HStack(spacing: IRISTokens.spacing8) {
+                Button(role: .destructive) {
+                    let alert = NSAlert()
+                    alert.messageText = "Reset complet IRIS ?"
+                    alert.informativeText = "Cela supprime : API key Anthropic, config skills, sentinel intervals, sidebar visibility, system prompt, model pickers. Les données SwiftData (memories, signals, drafts, audits) restent. Continuer ?"
+                    alert.alertStyle = .warning
+                    alert.addButton(withTitle: "Reset")
+                    alert.addButton(withTitle: "Annuler")
+                    if alert.runModal() == .alertFirstButtonReturn {
+                        resetAllSettings()
+                    }
+                } label: {
+                    Label("Reset all settings", systemImage: "exclamationmark.triangle.fill")
+                        .font(.system(size: 11))
                 }
-            } label: {
-                Label("Reset all settings", systemImage: "exclamationmark.triangle.fill")
-                    .font(.system(size: 11))
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .tint(.red)
+
+                // v1.159 — Export all settings as Markdown
+                Button {
+                    exportSettingsMarkdown()
+                } label: {
+                    Label("Export config MD", systemImage: "doc.text.below.ecg")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .tint(IRISTokens.aquaTint)
             }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .tint(.red)
         }
     }
 
@@ -795,6 +808,54 @@ struct SettingsView: View {
         apiKeyDraft = ""
         appState.refreshKeyPresence()
         backupStatus = "✅ Reset complet effectué — restart IRIS pour effet plein."
+    }
+
+    // v1.159 — Export all iris.* UserDefaults keys as a Markdown dump, grouped by category.
+    private func exportSettingsMarkdown() {
+        let dict = UserDefaults.standard.dictionaryRepresentation()
+        let irisKeys = dict.keys.filter { $0.hasPrefix("iris.") }.sorted()
+
+        // Group by the prefix between "iris." and the next "."
+        // e.g. "iris.foo.bar" → category "foo"; "iris.foo" → category "_root"
+        var groups: [String: [String]] = [:]
+        for key in irisKeys {
+            let afterPrefix = key.dropFirst("iris.".count)
+            let category: String
+            if let dotIdx = afterPrefix.firstIndex(of: ".") {
+                category = String(afterPrefix[..<dotIdx])
+            } else {
+                category = "_root"
+            }
+            groups[category, default: []].append(key)
+        }
+
+        let isoFormatter = ISO8601DateFormatter()
+        isoFormatter.formatOptions = [.withInternetDateTime]
+        let now = Date()
+        let isoStamp = isoFormatter.string(from: now)
+        // Sanitize ISO for filename (replace ":" since macOS Finder displays them as "/")
+        let safeStamp = isoStamp.replacingOccurrences(of: ":", with: "-")
+
+        var md = "# IRIS Settings Dump — \(isoStamp)\n\n"
+        for category in groups.keys.sorted() {
+            md += "## iris.\(category)\n"
+            for key in groups[category, default: []] {
+                let value = dict[key] ?? "<nil>"
+                md += "- **\(key)** : \(value)\n"
+            }
+            md += "\n"
+        }
+
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let fileURL = home.appendingPathComponent("iris-settings-\(safeStamp).md")
+
+        do {
+            try md.write(to: fileURL, atomically: true, encoding: .utf8)
+            NSWorkspace.shared.activateFileViewerSelecting([fileURL])
+            backupStatus = "✅ Settings dumped → \(fileURL.lastPathComponent)"
+        } catch {
+            backupStatus = "⚠️ Export échoué : \(error.localizedDescription)"
+        }
     }
 
     // MARK: — v1.44 Notifications natives macOS
