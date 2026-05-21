@@ -26,6 +26,7 @@ import AppKit
 /// v1.306 — Jump-to-top floating button for memories list.
 /// v1.312 — Date range filter Picker (all/7d/30d/90d) on memories.
 /// v1.317 — Click info button → memory details sheet (full content + metadata).
+/// v1.324 — Delete confirmation warns explicitly for memories > 500 chars (critical alert style).
 /// Permet à Mehdi d'inspecter ce que Scribe sait, et de tester les requêtes de similarité.
 enum MemorySortMode: String, CaseIterable { case newest, oldest, type, name }
 
@@ -862,14 +863,16 @@ struct MemoryBrowserView: View {
     private func confirmDelete(memory: Memory) {
         let alert = NSAlert()
         alert.messageText = "Supprimer cette memory ?"
-        alert.informativeText = """
+        let isLarge = memory.content.count > 500
+        let warningPrefix = isLarge ? "⚠️ Memory volumineuse (\(memory.content.count) chars) — risque de perte d'info.\n\n" : ""
+        alert.informativeText = warningPrefix + """
         \(memory.type) · \(memory.name)
         \(memory.summary.isEmpty ? String(memory.content.prefix(120)) : memory.summary)
 
         Action irréversible. Si memory factory (seedée depuis ~/.claude/projects/.../memory/),
         elle sera re-seedée au prochain launch IRIS.
         """
-        alert.alertStyle = .warning
+        alert.alertStyle = isLarge ? .critical : .warning
         alert.addButton(withTitle: "Supprimer")
         alert.addButton(withTitle: "Annuler")
         if alert.runModal() == .alertFirstButtonReturn {

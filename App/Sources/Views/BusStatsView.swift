@@ -32,6 +32,7 @@ import AppKit
 /// v1.313 — Growth rate badge (current vs all-time avg ratio).
 /// v1.318 — Top event senders (fromAgent only) card.
 /// v1.322 — First event delay badge (boot → first event time).
+/// v1.325 — Short-term ratio badge (5min/1h rates comparison).
 
 struct BusStatsView: View {
     @Query(sort: \EventLog.timestamp, order: .reverse) private var allEvents: [EventLog]
@@ -380,6 +381,43 @@ struct BusStatsView: View {
         .padding(.horizontal, 6)
         .padding(.vertical, 2)
         .background(Capsule().fill(.thinMaterial))
+    }
+
+    private var shortTermRatio: (rate5min: Double, rate1h: Double, ratio: Double) {
+        let _ = refreshTick
+        let nowDate = Date()
+        let count5min = allEvents.filter { $0.timestamp >= nowDate.addingTimeInterval(-300) }.count
+        let rate5min = Double(count5min) / 5.0
+        let count1h = allEvents.filter { $0.timestamp >= nowDate.addingTimeInterval(-3600) }.count
+        let rate1h = Double(count1h) / 60.0
+        let ratio: Double
+        if rate1h > 0 {
+            ratio = rate5min / rate1h
+        } else if rate5min > 0 {
+            ratio = 999
+        } else {
+            ratio = 0
+        }
+        return (rate5min, rate1h, ratio)
+    }
+
+    @ViewBuilder
+    private var shortTermRatioBadge: some View {
+        HStack(spacing: 4) {
+            Image(systemName: shortTermRatio.ratio > 1.5 ? "arrow.up.right" : (shortTermRatio.ratio < 0.5 ? "arrow.down.right" : "equal"))
+                .font(.system(size: 11))
+                .foregroundStyle(shortTermRatio.ratio > 1.5 ? .green : (shortTermRatio.ratio < 0.5 ? .red : .secondary))
+            Text(String(format: "%.2f", shortTermRatio.ratio))
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundStyle(shortTermRatio.ratio > 1.5 ? .green : (shortTermRatio.ratio < 0.5 ? .red : .secondary))
+            Text("5m/1h")
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(.secondary.opacity(0.7))
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(Capsule().fill(.thinMaterial))
+        .help("Ratio rate(past 5min) / rate(past 1h) — > 1 acceleration, < 1 deceleration")
     }
 
     private var firstEventDelay: TimeInterval? {
@@ -1279,6 +1317,7 @@ struct BusStatsView: View {
             hourDeltaBadge
             liveRateBadge
             growthRateBadge
+            shortTermRatioBadge
             latestCriticalBadge
             Button(action: exportMarkdown) {
                 Label("Export MD", systemImage: "square.and.arrow.up")

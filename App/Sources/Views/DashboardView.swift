@@ -25,6 +25,7 @@ import SwiftData
 /// v1.303 — Recent Quill drafts card (last 3 with tone + subject + content preview).
 /// v1.309 — This week summary card (events/signals/audits/drafts since week-start).
 /// v1.315 — Activity 7d × time-of-day heatmap card (morning/afternoon/evening × 7 days).
+/// v1.323 — Quick "Brief now" trigger button (Advisor.runBriefing manual).
 
 struct DashboardView: View {
     @Environment(IRISAppState.self) private var appState
@@ -60,11 +61,31 @@ struct DashboardView: View {
     // v1.261 — User-adjustable live event count window (min). Default 5min.
     @AppStorage("dashboardLiveWindowMin") private var liveWindowMin: Int = 5
 
+    // v1.323 — Quick "Brief now" status feedback
+    @State private var briefStatus: String?
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: IRISTokens.spacing24) {
                 // v1.195 — System status banner (Witness · Sentinel · MCP)
                 systemStatusBanner
+
+                // v1.323 — Quick "Brief now" trigger (Advisor manual briefing)
+                HStack(spacing: IRISTokens.spacing16) {
+                    Button { triggerQuickBrief() } label: {
+                        Label("Brief now", systemImage: "sun.max.fill")
+                            .font(.system(size: 11))
+                    }
+                    .controlSize(.small)
+                    .tint(IRISTokens.goldAccent)
+                    .help("Lancer un briefing Advisor manuel maintenant (Cmd+B raccourci aussi)")
+
+                    if let status = briefStatus {
+                        Text(status)
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(.green)
+                    }
+                }
 
                 // v1.201 — Milestone v1.200 celebration (auto-hides at v1.206)
                 if isInMilestoneWindow {
@@ -418,6 +439,15 @@ struct DashboardView: View {
     private func dayLabel(_ date: Date) -> String {
         if Calendar.current.isDateInToday(date) { return "Today" }
         return date.formatted(.dateTime.weekday(.abbreviated))
+    }
+
+    // v1.323 — Quick "Brief now" trigger: fires Advisor.runBriefing manual + transient status
+    private func triggerQuickBrief() {
+        Task { await Advisor.shared.runBriefing(kind: .manual) }
+        briefStatus = "✅ Brief lancé…"
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            briefStatus = nil
+        }
     }
 
     // v1.315 — Activity 7d × time-of-day heatmap (rows: oldest→today, cols: morning/afternoon/evening)
