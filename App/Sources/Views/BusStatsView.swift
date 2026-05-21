@@ -5,6 +5,7 @@ import AppKit
 // IRIS v1.36 — Panel stats Bus : compteurs events par kind sur 3 fenêtres temporelles.
 // Affiché quand sidebar System > Stats sélectionné.
 // IRIS v1.164 — Export bus stats snapshot to Markdown (~/iris-busstats-<ISO>.md).
+/// v1.176 — Most-frequent kind past 1h insight banner.
 
 struct BusStatsView: View {
     @Query(sort: \EventLog.timestamp, order: .reverse) private var allEvents: [EventLog]
@@ -23,10 +24,57 @@ struct BusStatsView: View {
         "actionLogged", "agentFailure", "systemLog", "conductorChunk"
     ]
 
+    private var topKind1h: (kind: String, count: Int, percentage: Double)? {
+        let events = lastHour
+        guard !events.isEmpty else { return nil }
+        let groups = Dictionary(grouping: events, by: \.kind).mapValues { $0.count }
+        guard let top = groups.max(by: { $0.value < $1.value }) else { return nil }
+        let total = events.count
+        let percentage = Double(top.value) / Double(total) * 100
+        return (top.key, top.value, percentage)
+    }
+
+    @ViewBuilder
+    private var topKindBanner: some View {
+        if let topKind = topKind1h {
+            HStack(spacing: IRISTokens.spacing8) {
+                Image(systemName: "chart.line.uptrend.xyaxis")
+                    .foregroundStyle(IRISTokens.aquaTint)
+                    .font(.system(size: 14))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("MOST-FREQUENT KIND PAST 1H")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .tracking(1.4)
+                        .foregroundStyle(.secondary)
+                    HStack(spacing: 6) {
+                        Text(topKind.kind)
+                            .font(.system(size: 13, weight: .medium))
+                        Text("\(topKind.count) events")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                        Text(String(format: "(%.0f%%)", topKind.percentage))
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(IRISTokens.aquaTint)
+                    }
+                }
+                Spacer()
+            }
+            .padding(IRISTokens.spacing16)
+            .background(IRISTokens.aquaTint.opacity(0.07))
+        } else {
+            Text("Aucun event dans la dernière heure.")
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+                .padding(8)
+        }
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: IRISTokens.spacing24) {
                 header
+
+                topKindBanner
 
                 cardSection(title: "Dernière heure", total: lastHour.count, events: lastHour, accent: IRISTokens.irisAccent)
                 cardSection(title: "Dernières 24h", total: lastDay.count, events: lastDay, accent: IRISTokens.aquaTint)

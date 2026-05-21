@@ -6,6 +6,7 @@ import AppKit
 /// v1.64 — Delete memory record with confirmation (NSAlert).
 /// v1.84 — Tag filter Picker.
 /// v1.167 — Export filtered memories to Markdown (home dir).
+/// v1.177 — Pin/unpin memory via "pinned" tag, pinned rows sort to top.
 /// Permet à Mehdi d'inspecter ce que Scribe sait, et de tester les requêtes de similarité.
 struct MemoryBrowserView: View {
     @Environment(\.modelContext) private var modelContext
@@ -40,7 +41,36 @@ struct MemoryBrowserView: View {
                 $0.content.lowercased().contains(q)
             }
         }
-        return items
+        return items.sorted { lhs, rhs in
+            if isPinned(lhs) != isPinned(rhs) {
+                return isPinned(lhs)
+            } else {
+                return lhs.createdAt > rhs.createdAt
+            }
+        }
+    }
+
+    // MARK: — v1.177 Pin/Unpin
+
+    private func isPinned(_ memory: Memory) -> Bool {
+        let tags = memory.tagsCSV
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+        return tags.contains("pinned")
+    }
+
+    private func togglePin(_ memory: Memory) {
+        var tags = memory.tagsCSV
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        if let idx = tags.firstIndex(of: "pinned") {
+            tags.remove(at: idx)
+        } else {
+            tags.insert("pinned", at: 0)
+        }
+        memory.tagsCSV = tags.joined(separator: ", ")
+        try? modelContext.save()
     }
 
     /// v1.84 — Liste des tags uniques (split CSV) pour suggestions
@@ -266,6 +296,16 @@ struct MemoryBrowserView: View {
                 Text(memory.createdAt, format: .dateTime.day().month().hour().minute())
                     .font(.system(size: 9, design: .monospaced))
                     .foregroundStyle(.secondary)
+                // v1.177 — Pin/unpin toggle
+                Button {
+                    togglePin(memory)
+                } label: {
+                    Image(systemName: isPinned(memory) ? "pin.fill" : "pin")
+                        .font(.system(size: 9))
+                        .foregroundStyle(isPinned(memory) ? IRISTokens.goldAccent : .secondary.opacity(0.5))
+                }
+                .buttonStyle(.plain)
+                .help(isPinned(memory) ? "Unpin (retire le tag pinned)" : "Pin to top (ajoute le tag pinned)")
                 // v1.64 — Delete with confirmation
                 Button {
                     confirmDelete(memory: memory)

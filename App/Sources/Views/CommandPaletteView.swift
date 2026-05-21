@@ -2,6 +2,7 @@ import SwiftUI
 
 /// v1.46 — Command palette activée par Cmd+K. Sheet avec search bar + actions rapides.
 /// v1.169 — Recent 5 actions section (persisted @AppStorage).
+/// v1.178 — Cmd+1..5 keyboard shortcuts on first 5 visible rows.
 struct CommandPaletteView: View {
     @Environment(IRISAppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
@@ -225,8 +226,8 @@ struct CommandPaletteView: View {
                                 .foregroundStyle(.secondary)
                                 .padding(.horizontal, IRISTokens.spacing8)
                                 .padding(.top, 4)
-                            ForEach(recentActions) { item in
-                                paletteRow(item)
+                            ForEach(Array(recentActions.enumerated()), id: \.element.id) { idx, item in
+                                paletteRow(item, rank: idx + 1)
                             }
                             Divider().padding(.vertical, 4)
                             Text("ALL ACTIONS")
@@ -235,9 +236,16 @@ struct CommandPaletteView: View {
                                 .foregroundStyle(.secondary)
                                 .padding(.horizontal, IRISTokens.spacing8)
                                 .padding(.top, 4)
-                        }
-                        ForEach(filtered) { item in
-                            paletteRow(item)
+                            ForEach(filtered) { item in
+                                paletteRow(item)
+                            }
+                        } else {
+                            ForEach(Array(filtered.prefix(5).enumerated()), id: \.element.id) { idx, item in
+                                paletteRow(item, rank: idx + 1)
+                            }
+                            ForEach(filtered.dropFirst(5)) { item in
+                                paletteRow(item)
+                            }
                         }
                     }
                 }
@@ -255,8 +263,9 @@ struct CommandPaletteView: View {
         recentIdsCSV = list.joined(separator: ",")
     }
 
-    private func paletteRow(_ item: PaletteAction) -> some View {
-        Button {
+    @ViewBuilder
+    private func paletteRow(_ item: PaletteAction, rank: Int? = nil) -> some View {
+        let button = Button {
             recordRecent(item.id)
             item.action()
         } label: {
@@ -272,6 +281,17 @@ struct CommandPaletteView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
+                if let rank, rank >= 1, rank <= 5 {
+                    Text("⌘\(rank)")
+                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 3)
+                                .strokeBorder(Color.secondary.opacity(0.4), lineWidth: 0.5)
+                        )
+                }
             }
             .padding(.vertical, 6)
             .padding(.horizontal, IRISTokens.spacing8)
@@ -279,5 +299,11 @@ struct CommandPaletteView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+
+        if let rank, rank >= 1, rank <= 5 {
+            button.keyboardShortcut(KeyEquivalent(Character("\(rank)")), modifiers: .command)
+        } else {
+            button
+        }
     }
 }
