@@ -255,6 +255,12 @@ public actor Conductor {
             return DetectedIntent(agent: .quill, target: m, original: raw)
         }
 
+        // 8. Envoy : "approve last", "approuve dernière", "envoie", "send last"
+        if low == "approve last" || low == "approuve dernière" || low == "approuve la dernière"
+            || low == "envoie" || low == "send last" || low == "send" {
+            return DetectedIntent(agent: .envoy, target: "approve-last", original: raw)
+        }
+
         return nil
     }
 
@@ -281,6 +287,7 @@ public actor Conductor {
     | `cherche <query>` | Scribe | Retrieve top 5 mémoires NLEmbedding |
     | `snapshot` _ou_ `vois ce que je fais` | Witness | Capture window + vision Haiku 4.5 |
     | `drafte <contexte>` _ou_ `rédige <contexte>` | Quill | Génère draft Sonnet 4.6 via signal manuel high |
+    | `approve last` _ou_ `envoie` | Envoy | Rappel pour vérifier Inspector Pending Actions |
 
     Tout autre input → réponse Conductor Opus 4.7 standard (streaming, history multi-turn, Scribe context injection).
 
@@ -368,6 +375,17 @@ public actor Conductor {
                     projectScope: nil
                 )
             }
+
+        case .envoy:
+            // v1.140 — approve last pending action si présente
+            ack = "🧭 Dispatch → Envoy : check pending actions (approve la dernière s'il y en a). Inspector Pending Actions visible."
+            // Note : real "approve last" nécessite accès AppState (pendingActions UI list).
+            // Pour v1.140, on émet juste un Signal qui sera visible par Mehdi dans Inspector.
+            await EventBus.shared.publish(
+                .signalEmitted(from: .envoy, importance: .low,
+                               summary: "Dispatch Envoy reçu — check Inspector Pending Actions pour approuver manuellement.",
+                               source: "envoy")
+            )
 
         default:
             ack = "Dispatch \(intent.agent.rawValue) non implémenté — fallback Conductor solo."

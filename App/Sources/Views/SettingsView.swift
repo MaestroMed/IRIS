@@ -70,6 +70,10 @@ struct SettingsView: View {
 
             Divider()
 
+            shortcutsCheatsheetSection  // v1.142
+
+            Divider()
+
             dangerZoneSection
 
             Spacer()
@@ -616,6 +620,58 @@ struct SettingsView: View {
         .padding(.horizontal, 6).padding(.vertical, 2)
         .background(Color.red.opacity(0.12))
         .clipShape(Capsule())
+    }
+
+    // MARK: — v1.142 Keyboard shortcuts cheatsheet
+
+    private var shortcutsCheatsheetSection: some View {
+        VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
+            sectionTitle("Raccourcis clavier", subtitle: "Cheatsheet de tous les raccourcis IRIS (référence rapide).")
+
+            let shortcuts: [(category: String, items: [(combo: String, label: String)])] = [
+                ("Conductor",
+                 [("Cmd+Enter", "Envoyer message"),
+                  ("Cmd+K", "Command palette"),
+                  ("Cmd+.", "Stop génération en cours"),
+                  ("Cmd+⌫", "Clear input")]
+                ),
+                ("Agents",
+                 [("Cmd+1..0", "Sélectionner agent 1..10 (Conductor → Advisor)")]
+                ),
+                ("Actions",
+                 [("Cmd+Shift+R", "Refresh Cartographer"),
+                  ("Cmd+Shift+B", "Brief Advisor maintenant"),
+                  ("Cmd+Shift+A", "Audit projet sélectionné")]
+                ),
+                ("Système",
+                 [("Cmd+,", "Settings"),
+                  ("Cmd+Shift+O", "Ouvrir fenêtre principale depuis MenuBar"),
+                  ("Cmd+Q", "Quitter IRIS")]
+                )
+            ]
+
+            ForEach(Array(shortcuts.enumerated()), id: \.offset) { _, group in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(group.category.uppercased())
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                    ForEach(Array(group.items.enumerated()), id: \.offset) { _, item in
+                        HStack {
+                            Text(item.combo)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(IRISTokens.aquaTint)
+                                .frame(width: 130, alignment: .leading)
+                            Text(item.label)
+                                .font(.system(size: 11))
+                                .foregroundStyle(.primary)
+                            Spacer()
+                        }
+                        .padding(.vertical, 1)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+        }
     }
 
     // MARK: — v1.52 Data folders shortcuts + v1.59 EventLog purge

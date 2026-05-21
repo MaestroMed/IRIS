@@ -1175,7 +1175,28 @@ struct InspectorView: View {
 
     private var pendingActionsSection: some View {
         VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
-            sectionHeader("Actions en attente", count: appState.pendingActions.count, accent: .red)
+            HStack {
+                sectionHeader("Actions en attente", count: appState.pendingActions.count, accent: .red)
+                // v1.141 — Batch approve/reject toutes les pending réversibles
+                if appState.pendingActions.contains(where: { $0.isReversible }) {
+                    Button {
+                        let reversibles = appState.pendingActions.filter { $0.isReversible }
+                        Task {
+                            for action in reversibles {
+                                await EventBus.shared.publish(
+                                    .actionApproved(actionId: action.actionId, approvedAt: .now)
+                                )
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "checkmark.seal.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.green)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Approve toutes les actions réversibles (\(appState.pendingActions.filter { $0.isReversible }.count))")
+                }
+            }
 
             ForEach(appState.pendingActions) { action in
                 pendingActionCard(action)
