@@ -23,6 +23,7 @@ import AppKit
 /// v1.254 — Builder total scaffolds count badge (gold hammer).
 /// v1.257 — Envoy pending actions count badge (gold hourglass).
 /// v1.260 — Export all audits MD button in Auditor section header.
+/// v1.266 — Most audited project badge (gold flame).
 
 struct InspectorView: View {
     @Environment(IRISAppState.self) private var appState
@@ -1009,6 +1010,38 @@ struct InspectorView: View {
         }
     }
 
+    // v1.266 — Most audited project (clear leader only; nil if tie or max <= 1).
+    private var mostAuditedProject: (codename: String, count: Int)? {
+        let counts = Dictionary(grouping: allAudits, by: { $0.projectCodename })
+            .mapValues { $0.count }
+        guard let maxCount = counts.values.max(), maxCount > 1 else { return nil }
+        let leaders = counts.filter { $0.value == maxCount }
+        guard leaders.count == 1, let leader = leaders.first else { return nil }
+        return (codename: leader.key, count: leader.value)
+    }
+
+    // v1.266 — Badge "Top: <codename> (<count>)" inline pour Cartographer section header (gold flame)
+    @ViewBuilder
+    private var mostAuditedBadge: some View {
+        if mostAuditedProject == nil {
+            EmptyView()
+        } else {
+            let m = mostAuditedProject!
+            HStack(spacing: 3) {
+                Image(systemName: "flame.fill")
+                    .font(.system(size: 8))
+                    .foregroundStyle(IRISTokens.goldAccent)
+                Text("Top: \(m.codename) (\(m.count))")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(IRISTokens.goldAccent)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .background(Capsule().fill(IRISTokens.goldAccent.opacity(0.12)))
+        }
+    }
+
     private var cartographerSection: some View {
         // v1.79 — filter status
         let availableStatuses = Array(Set(allProjects.map(\.status))).sorted()
@@ -1028,6 +1061,7 @@ struct InspectorView: View {
                         .foregroundStyle(IRISTokens.irisAccent)
                 }
                 auditedBadge
+                mostAuditedBadge
                 Spacer()
                 // v1.223 — Bulk audit all visible projects
                 Button { auditAllProjects() } label: {

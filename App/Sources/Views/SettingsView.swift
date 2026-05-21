@@ -18,6 +18,7 @@ import AppKit
 /// v1.252 — Max events displayed slider for LogsView (@AppStorage).
 /// v1.259 — Reset Witness vision counters button (daily quota + 30d cost history).
 /// v1.262 — Quick-select chips (5/10/20/50) for Conductor history max pairs.
+/// v1.268 — Witness vision daily quota slider (@AppStorage shared with Witness.swift).
 struct SettingsView: View {
     @Environment(IRISAppState.self) private var appState
     @Environment(\.modelContext) private var modelContext
@@ -31,6 +32,7 @@ struct SettingsView: View {
     @AppStorage("witnessVisionEnabled") private var witnessVisionEnabled: Bool = true  // v1.220
     @AppStorage("burstAlertThreshold") private var burstAlertThreshold: Int = 50  // v1.238
     @AppStorage("logsMaxDisplay") private var logsMaxDisplay: Int = 500  // v1.252
+    @AppStorage("iris.witness.visionMaxCallsPerDay") private var witnessVisionDailyCap: Int = 100  // v1.268
     @State private var blocklistRefreshTick: Int = 0  // v1.212 — force re-render after unblock
     @State private var resetVisionStatus: String?  // v1.259
 
@@ -976,6 +978,30 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
+            }
+
+            // v1.268 — Witness vision daily quota slider
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("Vision daily quota")
+                        .font(.system(size: 12))
+                    Spacer()
+                    Text("\(witnessVisionDailyCap) calls/day")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(IRISTokens.aquaTint)
+                }
+                Slider(
+                    value: Binding(
+                        get: { Double(witnessVisionDailyCap) },
+                        set: { witnessVisionDailyCap = Int($0) }
+                    ),
+                    in: 10...500,
+                    step: 10
+                )
+                .controlSize(.small)
+                Text("Limite max appels Witness vision (Haiku) par jour. Reset à minuit.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
             }
 
             // v1.238 — Burst alert threshold (LogsView burst banner trigger)

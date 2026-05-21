@@ -18,6 +18,7 @@ import SwiftData
 /// v1.250 — Today's signals importance stacked bar (critical/high/normal/low).
 /// v1.255 — Cost stack bar inside costTodayCard (per-model colored).
 /// v1.261 — Live window Picker (5/15/30/60min) driving the live count badge.
+/// v1.267 — Most active project past 7d card (audits + signals combined).
 
 struct DashboardView: View {
     @Environment(IRISAppState.self) private var appState
@@ -110,6 +111,9 @@ struct DashboardView: View {
 
                 // v1.222 — Auditor cost today (total + per-model breakdown)
                 costTodayCard
+
+                // v1.267 — Most active project past 7d (audits + signals combined)
+                mostActiveCard
 
                 // v1.102 — Currently focused project (latest Witness signal with project scope)
                 if let focus = latestFocusedSignal {
@@ -730,6 +734,84 @@ struct DashboardView: View {
                             .foregroundStyle(IRISTokens.aquaTint)
                     }
                 }
+            }
+        }
+        .padding(IRISTokens.spacing16)
+        .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
+    }
+
+    // v1.267 — Most active project past 7d (audits + signals combined per codename)
+    private var mostActiveProject7d: (codename: String, auditCount: Int, signalCount: Int, total: Int)? {
+        let cutoff = Date().addingTimeInterval(-7 * 86400)
+
+        // Audits per codename (past 7d)
+        let recentAudits = allAudits.filter { $0.createdAt >= cutoff }
+        let auditsByCode = Dictionary(grouping: recentAudits, by: { $0.projectCodename })
+            .mapValues { $0.count }
+
+        // Signals per codename (past 7d) — use projectScope, fall back to scanning source
+        let recentSignals = allSignals.filter { $0.emittedAt >= cutoff }
+        let knownCodenames = Set(allProjects.map { $0.codename })
+            .union(auditsByCode.keys)
+        var signalsByCode: [String: Int] = [:]
+        for signal in recentSignals {
+            if let scope = signal.projectScope, !scope.isEmpty {
+                signalsByCode[scope, default: 0] += 1
+            } else {
+                let src = signal.source.lowercased()
+                for code in knownCodenames where src.contains(code.lowercased()) {
+                    signalsByCode[code, default: 0] += 1
+                    break
+                }
+            }
+        }
+
+        // Union keys and build totals
+        let allKeys = Set(auditsByCode.keys).union(signalsByCode.keys)
+        var best: (codename: String, auditCount: Int, signalCount: Int, total: Int)?
+        for key in allKeys {
+            let a = auditsByCode[key] ?? 0
+            let s = signalsByCode[key] ?? 0
+            let total = a + s
+            if total > (best?.total ?? 0) {
+                best = (codename: key, auditCount: a, signalCount: s, total: total)
+            }
+        }
+        guard let result = best, result.total > 0 else { return nil }
+        return result
+    }
+
+    private var mostActiveCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("MOST ACTIVE PROJECT PAST 7D")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .tracking(1.4)
+                .foregroundStyle(.secondary)
+            if let m = mostActiveProject7d {
+                HStack(spacing: 12) {
+                    Image(systemName: "star.fill")
+                        .foregroundStyle(IRISTokens.goldAccent)
+                        .font(.system(size: 20))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(m.codename)
+                            .font(.system(size: 14, weight: .medium, design: .serif))
+                        HStack(spacing: 8) {
+                            Text("\(m.auditCount) audits")
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundStyle(IRISTokens.aquaTint)
+                            if m.signalCount > 0 {
+                                Text("\(m.signalCount) signals")
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundStyle(IRISTokens.irisAccent)
+                            }
+                        }
+                    }
+                    Spacer()
+                }
+            } else {
+                Text("Aucune activité projet dans les 7 derniers jours.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
             }
         }
         .padding(IRISTokens.spacing16)
