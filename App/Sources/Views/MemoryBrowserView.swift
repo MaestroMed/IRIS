@@ -14,6 +14,7 @@ import AppKit
 /// v1.215 — Pin all of currently-filtered type bulk action (gold pin.fill button).
 /// v1.221 — Divider with "UNPINNED" label between pinned and unpinned groups in mainList.
 /// v1.227 — Bulk add-tag to filtered memories.
+/// v1.233 — Expandable rows with full content (chevron toggle, textSelection enabled).
 /// Permet à Mehdi d'inspecter ce que Scribe sait, et de tester les requêtes de similarité.
 enum MemorySortMode: String, CaseIterable { case newest, oldest, type, name }
 
@@ -33,6 +34,7 @@ struct MemoryBrowserView: View {
     @State private var copyStatus: [UUID: Bool] = [:]  // v1.208
     @State private var bulkTagInput: String = ""  // v1.227
     @State private var bulkTagStatus: String?  // v1.227
+    @State private var expandedIds: Set<UUID> = []  // v1.233
 
     private var availableTypes: [String] {
         Array(Set(allMemories.map(\.type))).sorted()
@@ -483,6 +485,20 @@ struct MemoryBrowserView: View {
                 Text(memory.createdAt, format: .dateTime.day().month().hour().minute())
                     .font(.system(size: 9, design: .monospaced))
                     .foregroundStyle(.secondary)
+                // v1.233 — Expand/collapse full content
+                Button {
+                    if expandedIds.contains(memory.id) {
+                        expandedIds.remove(memory.id)
+                    } else {
+                        expandedIds.insert(memory.id)
+                    }
+                } label: {
+                    Image(systemName: expandedIds.contains(memory.id) ? "chevron.down.circle.fill" : "chevron.right.circle")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary.opacity(0.7))
+                }
+                .buttonStyle(.plain)
+                .help(expandedIds.contains(memory.id) ? "Collapse content" : "Show full content")
                 // v1.208 — Copy content to pasteboard
                 Button {
                     copyContent(memory)
@@ -519,6 +535,16 @@ struct MemoryBrowserView: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.primary.opacity(0.85))
                     .lineLimit(2)
+            }
+            if expandedIds.contains(memory.id) && !memory.content.isEmpty {
+                Text(memory.content)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.primary.opacity(0.75))
+                    .padding(.top, 4)
+                    .padding(.horizontal, 4)
+                    .background(Color.secondary.opacity(0.05))
+                    .cornerRadius(3)
+                    .textSelection(.enabled)
             }
         }
         .padding(.vertical, 4).padding(.horizontal, IRISTokens.spacing8)

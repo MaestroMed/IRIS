@@ -13,6 +13,7 @@ import SwiftData
 /// v1.216 — Avg response time by agent card (dispatched→response delay).
 /// v1.222 — Auditor cost today card (total + per-model breakdown).
 /// v1.229 — Live "+N past 5min" event count badge (aqua circle pulse hint).
+/// v1.234 — Failure rate past 7d card (fails/total + % color-coded green/gold/red).
 
 struct DashboardView: View {
     @Environment(IRISAppState.self) private var appState
@@ -93,6 +94,9 @@ struct DashboardView: View {
 
                 // v1.173 — Alerts last 1h (failures + critical signals)
                 alertsCard
+
+                // v1.234 — Failure rate past 7d (per-agent fails/total + %)
+                failureRatesCard
 
                 // v1.222 — Auditor cost today (total + per-model breakdown)
                 costTodayCard
@@ -470,6 +474,58 @@ struct DashboardView: View {
         .padding(IRISTokens.spacing16)
         .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
         .overlay(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).strokeBorder(totalAlerts > 0 ? Color.red.opacity(0.6) : Color.clear, lineWidth: 1.5))
+    }
+
+    // v1.234 — Failure rate past 7d (per-agent: fails / dispatches → %)
+    private var failureRatesPast7d: [(agent: String, fails: Int, total: Int, rate: Double)] {
+        let cutoff = Date().addingTimeInterval(-7 * 86400)
+        let recent = allEvents.filter { $0.timestamp >= cutoff }
+        let dispatchCounts = Dictionary(grouping: recent.filter { $0.kind == "agentDispatched" }, by: { $0.toAgent ?? "(unknown)" })
+            .mapValues { $0.count }
+        let failureCounts = Dictionary(grouping: recent.filter { $0.kind == "agentFailure" }, by: { $0.fromAgent ?? "(unknown)" })
+            .mapValues { $0.count }
+        let summary: [(agent: String, fails: Int, total: Int, rate: Double)] = dispatchCounts.compactMap { (agent, total) in
+            guard total > 0 else { return nil }
+            let fails = failureCounts[agent] ?? 0
+            let rate = Double(fails) / Double(total) * 100
+            return (agent: agent, fails: fails, total: total, rate: rate)
+        }
+        .sorted { lhs, rhs in
+            if lhs.rate != rhs.rate { return lhs.rate > rhs.rate }
+            return lhs.fails > rhs.fails
+        }
+        return Array(summary.prefix(5))
+    }
+
+    private var failureRatesCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("FAILURE RATE PAST 7D")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .tracking(1.4)
+                .foregroundStyle(.secondary)
+            if failureRatesPast7d.isEmpty {
+                Text("Aucun dispatch/failure dans les 7 derniers jours.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(Array(failureRatesPast7d.enumerated()), id: \.offset) { _, item in
+                    HStack(spacing: 8) {
+                        Text(item.agent)
+                            .font(.system(size: 11, weight: .medium))
+                            .frame(width: 80, alignment: .leading)
+                        Spacer()
+                        Text("\(item.fails)/\(item.total)")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                        Text(String(format: "%.1f%%", item.rate))
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(item.rate > 10 ? .red : (item.rate > 5 ? IRISTokens.goldAccent : .green))
+                    }
+                }
+            }
+        }
+        .padding(IRISTokens.spacing16)
+        .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
     }
 
     // v1.222 — Auditor cost today (AuditReport.costUSD summed for today)

@@ -13,6 +13,7 @@ import SwiftData
 // v1.219 — Cmd+F keyboard shortcut focuses search TextField.
 // v1.224 — Paste UUID TextField for direct correlation chain filter.
 // v1.230 — Burst detector banner (red alert if >50 events past 60s).
+// v1.235 — Active filters summary chip row (each removable, with color per filter type).
 
 struct LogsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -79,6 +80,7 @@ struct LogsView: View {
                 .opacity(0)
                 .frame(width: 0, height: 0)
             header
+            activeFiltersChips
             burstBanner
             Divider()
             filtersBar
@@ -193,6 +195,59 @@ struct LogsView: View {
             .padding(.horizontal, IRISTokens.spacing16)
             .padding(.vertical, 4)
         }
+    }
+
+    // v1.235 — Active filters chip row (removable per chip)
+    @ViewBuilder
+    private var activeFiltersChips: some View {
+        let hasActiveFilters: Bool = !filterAgent.isEmpty || !filterKind.isEmpty || !filterLevel.isEmpty || filterCorrelationId != nil || !searchText.isEmpty || pastHourOnly
+        if hasActiveFilters {
+            HStack(spacing: 6) {
+                Text("Active:")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                if !filterAgent.isEmpty {
+                    filterChip("agent: \(filterAgent)", color: IRISTokens.irisAccent) { filterAgent = "" }
+                }
+                if !filterKind.isEmpty {
+                    filterChip("kind: \(filterKind)", color: IRISTokens.aquaTint) { filterKind = "" }
+                }
+                if !filterLevel.isEmpty {
+                    filterChip("level: \(filterLevel)", color: .secondary) { filterLevel = "" }
+                }
+                if let cid = filterCorrelationId {
+                    filterChip("corr: \(cid.uuidString.prefix(8))", color: IRISTokens.aquaTint) { filterCorrelationId = nil }
+                }
+                if !searchText.isEmpty {
+                    filterChip("search: \(searchText)", color: .secondary) { searchText = "" }
+                }
+                if pastHourOnly {
+                    filterChip("past 1h", color: IRISTokens.aquaTint) { pastHourOnly = false }
+                }
+                Spacer()
+            }
+            .padding(.horizontal, IRISTokens.spacing16)
+            .padding(.vertical, 4)
+            .background(Color.secondary.opacity(0.05))
+        }
+    }
+
+    private func filterChip(_ label: String, color: Color, onRemove: @escaping () -> Void) -> some View {
+        HStack(spacing: 3) {
+            Text(label)
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(color)
+                .lineLimit(1)
+            Button(action: onRemove) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 9))
+                    .foregroundStyle(color.opacity(0.6))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 5)
+        .padding(.vertical, 1)
+        .background(Capsule().fill(color.opacity(0.12)))
     }
 
     private var header: some View {
