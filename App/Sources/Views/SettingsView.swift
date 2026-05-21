@@ -1681,6 +1681,16 @@ struct SettingsView: View {
 
             Spacer()
 
+            // v1.154 — Status indicator : prochain backup auto-déclenché si > 24h
+            if let last = BackupScheduler.lastBackupAt {
+                let elapsed = Date().timeIntervalSince(last)
+                let isStale = elapsed > 86400
+                Image(systemName: isStale ? "exclamationmark.triangle.fill" : "checkmark.seal.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(isStale ? IRISTokens.goldAccent : .green)
+                    .help(isStale ? "Backup > 24h" : "Backup récent")
+            }
+
             Button {
                 Task {
                     if let url = await BackupScheduler.shared.backupNow() {

@@ -87,6 +87,52 @@ struct CommandPaletteView: View {
             }
         ))
 
+        // v1.152 — Dispatch shortcuts (équivalent commands depuis input bar)
+        actions.append(PaletteAction(
+            id: "show.dispatch.help",
+            title: "Show dispatch help (?)",
+            subtitle: "Liste les 7 commands directes (audit / scaffold / cherche / etc.)",
+            icon: "questionmark.circle",
+            action: {
+                appState.currentInput = "?"
+                appState.selection = .agent(.conductor)
+                dismiss()
+            }
+        ))
+        actions.append(PaletteAction(
+            id: "dispatch.audit.template",
+            title: "Audit projet…",
+            subtitle: "Prepare input `audit <codename>` — tu complètes",
+            icon: "checkmark.shield",
+            action: {
+                appState.currentInput = "audit "
+                appState.selection = .agent(.conductor)
+                dismiss()
+            }
+        ))
+        actions.append(PaletteAction(
+            id: "dispatch.scaffold.template",
+            title: "Scaffold projet…",
+            subtitle: "Prepare input `scaffold <name>` — tu complètes",
+            icon: "hammer",
+            action: {
+                appState.currentInput = "scaffold "
+                appState.selection = .agent(.conductor)
+                dismiss()
+            }
+        ))
+        actions.append(PaletteAction(
+            id: "dispatch.cherche.template",
+            title: "Cherche dans mémoires…",
+            subtitle: "Prepare input `cherche <query>` — Scribe top 5",
+            icon: "magnifyingglass",
+            action: {
+                appState.currentInput = "cherche "
+                appState.selection = .agent(.conductor)
+                dismiss()
+            }
+        ))
+
         return actions
     }
 

@@ -477,6 +477,8 @@ struct InspectorView: View {
 
     private var witnessSection: some View {
         let screenSignals = allSignals.filter { $0.source == "screen" }.prefix(5)
+        // v1.153 — Vision history (source="screen-vision" depuis captureWithVision)
+        let visionSignals = allSignals.filter { $0.source == "screen-vision" }.prefix(5)
         return VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
             sectionHeader("Witness", count: screenSignals.count, accent: IRISTokens.irisAccent, pinnable: .witness)
 
@@ -532,14 +534,47 @@ struct InspectorView: View {
                 Text("Pas encore de capture. Première arrive dans ~10s.")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
             } else {
-                Text("DERNIERS CONTEXTES")
+                Text("DERNIERS CONTEXTES (frontmost)")
                     .font(.system(size: 9, weight: .bold, design: .monospaced))
                     .foregroundStyle(.secondary)
                 ForEach(Array(screenSignals)) { signal in
                     witnessRow(signal)
                 }
             }
+
+            // v1.153 — Vision history (séparée car coût $$ par capture)
+            if !visionSignals.isEmpty {
+                Divider().padding(.vertical, 2)
+                Text("DERNIÈRES VISIONS (Haiku 4.5)")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                ForEach(Array(visionSignals)) { signal in
+                    visionRow(signal)
+                }
+            }
         }
+    }
+
+    // v1.153 — Vision row distincte (eye.fill iris vs rectangle.on.rectangle aqua)
+    private func visionRow(_ signal: Signal) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(alignment: .top) {
+                Image(systemName: "eye.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(IRISTokens.irisAccent)
+                Text(signal.summary)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.primary)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 4)
+                Text(signal.emittedAt, format: .dateTime.hour().minute())
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 3).padding(.horizontal, 6)
+        .background(RoundedRectangle(cornerRadius: 6).fill(IRISTokens.irisAccent.opacity(0.06)))
     }
 
     private func witnessRow(_ signal: Signal) -> some View {
