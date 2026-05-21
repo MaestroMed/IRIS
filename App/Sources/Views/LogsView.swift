@@ -8,6 +8,7 @@ import SwiftData
 // v1.184 — Failures-only quick filter button (sets filterKind=agentFailure).
 // v1.191 — Horizontal stacked breakdown bar (kind colors) above logsList.
 // v1.197 — Cmd+L keyboard shortcut on Clear filters button.
+// v1.203 — CSV export filtered events button (next to Export MD).
 
 struct LogsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -293,6 +294,16 @@ struct LogsView: View {
             .controlSize(.small)
             .help("Export les events filtrés en Markdown")
 
+            // v1.203 — Export filtered logs CSV
+            Button {
+                exportFilteredLogsCSV()
+            } label: {
+                Label("CSV", systemImage: "tablecells")
+                    .font(.system(size: 11))
+            }
+            .controlSize(.small)
+            .help("Export filtered events en CSV (timestamp,kind,from,to,correlationId,payload)")
+
             if let status = exportStatus {
                 Text(status)
                     .font(.system(size: 10, design: .monospaced))
@@ -436,6 +447,31 @@ struct LogsView: View {
             let url = try BackupService.exportEventLogsAsMarkdown(filtered)
             exportStatus = "✅ → \(url.lastPathComponent)"
             // Clear status après 5s
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+                exportStatus = nil
+            }
+        } catch {
+            exportStatus = "⚠️ \(error.localizedDescription)"
+        }
+    }
+
+    // v1.203 — CSV export of currently-filtered events
+    private func exportFilteredLogsCSV() {
+        let iso = ISO8601DateFormatter()
+        var csv = "timestamp,kind,from_agent,to_agent,correlation_id,payload_short\n"
+        for event in filtered {
+            let ts = iso.string(from: event.timestamp)
+            let payloadEscaped = String(event.payloadJSON.prefix(200))
+                .replacingOccurrences(of: "\"", with: "\"\"")
+                .replacingOccurrences(of: "\n", with: " ")
+            csv += "\(ts),\(event.kind),\(event.fromAgent ?? ""),\(event.toAgent ?? ""),\(event.correlationId?.uuidString ?? ""),\"\(payloadEscaped)\"\n"
+        }
+        let isoSafe = iso.string(from: Date()).replacingOccurrences(of: ":", with: "-")
+        let url = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("iris-logs-\(isoSafe).csv")
+        do {
+            try csv.write(to: url, atomically: true, encoding: .utf8)
+            exportStatus = "✅ → \(url.lastPathComponent)"
             DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
                 exportStatus = nil
             }

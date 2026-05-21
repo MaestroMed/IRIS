@@ -9,6 +9,7 @@ import AppKit
 /// v1.185 — Export today's drafts MD button in Quill section header.
 /// v1.192 — Copy verdict mini button on audit row (NSPasteboard).
 /// v1.199 — Drafts past 7d badge (gold calendar.badge.clock) in Quill section header.
+/// v1.204 — Cartographer section search field (codename/path/repo).
 
 struct InspectorView: View {
     @Environment(IRISAppState.self) private var appState
@@ -44,6 +45,7 @@ struct InspectorView: View {
     @State private var blockStatus: String? = nil        // v1.179 — Witness block transient feedback
     @State private var exportDraftsStatus: String? = nil // v1.185 — Export today drafts transient feedback
     @State private var copyVerdictStatus: String? = nil  // v1.192 — Copy verdict transient feedback
+    @State private var cartographerSearch: String = ""   // v1.204 — Cartographer search field
 
     var body: some View {
         ScrollView {
@@ -755,15 +757,31 @@ struct InspectorView: View {
 
     // MARK: — Cartographer
 
+    private var filteredProjects: [ProjectRecord] {
+        let q = cartographerSearch
+        guard !q.isEmpty else { return Array(allProjects) }
+        return allProjects.filter {
+            $0.codename.localizedCaseInsensitiveContains(q)
+                || ($0.localPath?.localizedCaseInsensitiveContains(q) ?? false)
+                || ($0.repoURL?.localizedCaseInsensitiveContains(q) ?? false)
+        }
+    }
+
     private var cartographerSection: some View {
         // v1.79 — filter status
         let availableStatuses = Array(Set(allProjects.map(\.status))).sorted()
+        let searchScoped = filteredProjects
         let filtered = projectStatusFilter.isEmpty
-            ? Array(allProjects)
-            : allProjects.filter { $0.status == projectStatusFilter }
+            ? searchScoped
+            : searchScoped.filter { $0.status == projectStatusFilter }
         let limited = Array(filtered.prefix(8))
         return VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
             sectionHeader("Cartographer", count: filtered.count, accent: IRISTokens.irisAccent, pinnable: .cartographer)
+
+            TextField("Filter projects by codename/path…", text: $cartographerSearch)
+                .textFieldStyle(.roundedBorder)
+                .controlSize(.small)
+                .padding(.horizontal, IRISTokens.spacing8)
 
             HStack {
                 Button {

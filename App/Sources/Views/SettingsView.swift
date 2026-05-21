@@ -8,6 +8,7 @@ import AppKit
 /// v1.187 — Witness Pause/Resume quick toggle (shares @AppStorage key with Witness.swift).
 /// v1.190 — Re-seed memories from disk button (calls MemorySeeder).
 /// v1.196 — Open ~/Developer folder button (Cartographer scan target).
+/// v1.205 — About IRIS section (version, boot, uptime, commit, github link).
 struct SettingsView: View {
     @Environment(IRISAppState.self) private var appState
     @Environment(\.modelContext) private var modelContext
@@ -94,6 +95,10 @@ struct SettingsView: View {
             Divider()
 
             dangerZoneSection
+
+            Divider()
+
+            aboutSection  // v1.205
 
             Spacer()
 
@@ -2254,6 +2259,77 @@ struct SettingsView: View {
                 }
             }
         }
+    }
+
+    // MARK: — About (v1.205)
+
+    private var uptimeString: String {
+        guard let uptime = IRISRuntimeInfo.uptime else { return "—" }
+        let hours = Int(uptime / 3600)
+        let mins = Int(uptime.truncatingRemainder(dividingBy: 3600) / 60)
+        return "\(hours)h \(mins)m"
+    }
+
+    private var aboutSection: some View {
+        VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
+            HStack {
+                Image(systemName: "info.circle")
+                    .foregroundStyle(IRISTokens.irisAccent)
+                Text("À propos d'IRIS")
+                    .font(.system(size: 14, weight: .light, design: .serif))
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("Version")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 100, alignment: .leading)
+                    Text("v\(IRISRuntimeInfo.appVersion)")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(IRISTokens.aquaTint)
+                }
+                HStack {
+                    Text("Boot")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 100, alignment: .leading)
+                    if let bootstrapAt = IRISRuntimeInfo.bootstrapAt {
+                        Text(bootstrapAt, format: .dateTime.day().month().year().hour().minute())
+                            .font(.system(size: 11, design: .monospaced))
+                    } else {
+                        Text("—")
+                            .font(.system(size: 11, design: .monospaced))
+                    }
+                }
+                HStack {
+                    Text("Uptime")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 100, alignment: .leading)
+                    Text(uptimeString)
+                        .font(.system(size: 11, design: .monospaced))
+                }
+                HStack {
+                    Text("Commit")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 100, alignment: .leading)
+                    Text(IRISRuntimeInfo.buildCommit.prefix(8))
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(IRISTokens.goldAccent)
+                }
+            }
+
+            HStack {
+                Spacer()
+                Link("MaestroMed/IRIS", destination: URL(string: "https://github.com/MaestroMed/IRIS")!)
+                    .font(.system(size: 11))
+                    .foregroundStyle(IRISTokens.aquaTint)
+            }
+        }
+        .padding(IRISTokens.spacing16)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
     }
 }
 
