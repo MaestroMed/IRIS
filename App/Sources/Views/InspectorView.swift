@@ -27,6 +27,7 @@ import AppKit
 /// v1.272 — Drafts/hour avg today badge (aqua speedometer).
 /// v1.277 — Scribe retrievals today count badge (aqua magnifyingglass).
 /// v1.279 — Scribe "last memory written" relative timestamp row.
+/// v1.284 — Quill cost today badge (gold dollar) in section header.
 
 struct InspectorView: View {
     @Environment(IRISAppState.self) private var appState
@@ -616,6 +617,41 @@ struct InspectorView: View {
         }
     }
 
+    // v1.284 — Quill cost today grouped by model (sum costUSD per modelUsed, desc)
+    private var quillCostTodayByModel: [(model: String, cost: Double)] {
+        let todays = allDrafts.filter { Calendar.current.isDateInToday($0.createdAt) }
+        let grouped = Dictionary(grouping: todays, by: { $0.modelUsed })
+            .mapValues { $0.reduce(0) { $0 + $1.costUSD } }
+        return grouped
+            .map { (model: $0.key, cost: $0.value) }
+            .sorted { $0.cost > $1.cost }
+    }
+
+    // v1.284 — Total Quill cost today (sum costUSD from today's drafts)
+    private var quillCostTodayTotal: Double {
+        allDrafts
+            .filter { Calendar.current.isDateInToday($0.createdAt) }
+            .reduce(0) { $0 + $1.costUSD }
+    }
+
+    // v1.284 — Badge "$X.XXX" inline pour Quill section header (gold dollar)
+    @ViewBuilder
+    private var quillCostBadge: some View {
+        if quillCostTodayTotal > 0 {
+            HStack(spacing: 3) {
+                Image(systemName: "dollarsign.circle")
+                    .font(.system(size: 8))
+                    .foregroundStyle(IRISTokens.goldAccent)
+                Text(String(format: "$%.3f", quillCostTodayTotal))
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(IRISTokens.goldAccent)
+            }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .background(Capsule().fill(IRISTokens.goldAccent.opacity(0.12)))
+        }
+    }
+
     // v1.236 — Briefings Advisor créés sur les 7 derniers jours (rolling window)
     private var briefingsPast7d: Int {
         let cutoff = Date().addingTimeInterval(-7 * 86400)
@@ -712,6 +748,8 @@ struct InspectorView: View {
                 draftsPast30dBadge
                 Spacer().frame(width: 3)
                 draftsRateBadge
+                Spacer().frame(width: 3)
+                quillCostBadge
                 Spacer()
                 // v1.185 — Export today's drafts as Markdown
                 Button {

@@ -20,6 +20,7 @@ import AppKit
 /// v1.264 — Hide tag cloud toggle (@AppStorage memoryHideTagCloud).
 /// v1.269 — Sort direction indicator icon next to Sort Picker.
 /// v1.275 — Visual relevance bar (40px max) next to retrieval score.
+/// v1.285 — Per-row "copy UUID" button (number.circle icon).
 /// Permet à Mehdi d'inspecter ce que Scribe sait, et de tester les requêtes de similarité.
 enum MemorySortMode: String, CaseIterable { case newest, oldest, type, name }
 
@@ -544,6 +545,17 @@ struct MemoryBrowserView: View {
                 }
                 .buttonStyle(.plain)
                 .help(expandedIds.contains(memory.id) ? "Collapse content" : "Show full content")
+                // v1.285 — Copy UUID to pasteboard
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(memory.id.uuidString, forType: .string)
+                } label: {
+                    Image(systemName: "number.circle")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary.opacity(0.5))
+                }
+                .buttonStyle(.plain)
+                .help("Copier UUID au presse-papier (\(memory.id.uuidString.prefix(8))…)")
                 // v1.208 — Copy content to pasteboard
                 Button {
                     copyContent(memory)

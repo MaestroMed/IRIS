@@ -21,6 +21,7 @@ import SwiftData
 // v1.263 — Sort direction toggle (asc/desc) via @State sortAscending.
 // v1.270 — Per-row "filter by correlation" link button.
 // v1.278 — Search history dropdown (last 10 persisted via @AppStorage).
+// v1.286 — Export ALL events history (no filters) JSON button.
 
 struct LogsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -547,6 +548,17 @@ struct LogsView: View {
             .controlSize(.small)
             .help("Export filtered events en JSON array")
 
+            // v1.286 — Export ALL events history JSON (no filters)
+            Button {
+                exportAllHistoryJSON()
+            } label: {
+                Label("Full JSON", systemImage: "archivebox")
+                    .font(.system(size: 11))
+            }
+            .controlSize(.small)
+            .tint(IRISTokens.goldAccent)
+            .help("Export TOUS les events (\(allEvents.count)) en JSON — ignore les filtres")
+
             if let status = exportStatus {
                 Text(status)
                     .font(.system(size: 10, design: .monospaced))
@@ -758,6 +770,35 @@ struct LogsView: View {
             let data = try JSONSerialization.data(withJSONObject: jsonArray, options: [.prettyPrinted, .sortedKeys])
             try data.write(to: url, options: .atomic)
             exportStatus = "✅ → \(url.lastPathComponent)"
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+                exportStatus = nil
+            }
+        } catch {
+            exportStatus = "⚠️ \(error.localizedDescription)"
+        }
+    }
+
+    // v1.286 — JSON export of ALL events history (ignores filters)
+    private func exportAllHistoryJSON() {
+        let iso = ISO8601DateFormatter()
+        let jsonArray = allEvents.map { event -> [String: Any] in
+            var dict: [String: Any] = [
+                "timestamp": iso.string(from: event.timestamp),
+                "kind": event.kind
+            ]
+            if let from = event.fromAgent { dict["fromAgent"] = from }
+            if let to = event.toAgent { dict["toAgent"] = to }
+            if let cid = event.correlationId { dict["correlationId"] = cid.uuidString }
+            if !event.payloadJSON.isEmpty { dict["payloadJSON"] = event.payloadJSON }
+            return dict
+        }
+        let isoSafe = iso.string(from: Date()).replacingOccurrences(of: ":", with: "-")
+        let url = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("iris-logs-FULL-\(isoSafe).json")
+        do {
+            let data = try JSONSerialization.data(withJSONObject: jsonArray, options: [.prettyPrinted, .sortedKeys])
+            try data.write(to: url, options: .atomic)
+            exportStatus = "✅ → \(url.lastPathComponent) (\(allEvents.count) events)"
             DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
                 exportStatus = nil
             }
