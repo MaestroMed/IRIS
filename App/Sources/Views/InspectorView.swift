@@ -36,6 +36,7 @@ import AppKit
 /// v1.320 — Auditor verdict timeline (chronological dots last 20 audits 30d).
 /// v1.326 — Witness "Now:" current frontmost row at top of section.
 /// v1.330 — Conductor today stats row (count + last query timestamp).
+/// v1.333 — Auditor lifetime cost badge (iris infinity) complement v1.209 today.
 
 struct InspectorView: View {
     @Environment(IRISAppState.self) private var appState
@@ -1632,6 +1633,11 @@ struct InspectorView: View {
             .reduce(0.0) { $0 + $1.costUSD }
     }
 
+    // v1.333 — Sum costUSD across all AuditReport (lifetime, no date filter).
+    private var auditorCostLifetime: Double {
+        allAudits.reduce(0.0) { $0 + $1.costUSD }
+    }
+
     // v1.248 — Quick filter: when auditRedOnly is true, only show audits with verdict "RED".
     private var filteredAudits: [AuditReport] {
         auditRedOnly ? allAudits.filter { $0.verdict == "RED" } : allAudits
@@ -1760,6 +1766,24 @@ struct InspectorView: View {
         }
     }
 
+    // v1.333 — Badge "$X.XX lifetime" inline pour Auditor section header (iris infinity, n'apparaît que si > 0).
+    @ViewBuilder
+    private var auditorCostLifetimeBadge: some View {
+        if auditorCostLifetime > 0 {
+            HStack(spacing: 3) {
+                Image(systemName: "infinity")
+                    .font(.system(size: 8))
+                    .foregroundStyle(IRISTokens.irisAccent)
+                Text(String(format: "$%.2f lifetime", auditorCostLifetime))
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(IRISTokens.irisAccent)
+            }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .background(Capsule().fill(IRISTokens.irisAccent.opacity(0.12)))
+        }
+    }
+
     private var auditorSection: some View {
         VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
             // v1.209 — inlined section header to inject cost-today badge near title/count.
@@ -1774,6 +1798,7 @@ struct InspectorView: View {
                         .foregroundStyle(IRISTokens.irisAccent)
                 }
                 auditorCostBadge
+                auditorCostLifetimeBadge
                 verdictCountsBadge
                 // v1.248 — Auditor "RED only" quick filter toggle
                 Button { auditRedOnly.toggle() } label: {

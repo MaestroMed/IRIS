@@ -27,6 +27,7 @@ import AppKit
 /// v1.312 — Date range filter Picker (all/7d/30d/90d) on memories.
 /// v1.317 — Click info button → memory details sheet (full content + metadata).
 /// v1.324 — Delete confirmation warns explicitly for memories > 500 chars (critical alert style).
+/// v1.334 — Reset all filters button (show if any filter active).
 /// Permet à Mehdi d'inspecter ce que Scribe sait, et de tester les requêtes de similarité.
 enum MemorySortMode: String, CaseIterable { case newest, oldest, type, name }
 
@@ -199,6 +200,23 @@ struct MemoryBrowserView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
             bulkTagStatus = nil
         }
+    }
+
+    // MARK: — v1.334 Reset all filters
+
+    private var hasActiveFilters: Bool {
+        return !typeFilter.isEmpty || !tagFilter.isEmpty || !searchText.isEmpty || pinnedOnly || dateRangeFilter != "all" || sortMode != .newest || regexMode
+    }
+
+    private func resetAllFilters() {
+        typeFilter = ""
+        tagFilter = ""
+        searchText = ""
+        pinnedOnly = false
+        dateRangeFilter = "all"
+        sortMode = .newest
+        regexMode = false
+        // hideTagCloud and bulkTagInput don't need reset (UI prefs vs filters)
     }
 
     /// v1.84 — Liste des tags uniques (split CSV) pour suggestions
@@ -476,6 +494,17 @@ struct MemoryBrowserView: View {
             .padding(.horizontal, 4).padding(.vertical, 1)
             .background(Capsule().fill(regexMode ? IRISTokens.goldAccent.opacity(0.15) : Color.clear))
             .help(regexMode ? "Désactiver le mode regex" : "Activer mode regex (NSRegularExpression case-insensitive)")
+
+            // v1.334 — Reset all filters (shown only when filters active)
+            if hasActiveFilters {
+                Button { resetAllFilters() } label: {
+                    Label("Reset", systemImage: "xmark.circle.fill")
+                        .font(.system(size: 11))
+                }
+                .controlSize(.small)
+                .tint(.red.opacity(0.7))
+                .help("Reset tous les filtres")
+            }
 
             // v1.264 — Hide tag cloud toggle (compact mode)
             Button { hideTagCloud.toggle() } label: {

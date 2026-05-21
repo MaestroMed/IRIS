@@ -30,6 +30,7 @@ import SwiftData
 // v1.314 — Click row to show full payload sheet.
 // v1.319 — Per-agent breakdown row (top 6 from filtered events).
 // v1.327 — Search-text highlighting in payload preview (gold background match).
+// v1.332 — Hide systemLog toggle filter.
 
 struct LogsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -57,6 +58,9 @@ struct LogsView: View {
 
     // v1.296 — Correlated-only quick filter
     @State private var correlationOnly: Bool = false
+
+    // v1.332 — Hide systemLog quick filter
+    @State private var hideSystemLogs: Bool = false
 
     // v1.263 — Sort direction toggle (default desc to preserve existing behavior)
     @State private var sortAscending: Bool = false
@@ -88,6 +92,7 @@ struct LogsView: View {
             .filter { filterCorrelationId == nil || $0.correlationId == filterCorrelationId }
             .filter { !pastHourOnly || $0.timestamp >= Date().addingTimeInterval(-3600) }
             .filter { !correlationOnly || $0.correlationId != nil }
+            .filter { !hideSystemLogs || $0.kind != "systemLog" }
             .filter { searchText.isEmpty || $0.payloadJSON.localizedCaseInsensitiveContains(searchText) || $0.kind.localizedCaseInsensitiveContains(searchText) }
             .prefix(logsMaxDisplay))
         return sortAscending ? arr.reversed() : arr
@@ -553,6 +558,7 @@ struct LogsView: View {
                 searchText = ""
                 pastHourOnly = false
                 correlationOnly = false
+                hideSystemLogs = false
             } label: {
                 HStack(spacing: 4) {
                     Text("Clear")
@@ -614,6 +620,15 @@ struct LogsView: View {
             .controlSize(.small)
             .tint(correlationOnly ? IRISTokens.aquaTint : .secondary)
             .help(correlationOnly ? "Show all events" : "Show only events with correlationId")
+
+            // v1.332 — Hide systemLog quick filter
+            Button { hideSystemLogs.toggle() } label: {
+                Label(hideSystemLogs ? "Show system" : "Hide system", systemImage: hideSystemLogs ? "eye.slash" : "eye")
+                    .font(.system(size: 11))
+            }
+            .controlSize(.small)
+            .tint(hideSystemLogs ? .secondary : IRISTokens.aquaTint)
+            .help(hideSystemLogs ? "Réafficher events systemLog" : "Cacher events systemLog (réduit le bruit)")
 
             // v1.206 — Past hour quick filter
             Button {
