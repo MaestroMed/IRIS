@@ -20,6 +20,7 @@ import SwiftData
 // v1.256 — JSON export filtered events button.
 // v1.263 — Sort direction toggle (asc/desc) via @State sortAscending.
 // v1.270 — Per-row "filter by correlation" link button.
+// v1.278 — Search history dropdown (last 10 persisted via @AppStorage).
 
 struct LogsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -28,6 +29,7 @@ struct LogsView: View {
 
     @AppStorage("burstAlertThreshold") private var burstAlertThreshold: Int = 50  // v1.238
     @AppStorage("logsMaxDisplay") private var logsMaxDisplay: Int = 500  // v1.252
+    @AppStorage("logsSearchHistoryCSV") private var searchHistoryCSV: String = ""  // v1.278
 
     @State private var filterAgent: String = ""
     @State private var filterKind: String = ""
@@ -72,6 +74,23 @@ struct LogsView: View {
             .filter { searchText.isEmpty || $0.payloadJSON.localizedCaseInsensitiveContains(searchText) || $0.kind.localizedCaseInsensitiveContains(searchText) }
             .prefix(logsMaxDisplay))
         return sortAscending ? arr.reversed() : arr
+    }
+
+    // v1.278 — Search history
+    private var searchHistory: [String] {
+        searchHistoryCSV
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+    }
+
+    private func recordSearch(_ text: String) {
+        guard !text.isEmpty else { return }
+        var list = searchHistory
+        list.removeAll { $0 == text }
+        list.insert(text, at: 0)
+        if list.count > 10 { list = Array(list.prefix(10)) }
+        searchHistoryCSV = list.joined(separator: ",")
     }
 
     private func togglePause() {
@@ -356,6 +375,25 @@ struct LogsView: View {
                     .controlSize(.small)
                     .focused($searchFieldFocused)
                     .frame(maxWidth: 300)
+                    .onSubmit { recordSearch(searchText) }  // v1.278
+                // v1.278 — Recent searches dropdown
+                Menu {
+                    if searchHistory.isEmpty {
+                        Text("Pas d'historique").disabled(true)
+                    } else {
+                        ForEach(searchHistory, id: \.self) { item in
+                            Button(item) { searchText = item }
+                        }
+                        Divider()
+                        Button("Clear history") { searchHistoryCSV = "" }
+                    }
+                } label: {
+                    Image(systemName: "clock.arrow.circlepath").font(.system(size: 11))
+                }
+                .controlSize(.small)
+                .menuStyle(.borderlessButton)
+                .frame(width: 24)
+                .help("Historique des recherches récentes")
                 Text("⌘F")
                     .font(.system(size: 9, weight: .semibold, design: .monospaced))
                     .foregroundStyle(.secondary.opacity(0.5))

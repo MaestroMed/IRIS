@@ -23,6 +23,7 @@ import AppKit
 /// v1.265 — Peak hour-of-day all-time badge (gold clock).
 /// v1.271 — Top agents by event count (from + to involvement) card.
 /// v1.276 — Hot kinds past 1h carousel card (top 3 colored cells).
+/// v1.280 — Burstiest minute past 24h card (gold bolt + count + time).
 
 struct BusStatsView: View {
     @Query(sort: \EventLog.timestamp, order: .reverse) private var allEvents: [EventLog]
@@ -542,6 +543,59 @@ struct BusStatsView: View {
         }
     }
 
+    private var burstiestMinute24h: (start: Date, count: Int)? {
+        let _ = refreshTick
+        let cutoff = Date().addingTimeInterval(-86400)
+        let recent = allEvents.filter { $0.timestamp >= cutoff }
+        guard !recent.isEmpty else { return nil }
+        var counts: [Int: Int] = [:]
+        for event in recent {
+            let bucket = Int(event.timestamp.timeIntervalSinceReferenceDate / 60)
+            counts[bucket, default: 0] += 1
+        }
+        guard let top = counts.max(by: { $0.value < $1.value }), top.value > 0 else { return nil }
+        let start = Date(timeIntervalSinceReferenceDate: Double(top.key) * 60)
+        return (start: start, count: top.value)
+    }
+
+    @ViewBuilder
+    private var burstiestMinuteCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("BURSTIEST MINUTE PAST 24H")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .tracking(1.4)
+                .foregroundStyle(.secondary)
+            if burstiestMinute24h == nil {
+                Text("Aucune activité 24h.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            } else {
+                let b = burstiestMinute24h!
+                HStack(spacing: 8) {
+                    Image(systemName: "bolt.fill")
+                        .foregroundStyle(IRISTokens.goldAccent)
+                        .font(.system(size: 16))
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(b.start, format: .dateTime.hour().minute())
+                            .font(.system(size: 14, weight: .medium))
+                        Text(b.start, format: .dateTime.day().month())
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Text("\(b.count)")
+                        .font(.system(size: 24, weight: .light, design: .serif))
+                        .foregroundStyle(IRISTokens.goldAccent)
+                    Text("events")
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(IRISTokens.spacing16)
+        .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
+    }
+
     private var throughputStats: [(window: String, count: Int, rate: Double)] {
         let _ = refreshTick
         let nowDate = Date()
@@ -801,6 +855,8 @@ struct BusStatsView: View {
                 peakDayBadge
 
                 peakHourAllTimeBadge
+
+                burstiestMinuteCard
 
                 heatmap24hCard
 

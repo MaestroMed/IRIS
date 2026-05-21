@@ -26,6 +26,7 @@ import AppKit
 /// v1.266 — Most audited project badge (gold flame).
 /// v1.272 — Drafts/hour avg today badge (aqua speedometer).
 /// v1.277 — Scribe retrievals today count badge (aqua magnifyingglass).
+/// v1.279 — Scribe "last memory written" relative timestamp row.
 
 struct InspectorView: View {
     @Environment(IRISAppState.self) private var appState
@@ -392,6 +393,44 @@ struct InspectorView: View {
         }
     }
 
+    // v1.279 — Relative timestamp for the most recent memory (allMemoriesForScribe is unsorted,
+    // so reduce-by-max instead of trusting .first).
+    private var scribeLastMemoryAgo: String? {
+        guard let latest = allMemoriesForScribe.max(by: { $0.createdAt < $1.createdAt }) else {
+            return nil
+        }
+        let elapsed = Date().timeIntervalSince(latest.createdAt)
+        if elapsed < 60 {
+            return "\(Int(elapsed))s ago"
+        } else if elapsed < 3600 {
+            return "\(Int(elapsed / 60))m ago"
+        } else if elapsed < 86400 {
+            return "\(Int(elapsed / 3600))h ago"
+        } else if elapsed < 604800 {
+            return "\(Int(elapsed / 86400))d ago"
+        } else {
+            return latest.createdAt.formatted(.dateTime.day().month().year())
+        }
+    }
+
+    // v1.279 — "Dernière memory: Xs ago" row, displayed near top of Scribe section.
+    @ViewBuilder
+    private var scribeLastMemoryRow: some View {
+        if let ago = scribeLastMemoryAgo {
+            HStack(spacing: 6) {
+                Image(systemName: "memorychip")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary.opacity(0.7))
+                Text("Dernière memory: \(ago)")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            .padding(.horizontal, IRISTokens.spacing8)
+            .padding(.vertical, 3)
+        }
+    }
+
     // v1.105 — Scribe dedicated section : memory breakdown by type + latest stored
     // v1.277 — Inlined header pour insérer scribeBadge à côté du titre.
     private var scribeSection: some View {
@@ -430,6 +469,8 @@ struct InspectorView: View {
                 .help(pinned.isPinned(.scribe) ? "Désépingler section" : "Épingler section (toujours visible)")
             }
             .padding(.horizontal, IRISTokens.spacing4)
+
+            scribeLastMemoryRow  // v1.279
 
             HStack(spacing: 4) {
                 Image(systemName: AgentID.scribe.descriptor.symbol)
