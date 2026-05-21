@@ -1,6 +1,7 @@
 import Foundation
 
 // v1.200 — MILESTONE 200 versions shipped (60 features over 23 mega-swarm bundles · perso production-ready).
+// v1.281 — MILESTONE 50 mega-swarm bundles shipped (3 sub-agents in parallel pattern × 50 cycles · 148 features cumulés depuis v1.0).
 
 /// v1.83 — Runtime info IRIS : version courante + bootstrap timestamp + uptime + git commit court.
 /// Affiché dans Settings (info section).
@@ -12,7 +13,9 @@ public enum IRISRuntimeInfo {
     /// fingerprint cache + SHA256 dedup + auto-save /clear.
     /// v1.200 — MILESTONE 200 versions shipped (60 features over 23 mega-swarm
     /// bundles · perso production-ready).
-    public static let appVersion = "1.200"
+    /// v1.281 — MILESTONE 50 mega-swarm bundles shipped (3 sub-agents in
+    /// parallel pattern × 50 cycles · 148 features cumulés depuis v1.0).
+    public static let appVersion = "1.281"
 
     /// Timestamp du bootstrap IRIS (set par IRISApp.bootstrap au launch).
     public nonisolated(unsafe) static var bootstrapAt: Date?

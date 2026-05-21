@@ -24,9 +24,16 @@ import AppKit
 /// v1.271 — Top agents by event count (from + to involvement) card.
 /// v1.276 — Hot kinds past 1h carousel card (top 3 colored cells).
 /// v1.280 — Burstiest minute past 24h card (gold bolt + count + time).
+/// v1.283 — Total records in DB card (per-model counts horizontal).
 
 struct BusStatsView: View {
     @Query(sort: \EventLog.timestamp, order: .reverse) private var allEvents: [EventLog]
+    @Query private var allMemories: [Memory]
+    @Query private var allAudits: [AuditReport]
+    @Query private var allDrafts: [Draft]
+    @Query private var allSignals: [Signal]
+    @Query private var allProjects: [ProjectRecord]
+    @Query private var allActionLogs: [ActionLog]
 
     @State private var autoRefresh: Bool = false
     @State private var refreshTick: Int = 0
@@ -766,6 +773,77 @@ struct BusStatsView: View {
         return (total, avgPerHour, earliest)
     }
 
+    @ViewBuilder
+    private var totalRecordsCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("RECORDS IN DB")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .tracking(1.4)
+                .foregroundStyle(.secondary)
+            HStack(spacing: IRISTokens.spacing16) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("EVENTS")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                    Text("\(allEvents.count)")
+                        .font(.system(size: 14, weight: .light, design: .serif))
+                        .foregroundStyle(IRISTokens.aquaTint)
+                }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("MEMORIES")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                    Text("\(allMemories.count)")
+                        .font(.system(size: 14, weight: .light, design: .serif))
+                        .foregroundStyle(IRISTokens.aquaTint)
+                }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("AUDITS")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                    Text("\(allAudits.count)")
+                        .font(.system(size: 14, weight: .light, design: .serif))
+                        .foregroundStyle(IRISTokens.aquaTint)
+                }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("DRAFTS")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                    Text("\(allDrafts.count)")
+                        .font(.system(size: 14, weight: .light, design: .serif))
+                        .foregroundStyle(IRISTokens.aquaTint)
+                }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("SIGNALS")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                    Text("\(allSignals.count)")
+                        .font(.system(size: 14, weight: .light, design: .serif))
+                        .foregroundStyle(IRISTokens.aquaTint)
+                }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("PROJECTS")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                    Text("\(allProjects.count)")
+                        .font(.system(size: 14, weight: .light, design: .serif))
+                        .foregroundStyle(IRISTokens.aquaTint)
+                }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("ACTIONS")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                    Text("\(allActionLogs.count)")
+                        .font(.system(size: 14, weight: .light, design: .serif))
+                        .foregroundStyle(IRISTokens.aquaTint)
+                }
+                Spacer()
+            }
+        }
+        .padding(IRISTokens.spacing16)
+        .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
+    }
+
     private var statsFooter: some View {
         HStack(spacing: IRISTokens.spacing24) {
             VStack(alignment: .leading, spacing: 1) {
@@ -871,6 +949,8 @@ struct BusStatsView: View {
                 Spacer()
 
                 statsFooter
+
+                totalRecordsCard
             }
             .padding(IRISTokens.spacing24)
         }

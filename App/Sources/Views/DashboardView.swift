@@ -9,6 +9,7 @@ import SwiftData
 /// v1.186 — Memory growth past 7d mini stat card (gold).
 /// v1.195 — System status banner (Witness · Sentinel · MCP) at top of dashboard.
 /// v1.201 — Milestone v1.200 celebration card (auto-hides at v1.206).
+/// v1.282 — Extended milestone window for v1.281 (50 bundles) celebration.
 /// v1.210 — Recent activity feed card (last 5 events).
 /// v1.216 — Avg response time by agent card (dispatched→response delay).
 /// v1.222 — Auditor cost today card (total + per-model breakdown).
@@ -1085,27 +1086,46 @@ struct DashboardView: View {
 
     // MARK: — v1.201 Milestone celebration
 
-    /// True iff current appVersion patch is in [200, 205]. Card auto-hides at 1.206+.
+    /// True iff current appVersion patch is in [200, 205] OR [281, 285]. Card auto-hides outside.
     private var isInMilestoneWindow: Bool {
         let parts = IRISRuntimeInfo.appVersion.split(separator: ".")
         guard parts.count >= 3, let patch = Int(parts[2]) else { return false }
-        return patch >= 200 && patch <= 205
+        return (patch >= 200 && patch <= 205) || (patch >= 281 && patch <= 285)
+    }
+
+    /// Current milestone copy based on appVersion patch window.
+    private var milestoneCopy: (banner: String, title: String, subtitle: String) {
+        let parts = IRISRuntimeInfo.appVersion.split(separator: ".")
+        let patch = parts.count >= 3 ? Int(parts[2]) ?? 0 : 0
+        if patch >= 281 && patch <= 285 {
+            return (
+                "MILESTONE v1.281 · 50 BUNDLES SHIPPED",
+                "50 bundles shipped · IRIS exocortex perso",
+                "3 sub-agents parallèle · 50 cycles · 148 features cumulés"
+            )
+        }
+        return (
+            "MILESTONE v1.200",
+            "200 versions shipped · IRIS exocortex perso",
+            "23 mega-swarm bundles · multi-agent SwiftUI · 0→200 sans interruption"
+        )
     }
 
     private var milestoneCard: some View {
-        HStack(spacing: IRISTokens.spacing16) {
+        let copy = milestoneCopy
+        return HStack(spacing: IRISTokens.spacing16) {
             Image(systemName: "star.circle.fill")
                 .foregroundStyle(IRISTokens.goldAccent)
                 .font(.system(size: 24))
             VStack(alignment: .leading, spacing: 2) {
-                Text("MILESTONE v1.200")
+                Text(copy.banner)
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                     .tracking(1.4)
                     .foregroundStyle(IRISTokens.goldAccent)
-                Text("200 versions shipped · IRIS exocortex perso")
+                Text(copy.title)
                     .font(.system(size: 13, weight: .light, design: .serif))
                     .foregroundStyle(.primary)
-                Text("23 mega-swarm bundles · multi-agent SwiftUI · 0→200 sans interruption")
+                Text(copy.subtitle)
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundStyle(.secondary)
             }
