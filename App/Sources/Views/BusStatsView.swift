@@ -10,6 +10,7 @@ import AppKit
 /// v1.189 — CSV export per kind (1h/24h/all-time) to home dir.
 /// v1.193 — Stats footer (total + avg/h + earliest event date).
 /// v1.202 — Past hour delta % vs previous hour badge (arrow up/down).
+/// v1.207 — Today vs yesterday comparison card (counts + delta %).
 
 struct BusStatsView: View {
     @Query(sort: \EventLog.timestamp, order: .reverse) private var allEvents: [EventLog]
@@ -81,6 +82,59 @@ struct BusStatsView: View {
         .padding(.horizontal, 6)
         .padding(.vertical, 2)
         .background(Capsule().fill(.thinMaterial))
+    }
+
+    private var todayVsYesterday: (today: Int, yesterday: Int) {
+        let _ = refreshTick
+        let cal = Calendar.current
+        let today = allEvents.filter { cal.isDateInToday($0.timestamp) }.count
+        let yesterday = allEvents.filter { cal.isDateInYesterday($0.timestamp) }.count
+        return (today, yesterday)
+    }
+
+    @ViewBuilder
+    private var todayVsYesterdayCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("TODAY vs YESTERDAY")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .tracking(1.4)
+                .foregroundStyle(.secondary)
+            HStack(spacing: IRISTokens.spacing24) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("\(todayVsYesterday.today)")
+                        .font(.system(size: 22, weight: .light, design: .serif))
+                        .foregroundStyle(IRISTokens.aquaTint)
+                    Text("TODAY")
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                Image(systemName: "arrow.right")
+                    .foregroundStyle(.secondary.opacity(0.5))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("\(todayVsYesterday.yesterday)")
+                        .font(.system(size: 22, weight: .light, design: .serif))
+                        .foregroundStyle(.secondary)
+                    Text("YESTERDAY")
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if todayVsYesterday.yesterday > 0 {
+                    let diff = todayVsYesterday.today - todayVsYesterday.yesterday
+                    let percent = Double(diff) / Double(todayVsYesterday.yesterday) * 100
+                    HStack(spacing: 4) {
+                        Image(systemName: diff > 0 ? "arrow.up.right" : (diff < 0 ? "arrow.down.right" : "minus"))
+                            .font(.system(size: 12))
+                            .foregroundStyle(diff > 0 ? .green : (diff < 0 ? .red : .secondary))
+                        Text(String(format: "%+.0f%%", percent))
+                            .font(.system(size: 13, design: .monospaced))
+                            .foregroundStyle(diff > 0 ? .green : (diff < 0 ? .red : .secondary))
+                    }
+                }
+            }
+        }
+        .padding(IRISTokens.spacing16)
+        .background(RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall).fill(.thinMaterial))
     }
 
     private var totalStats: (total: Int, avgPerHour: Double, earliest: Date?) {
@@ -171,6 +225,8 @@ struct BusStatsView: View {
                 header
 
                 topKindBanner
+
+                todayVsYesterdayCard
 
                 cardSection(title: "Dernière heure", total: lastHour.count, events: lastHour, accent: IRISTokens.irisAccent)
                 cardSection(title: "Dernières 24h", total: lastDay.count, events: lastDay, accent: IRISTokens.aquaTint)

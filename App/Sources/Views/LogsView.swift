@@ -9,6 +9,7 @@ import SwiftData
 // v1.191 — Horizontal stacked breakdown bar (kind colors) above logsList.
 // v1.197 — Cmd+L keyboard shortcut on Clear filters button.
 // v1.203 — CSV export filtered events button (next to Export MD).
+// v1.206 — Past hour quick filter toggle (60min window).
 
 struct LogsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -26,6 +27,9 @@ struct LogsView: View {
     @State private var isPaused: Bool = false
     @State private var pausedSnapshot: [EventLog] = []
 
+    // v1.206 — Past-hour quick filter
+    @State private var pastHourOnly: Bool = false
+
     private static let kindOrder = [
         "userInput", "agentDispatched", "agentResponse",
         "signalEmitted", "draftReady", "actionRequested",
@@ -42,6 +46,7 @@ struct LogsView: View {
             .filter { filterKind.isEmpty || $0.kind == filterKind }
             .filter { filterLevel.isEmpty || $0.payloadJSON.contains("\"level\":\"\(filterLevel)\"") }
             .filter { filterCorrelationId == nil || $0.correlationId == filterCorrelationId }
+            .filter { !pastHourOnly || $0.timestamp >= Date().addingTimeInterval(-3600) }
             .filter { searchText.isEmpty || $0.payloadJSON.localizedCaseInsensitiveContains(searchText) || $0.kind.localizedCaseInsensitiveContains(searchText) }
             .prefix(500)
             .map { $0 }
@@ -232,6 +237,7 @@ struct LogsView: View {
                 filterLevel = ""
                 filterCorrelationId = nil
                 searchText = ""
+                pastHourOnly = false
             } label: {
                 HStack(spacing: 4) {
                     Text("Clear")
@@ -247,7 +253,7 @@ struct LogsView: View {
                 }
             }
             .controlSize(.small)
-            .disabled(filterAgent.isEmpty && filterKind.isEmpty && filterLevel.isEmpty && filterCorrelationId == nil && searchText.isEmpty)
+            .disabled(filterAgent.isEmpty && filterKind.isEmpty && filterLevel.isEmpty && filterCorrelationId == nil && searchText.isEmpty && !pastHourOnly)
             .keyboardShortcut(KeyEquivalent("l"), modifiers: .command)
             .help("Reset tous les filtres (Cmd+L)")
 
@@ -283,6 +289,17 @@ struct LogsView: View {
             .controlSize(.small)
             .tint(.red)
             .help("Filter rapide : show only agentFailure events")
+
+            // v1.206 — Past hour quick filter
+            Button {
+                pastHourOnly.toggle()
+            } label: {
+                Label(pastHourOnly ? "All time" : "Past 1h", systemImage: pastHourOnly ? "clock.arrow.circlepath" : "clock")
+                    .font(.system(size: 11))
+            }
+            .controlSize(.small)
+            .tint(pastHourOnly ? IRISTokens.aquaTint : .secondary)
+            .help(pastHourOnly ? "Show all-time events" : "Limit to past 60 minutes")
 
             // v1.39 — Export filtered logs Markdown
             Button {

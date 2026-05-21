@@ -10,6 +10,7 @@ import AppKit
 /// v1.182 — Pinned-only filter toggle (filters to tag pinned).
 /// v1.194 — Type stats footer with count + circle color per type.
 /// v1.198 — Sort by Picker (newest/oldest/type/name), pinned always on top.
+/// v1.208 — Per-row copy content button with 2s checkmark feedback.
 /// Permet à Mehdi d'inspecter ce que Scribe sait, et de tester les requêtes de similarité.
 enum MemorySortMode: String, CaseIterable { case newest, oldest, type, name }
 
@@ -26,6 +27,7 @@ struct MemoryBrowserView: View {
     @State private var retrievalResults: [(Memory, Double)] = []
     @State private var isRetrieving: Bool = false
     @State private var exportStatus: String?  // v1.167
+    @State private var copyStatus: [UUID: Bool] = [:]  // v1.208
 
     private var availableTypes: [String] {
         Array(Set(allMemories.map(\.type))).sorted()
@@ -375,6 +377,16 @@ struct MemoryBrowserView: View {
                 Text(memory.createdAt, format: .dateTime.day().month().hour().minute())
                     .font(.system(size: 9, design: .monospaced))
                     .foregroundStyle(.secondary)
+                // v1.208 — Copy content to pasteboard
+                Button {
+                    copyContent(memory)
+                } label: {
+                    Image(systemName: copyStatus[memory.id] == true ? "checkmark" : "doc.on.doc")
+                        .font(.system(size: 9))
+                        .foregroundStyle(copyStatus[memory.id] == true ? .green : IRISTokens.aquaTint.opacity(0.6))
+                }
+                .buttonStyle(.plain)
+                .help("Copier content de cette memory au presse-papier")
                 // v1.177 — Pin/unpin toggle
                 Button {
                     togglePin(memory)
@@ -449,6 +461,17 @@ struct MemoryBrowserView: View {
             }
         } catch {
             exportStatus = "⚠️ \(error.localizedDescription)"
+        }
+    }
+
+    // MARK: — v1.208 Copy content
+
+    private func copyContent(_ memory: Memory) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(memory.content, forType: .string)
+        copyStatus[memory.id] = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            copyStatus[memory.id] = nil
         }
     }
 
