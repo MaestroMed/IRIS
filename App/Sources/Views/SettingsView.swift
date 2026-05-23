@@ -29,6 +29,8 @@ import AppKit
 /// v1.321 — Cmd+? shortcut documented in cheatsheet (binding TODO).
 /// v1.328 — EventLog auto-purge cadence Picker (UI only).
 /// v1.344 — Envoy webhook URL config + real send (Mail.app + webhook POST).
+/// v1.347 — Cartographer auto-scan on launch toggle (@AppStorage cartographerAutoScanOnLaunch).
+/// v1.346 — Toggle Conductor inject Witness vision dans system prompt (@AppStorage conductorUseWitnessContext).
 struct SettingsView: View {
     @Environment(IRISAppState.self) private var appState
     @Environment(\.modelContext) private var modelContext
@@ -52,6 +54,8 @@ struct SettingsView: View {
     @AppStorage("notificationMinImportance") private var notificationMinImportance: Int = 5  // v1.295
     @AppStorage("eventLogPurgeCadence") private var purgeCadence: String = "off"  // v1.328
     @AppStorage("envoyWebhookURL") private var envoyWebhookURL: String = ""  // v1.344
+    @AppStorage("cartographerAutoScanOnLaunch") private var cartographerAutoScanOnLaunch: Bool = true  // v1.347
+    @AppStorage("conductorUseWitnessContext") private var conductorUseWitnessContext: Bool = true  // v1.346
     @State private var blocklistRefreshTick: Int = 0  // v1.212 — force re-render after unblock
     @State private var resetVisionStatus: String?  // v1.259
     @State private var importConfigStatus: String?  // v1.274
@@ -111,6 +115,10 @@ struct SettingsView: View {
             Divider()
 
             sentinelIntervalsSection
+
+            Divider()
+
+            cartographerSection  // v1.347
 
             Divider()
 
@@ -1382,7 +1390,8 @@ struct SettingsView: View {
             "witnessPaused",
             "witnessVisionEnabled",
             "backupAutoFrequency",
-            "notificationMinImportance"
+            "notificationMinImportance",
+            "conductorUseWitnessContext"  // v1.346
         ]
 
         let dict = UserDefaults.standard.dictionaryRepresentation()
@@ -1766,6 +1775,27 @@ struct SettingsView: View {
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundStyle(status.hasPrefix("✅") ? .green : .red)
             }
+
+            // v1.346 — Toggle inject Witness vision (description écran < 5 min) dans system prompt
+            Divider().padding(.vertical, 2)
+            HStack(spacing: 8) {
+                Image(systemName: conductorUseWitnessContext ? "eye.trianglebadge.exclamationmark" : "eye.slash")
+                    .foregroundStyle(conductorUseWitnessContext ? IRISTokens.aquaTint : .secondary.opacity(0.6))
+                    .font(.system(size: 12))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Inject Witness vision dans system prompt").font(.system(size: 11, weight: .medium))
+                    Text(conductorUseWitnessContext
+                         ? "Active — la dernière description écran (< 5 min) est ajoutée au prompt Conductor"
+                         : "Off — Conductor ignore le contexte vision Witness")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Toggle("", isOn: $conductorUseWitnessContext)
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                    .labelsHidden()
+            }
         }
         .onAppear {
             loadConductorPrompt()
@@ -1776,6 +1806,47 @@ struct SettingsView: View {
         conductorPromptDraft = Conductor.currentSystemPrompt()
         let override = UserDefaults.standard.string(forKey: "iris.conductor.systemPromptOverride") ?? ""
         conductorPromptUsingDefault = override.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    // MARK: — v1.347 Cartographer auto-scan
+
+    private var cartographerSection: some View {
+        VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
+            sectionTitle(
+                "Cartographer",
+                subtitle: "Scan ~/Developer + gh repo list MaestroMed. Refresh scheduled toutes les 6h."
+            )
+
+            HStack(spacing: IRISTokens.spacing8) {
+                Image(systemName: "map.circle")
+                    .foregroundStyle(IRISTokens.aquaTint)
+                    .font(.system(size: 14))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Auto-scan au lancement")
+                        .font(.system(size: 11, weight: .medium))
+                    Text("Lance un scan ~/Developer 5s après le boot (skip si scan <10 min).")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Toggle("", isOn: $cartographerAutoScanOnLaunch)
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                    .labelsHidden()
+            }
+
+            HStack(spacing: IRISTokens.spacing8) {
+                Button {
+                    Task { await Cartographer.shared.refresh() }
+                } label: {
+                    Label("Scan now", systemImage: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 11))
+                }
+                .controlSize(.small)
+                .help("Force refresh Cartographer (équivalent Cmd+Shift+R)")
+                Spacer()
+            }
+        }
     }
 
     private func saveConductorPrompt() {

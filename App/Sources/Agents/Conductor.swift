@@ -9,6 +9,9 @@ import SwiftData
 ///
 /// v1.6 — avant chaque appel API : Scribe.retrieve top-3 mémoires pertinentes au query
 /// → inject dans system prompt enrichi. Après réponse : store Q/R comme Memory type="conversation".
+/// v1.346 — Injecte le dernier Witness vision (source="screen-vision") < 5 min dans le
+/// system prompt avec l'app frontmost si dispo. Toggle @AppStorage("conductorUseWitnessContext")
+/// default true. Fallback silencieux si pas de vision récente.
 ///
 /// Cf docs/IRIS-AGENTS-CATALOG.md §1 Conductor.
 public actor Conductor {
@@ -556,8 +559,15 @@ public actor Conductor {
         let memoriesContext = await retrieveMemoryContext(query: text, topK: 3)
         // v1.25 — récupère le contexte Witness le plus récent (frontmost app/project)
         let witnessContext = await retrieveWitnessContext()
+        // v1.346 — récupère la dernière vision Witness (description écran < 5 min) si toggle activé
+        let visionBlock: String = Self.useWitnessVisionContext
+            ? await retrieveWitnessVisionBlock()
+            : ""
 
         var enrichedSystemPrompt = Self.systemPrompt
+        if !visionBlock.isEmpty {
+            enrichedSystemPrompt += "\n\n" + visionBlock
+        }
         if !witnessContext.isEmpty {
             enrichedSystemPrompt += "\n\n## Contexte actuel Mehdi (Witness, < 60s)\n\n" + witnessContext
         }
@@ -651,6 +661,67 @@ public actor Conductor {
         let results = (try? container.mainContext.fetch(descriptor)) ?? []
         guard let signal = results.first else { return "" }
         return signal.summary
+    }
+
+    // MARK: — v1.346 Witness vision context (screenshot description < 5 min)
+
+    /// @AppStorage key partagée avec SettingsView UI toggle. Default true.
+    private static let useWitnessVisionContextKey = "conductorUseWitnessContext"
+
+    /// Lit le toggle @AppStorage. Default true (gated by registerDefaults aussi via SettingsView).
+    public static var useWitnessVisionContext: Bool {
+        // Si la clé n'a jamais été écrite, UserDefaults.bool retourne false → on force le default true.
+        if UserDefaults.standard.object(forKey: useWitnessVisionContextKey) == nil {
+            return true
+        }
+        return UserDefaults.standard.bool(forKey: useWitnessVisionContextKey)
+    }
+
+    public static func setUseWitnessVisionContext(_ value: Bool) {
+        UserDefaults.standard.set(value, forKey: useWitnessVisionContextKey)
+    }
+
+    /// v1.346 — Construit le bloc markdown "## Contexte écran" à partir du dernier signal
+    /// source="screen-vision" < 5 min. Retourne "" si pas de vision récente ou
+    /// modelContainer indispo (fallback silencieux).
+    private func retrieveWitnessVisionBlock() async -> String {
+        guard let container = modelContainer else { return "" }
+        return await Self.fetchWitnessVisionBlock(container: container)
+    }
+
+    @MainActor
+    private static func fetchWitnessVisionBlock(container: ModelContainer) async -> String {
+        let context = container.mainContext
+
+        // 1. Dernière vision (description écran)
+        let visionCutoff = Date().addingTimeInterval(-300)  // 5 minutes
+        var visionDescriptor = FetchDescriptor<Signal>(
+            predicate: #Predicate { $0.source == "screen-vision" && $0.emittedAt > visionCutoff },
+            sortBy: [SortDescriptor(\.emittedAt, order: .reverse)]
+        )
+        visionDescriptor.fetchLimit = 1
+        let visionResults = (try? context.fetch(visionDescriptor)) ?? []
+        guard let vision = visionResults.first else { return "" }
+        let description = vision.summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !description.isEmpty else { return "" }
+
+        // 2. App frontmost si signal "screen" très récent (< 60s avant ou après la vision)
+        //    Le Signal vision ne stocke pas l'app — on cherche le screen signal le plus proche.
+        let appCutoff = vision.emittedAt.addingTimeInterval(-60)
+        var appDescriptor = FetchDescriptor<Signal>(
+            predicate: #Predicate { $0.source == "screen" && $0.emittedAt > appCutoff },
+            sortBy: [SortDescriptor(\.emittedAt, order: .reverse)]
+        )
+        appDescriptor.fetchLimit = 1
+        let appResults = (try? context.fetch(appDescriptor)) ?? []
+        let appLine = appResults.first.map { "App active : \($0.summary)\n" } ?? ""
+
+        // 3. Format markdown header avec age en secondes
+        let ageSeconds = Int(Date().timeIntervalSince(vision.emittedAt))
+        return """
+        ## Contexte écran (capturé il y a \(ageSeconds)s via Witness vision)
+        \(appLine)Description : \(description)
+        """
     }
 
     /// MainActor-isolated helper : accès au ModelContext + appel Scribe.retrieve + format String Sendable.

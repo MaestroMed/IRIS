@@ -1,3 +1,4 @@
+// v1.347 — startAutoScanOnLaunch (delayed non-blocking scan + lastScannedAt guard)
 // v1.339 — refresh() now parses real git status per local repo
 import Foundation
 import SwiftData
@@ -16,7 +17,13 @@ import SwiftData
 public actor Cartographer {
     public static let shared = Cartographer()
 
+    /// v1.347 — UserDefaults key for auto-scan toggle (mirror in SettingsView).
+    public static let autoScanOnLaunchKey = "cartographerAutoScanOnLaunch"
+    /// v1.347 — Skip auto-scan if any project was scanned within this window.
+    private static let autoScanFreshnessWindow: TimeInterval = 600 // 10 min
+
     private var refreshTask: Task<Void, Never>?
+    private var autoScanTask: Task<Void, Never>?
     private weak var modelContainer: ModelContainer?
     private static let developerDirPath = "\(NSHomeDirectory())/Developer"
     private static let githubAccount = "MaestroMed"
@@ -25,13 +32,65 @@ public actor Cartographer {
 
     public func start(modelContainer: ModelContainer) async {
         self.modelContainer = modelContainer
-        await refresh()
+        // v1.347 — Auto-scan on launch is delegated to startAutoScanOnLaunch() so
+        // bootstrap stays non-blocking. The 6h scheduled refresh still wires here.
         startScheduledRefresh()
     }
 
     public func stop() {
         refreshTask?.cancel()
         refreshTask = nil
+        autoScanTask?.cancel()
+        autoScanTask = nil
+    }
+
+    /// v1.347 — Schedule a single delayed auto-scan after app launch.
+    ///
+    /// Respects @AppStorage `cartographerAutoScanOnLaunch` (default true). Skips
+    /// the scan if any ProjectRecord has `lastScannedAt` within the last 10 min
+    /// (avoids duplicate work when IRIS restarts shortly after a recent scan).
+    public func startAutoScanOnLaunch(after delay: TimeInterval = 5.0) {
+        guard autoScanTask == nil else { return }
+        autoScanTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            await self?.runAutoScanIfNeeded()
+        }
+    }
+
+    private func runAutoScanIfNeeded() async {
+        // Honor user opt-out
+        let enabled = UserDefaults.standard.object(forKey: Self.autoScanOnLaunchKey) as? Bool ?? true
+        guard enabled else {
+            irisLog(.info, "Cartographer auto-scan skipped (opt-out via Settings)",
+                    category: IRISLogger.agents)
+            return
+        }
+
+        // Freshness guard: if any project was scanned in the last 10 min, skip.
+        if let latest = await mostRecentLastScannedAt(),
+           Date().timeIntervalSince(latest) < Self.autoScanFreshnessWindow {
+            let ageSec = Int(Date().timeIntervalSince(latest))
+            irisLog(.info, "Cartographer auto-scan skipped — fresh scan \(ageSec)s ago",
+                    category: IRISLogger.agents)
+            return
+        }
+
+        irisLog(.info, "Cartographer auto-scan starting (launch delayed)",
+                category: IRISLogger.agents)
+        await refresh()
+    }
+
+    @MainActor
+    private func mostRecentLastScannedAt() async -> Date? {
+        guard let container = await modelContainer else { return nil }
+        let context = container.mainContext
+        var descriptor = FetchDescriptor<ProjectRecord>(
+            sortBy: [SortDescriptor(\ProjectRecord.lastScannedAt, order: .reverse)]
+        )
+        descriptor.fetchLimit = 1
+        let result = try? context.fetch(descriptor)
+        return result?.first?.lastScannedAt
     }
 
     public func refresh() async {

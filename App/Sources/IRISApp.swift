@@ -150,8 +150,11 @@ struct IRISApp: App {
         // 6. Sentinel démarre — stub signaux fictifs toutes les 60s (v0.3.5+ : vrai MCP Gmail)
         await Sentinel.shared.start(modelContainer: modelContainer, intervalSeconds: 60)
 
-        // 7. Cartographer démarre — scan ~/Developer + gh repo list MaestroMed (refresh 6h)
+        // 7. Cartographer démarre — schedule 6h refresh + delayed auto-scan on launch (v1.347)
+        // Auto-scan : Task.delayed 5s post-bootstrap pour ne pas bloquer le UI au démarrage.
+        // Respecte @AppStorage("cartographerAutoScanOnLaunch") + skip si scan <10 min.
         await Cartographer.shared.start(modelContainer: modelContainer)
+        await Cartographer.shared.startAutoScanOnLaunch()
 
         // 8. Auditor démarre — on-demand audit via UI (v1.18 real Sonnet, v1.22 cost wire)
         await Auditor.shared.start(modelContainer: modelContainer, onCost: costSink)

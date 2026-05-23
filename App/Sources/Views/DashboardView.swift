@@ -28,6 +28,7 @@ import SwiftData
 /// v1.323 — Quick "Brief now" trigger button (Advisor.runBriefing manual).
 /// v1.340 — Hero section (Quick Actions + Projects grid + Recent activity) at top of dashboard.
 /// v1.343 — Hero project cards: service icons + git status badge.
+/// v1.348 — "Ton attention" smart panel at very top: aggregates pending drafts, critical unacked signals, dirty/ahead repos.
 
 struct DashboardView: View {
     @Environment(IRISAppState.self) private var appState
@@ -74,6 +75,9 @@ struct DashboardView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: IRISTokens.spacing24) {
+                // v1.348 — Smart "Ton attention" panel at very top (above heroSection)
+                needsAttentionSection
+
                 // v1.340 — Hero section (Quick Actions + Projects + Recent activity)
                 heroSection
 
@@ -471,6 +475,101 @@ struct DashboardView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
             briefStatus = nil
         }
+    }
+
+    // MARK: — v1.348 "Ton attention" smart panel (above heroSection)
+
+    /// Drafts pending Mehdi's approval — Quill output awaiting validation.
+    /// Matches default Draft.status == "pending" (also tolerates legacy "ready").
+    private var draftsPendingCount: Int {
+        allDrafts.filter { $0.status == "pending" || $0.status == "ready" }.count
+    }
+
+    /// Critical signals not yet acknowledged. Signal model uses `acknowledged: Bool`
+    /// (cf v1.173 alertsCard which treats importance >= 4 as alert-worthy; here we
+    /// only count importance == 5 = "critical" to keep the chip strictly urgent).
+    private var criticalUnackedCount: Int {
+        allSignals.filter { $0.importance == 5 && !$0.acknowledged }.count
+    }
+
+    /// Repos with uncommitted changes OR commits pending push to origin.
+    /// Driven by Cartographer.refresh() which populates gitDirtyCount / gitAhead.
+    private var dirtyOrAheadReposCount: Int {
+        allProjects.filter { $0.gitDirtyCount > 0 || $0.gitAhead > 0 }.count
+    }
+
+    /// True when no urgent item is detected across the 3 aggregated queries.
+    private var hasNothingUrgent: Bool {
+        draftsPendingCount == 0 && criticalUnackedCount == 0 && dirtyOrAheadReposCount == 0
+    }
+
+    private var needsAttentionSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("TON ATTENTION")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .tracking(1.4)
+                .foregroundStyle(.secondary)
+            HStack(spacing: IRISTokens.spacing8) {
+                if hasNothingUrgent {
+                    NeedsAttentionChip(
+                        emoji: "✓",
+                        count: nil,
+                        label: "Rien d'urgent — bonne journée Mehdi",
+                        tint: IRISTokens.aquaTint,
+                        help: "Aucun draft pending · 0 signal critique unacked · 0 repo dirty/ahead"
+                    ) {
+                        // No-op: calm chip, nothing to navigate to.
+                    }
+                } else {
+                    if draftsPendingCount > 0 {
+                        NeedsAttentionChip(
+                            emoji: "✉️",
+                            count: draftsPendingCount,
+                            label: "drafts à valider",
+                            tint: IRISTokens.irisAccent,
+                            help: "\(draftsPendingCount) draft(s) Quill en attente d'approbation — clic ouvre Quill"
+                        ) {
+                            appState.selection = .agent(.quill)
+                        }
+                    }
+                    if criticalUnackedCount > 0 {
+                        NeedsAttentionChip(
+                            emoji: "⚠️",
+                            count: criticalUnackedCount,
+                            label: "alertes critiques",
+                            tint: .red,
+                            help: "\(criticalUnackedCount) signal(s) critique(s) non acquitté(s) — clic ouvre Sentinel"
+                        ) {
+                            appState.selection = .agent(.sentinel)
+                        }
+                    }
+                    if dirtyOrAheadReposCount > 0 {
+                        NeedsAttentionChip(
+                            emoji: "🌿",
+                            count: dirtyOrAheadReposCount,
+                            label: "projets non commit/pushed",
+                            tint: IRISTokens.goldAccent,
+                            help: "\(dirtyOrAheadReposCount) projet(s) avec changements locaux ou commits en avance — clic ouvre Cartographer"
+                        ) {
+                            appState.selection = .agent(.cartographer)
+                        }
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(IRISTokens.spacing16)
+        .background(
+            RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusMedium)
+                .fill(.regularMaterial)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusMedium)
+                .strokeBorder(
+                    hasNothingUrgent ? IRISTokens.aquaTint.opacity(0.18) : IRISTokens.irisAccent.opacity(0.2),
+                    lineWidth: 0.5
+                )
+        )
     }
 
     // MARK: — v1.340 Hero section (Quick Actions + Projects + Recent activity)
@@ -2304,6 +2403,50 @@ struct DashboardView: View {
     DashboardView()
         .environment(IRISAppState())
         .frame(width: 800, height: 600)
+}
+
+// MARK: — v1.348 "Ton attention" pill chip (clickable, hover-scaled)
+
+private struct NeedsAttentionChip: View {
+    let emoji: String
+    let count: Int?
+    let label: String
+    let tint: Color
+    let help: String
+    let action: () -> Void
+
+    @State private var isHovering: Bool = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Text(emoji)
+                    .font(.system(size: 13))
+                if let count {
+                    Text("\(count)")
+                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(tint)
+                }
+                Text(label)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                Capsule().fill(tint.opacity(isHovering ? 0.18 : 0.12))
+            )
+            .overlay(
+                Capsule().strokeBorder(tint.opacity(isHovering ? 0.45 : 0.20), lineWidth: 0.5)
+            )
+            .scaleEffect(isHovering ? 1.02 : 1.0)
+            .animation(.easeOut(duration: 0.15), value: isHovering)
+        }
+        .buttonStyle(.plain)
+        .onHover { hover in isHovering = hover }
+        .help(help)
+    }
 }
 
 // MARK: — v1.340 Hero Quick Action button (with hover scale)
