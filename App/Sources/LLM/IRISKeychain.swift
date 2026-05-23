@@ -5,6 +5,7 @@ import Security
 /// Service : "app.iris.macos.secrets". Items stockés sous account="<service-name>".
 ///
 /// API key Anthropic = item account="anthropic-api-key".
+/// API key Gemini    = item account="gemini-api-key".  (v1.338)
 /// Phases suivantes :
 /// - v0.3 : tokens OAuth Gmail / Calendar / GitHub
 /// - v0.5 : access tokens MCP server custom
@@ -14,6 +15,7 @@ public final class IRISKeychain: @unchecked Sendable {
 
     private let service = "app.iris.macos.secrets"
     private let anthropicAccount = "anthropic-api-key"
+    private let geminiAccount = "gemini-api-key"
 
     private init() {}
 
@@ -33,6 +35,24 @@ public final class IRISKeychain: @unchecked Sendable {
 
     public func hasAnthropicAPIKey() -> Bool {
         getAnthropicAPIKey() != nil
+    }
+
+    // MARK: — Gemini API key (v1.338)
+
+    public func setGeminiAPIKey(_ key: String) -> Bool {
+        store(value: key, account: geminiAccount)
+    }
+
+    public func getGeminiAPIKey() -> String? {
+        retrieve(account: geminiAccount)
+    }
+
+    public func deleteGeminiAPIKey() -> Bool {
+        delete(account: geminiAccount)
+    }
+
+    public func hasGeminiAPIKey() -> Bool {
+        getGeminiAPIKey() != nil
     }
 
     // MARK: — Generic store / retrieve / delete

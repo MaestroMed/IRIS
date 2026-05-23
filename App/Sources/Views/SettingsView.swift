@@ -23,6 +23,7 @@ import AppKit
 /// v1.289 — Auto-backup frequency Picker (off/hourly/daily/weekly).
 /// v1.295 — Notification threshold Picker (importance-driven, UI only).
 /// v1.304 — Clear UserDefaults caches button (preserves API keys + data).
+/// v1.338 — Gemini API key section + GeminiClient test ping (mirror Anthropic flow).
 /// v1.310 — Verbose logs toggle (@AppStorage shared with LogsView).
 /// v1.316 — Reset agent visibility button (restore all defaults).
 /// v1.321 — Cmd+? shortcut documented in cheatsheet (binding TODO).
@@ -36,6 +37,10 @@ struct SettingsView: View {
     @State private var testStatus: TestStatus = .idle
     @State private var savedMessage: String?
     @State private var backupStatus: String?
+    // v1.338 — Gemini API key
+    @State private var geminiKeyDraft: String = ""
+    @State private var geminiTestStatus: TestStatus = .idle
+    @State private var geminiSavedMessage: String?
     @AppStorage("witnessPaused") private var witnessPaused: Bool = false  // v1.187
     @AppStorage("witnessVisionEnabled") private var witnessVisionEnabled: Bool = true  // v1.220
     @AppStorage("burstAlertThreshold") private var burstAlertThreshold: Int = 50  // v1.238
@@ -80,6 +85,10 @@ struct SettingsView: View {
             Divider()
 
             anthropicKeySection
+
+            Divider()
+
+            geminiKeySection  // v1.338
 
             Divider()
 
@@ -146,6 +155,7 @@ struct SettingsView: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
             apiKeyDraft = IRISKeychain.shared.getAnthropicAPIKey() ?? ""
+            geminiKeyDraft = IRISKeychain.shared.getGeminiAPIKey() ?? ""  // v1.338
         }
     }
 
@@ -199,6 +209,67 @@ struct SettingsView: View {
             }
 
             statusBanner
+        }
+    }
+
+    // v1.338 — Gemini API key section (mirror Anthropic).
+    private var geminiKeySection: some View {
+        VStack(alignment: .leading, spacing: IRISTokens.spacing16) {
+            sectionTitle("Gemini API key", subtitle: "Optionnel. Backend alternatif (Gemini 2.5 Flash / Pro). Stocké Keychain account `gemini-api-key`.")
+
+            SecureField("AIza…", text: $geminiKeyDraft)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(size: 13, design: .monospaced))
+
+            HStack {
+                Button(action: saveGeminiKey) {
+                    Label("Enregistrer", systemImage: "lock.shield")
+                }
+                .disabled(geminiKeyDraft.trimmingCharacters(in: .whitespaces).isEmpty)
+
+                Button(action: testGeminiKey) {
+                    if case .testing = geminiTestStatus {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Label("Tester (Flash ping)", systemImage: "network")
+                    }
+                }
+                .disabled(geminiKeyDraft.trimmingCharacters(in: .whitespaces).isEmpty)
+
+                if IRISKeychain.shared.hasGeminiAPIKey() {
+                    Button(role: .destructive, action: deleteGeminiKey) {
+                        Label("Supprimer", systemImage: "trash")
+                    }
+                }
+
+                Spacer()
+            }
+
+            geminiStatusBanner
+        }
+    }
+
+    @ViewBuilder
+    private var geminiStatusBanner: some View {
+        switch geminiTestStatus {
+        case .idle:
+            if let saved = geminiSavedMessage {
+                Label(saved, systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                    .font(.system(size: 12))
+            } else {
+                EmptyView()
+            }
+        case .testing:
+            EmptyView()
+        case .success(let msg):
+            Label(msg, systemImage: "checkmark.seal.fill")
+                .foregroundStyle(.green)
+                .font(.system(size: 12))
+        case .failure(let msg):
+            Label(msg, systemImage: "exclamationmark.triangle.fill")
+                .foregroundStyle(.red)
+                .font(.system(size: 12))
         }
     }
 
@@ -2781,6 +2852,50 @@ struct SettingsView: View {
             } catch {
                 await MainActor.run {
                     testStatus = .failure(error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    // v1.338 — Gemini key actions (miroir Anthropic).
+
+    private func saveGeminiKey() {
+        let trimmed = geminiKeyDraft.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        let ok = IRISKeychain.shared.setGeminiAPIKey(trimmed)
+        geminiSavedMessage = ok ? "Clé Gemini enregistrée dans le Keychain." : "Échec sauvegarde Keychain."
+    }
+
+    private func deleteGeminiKey() {
+        _ = IRISKeychain.shared.deleteGeminiAPIKey()
+        geminiKeyDraft = ""
+        geminiSavedMessage = "Clé Gemini supprimée."
+        geminiTestStatus = .idle
+    }
+
+    private func testGeminiKey() {
+        let trimmed = geminiKeyDraft.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        _ = IRISKeychain.shared.setGeminiAPIKey(trimmed)
+        geminiSavedMessage = nil
+        geminiTestStatus = .testing
+
+        Task {
+            do {
+                let response = try await GeminiClient.shared.sendMessage(
+                    model: .flash25,
+                    system: nil,
+                    messages: [GeminiClient.GeminiMessage(role: .user, text: "Respond with exactly: pong")],
+                    maxOutputTokens: 16
+                )
+                let text = response.text.isEmpty ? "<empty>" : response.text
+                let cost = response.usage.estimatedCostUSD(model: .flash25)
+                await MainActor.run {
+                    geminiTestStatus = .success("Pong reçu (\(text.prefix(20))). Coût test : $\(String(format: "%.6f", cost))")
+                }
+            } catch {
+                await MainActor.run {
+                    geminiTestStatus = .failure(String(describing: error))
                 }
             }
         }
