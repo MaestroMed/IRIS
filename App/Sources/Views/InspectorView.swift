@@ -39,6 +39,7 @@ import AppKit
 /// v1.333 — Auditor lifetime cost badge (iris infinity) complement v1.209 today.
 /// v1.336 — Latest activity per agent table at top of Inspector.
 /// v1.342 — ProjectStackEditor sheet + Open-in-X buttons per project row.
+/// v1.350 — Cartographer per-project "Audit this project now" button + inline last AuditReport card (expandable).
 
 struct InspectorView: View {
     @Environment(IRISAppState.self) private var appState
@@ -91,6 +92,9 @@ struct InspectorView: View {
     @State private var cartographerSearch: String = ""   // v1.204 — Cartographer search field
     @State private var cartoStatusFilter: String = ""    // v1.294 — Cartographer status Picker (All/Active/Archived/Experimental)
     @State private var editingProject: ProjectRecord?    // v1.342 — ProjectStackEditor sheet binding
+    @State private var auditingCodenames: Set<String> = [] // v1.350 — per-project audit in-progress spinner
+    @State private var expandedProject: String? = nil     // v1.350 — codename of project row whose last audit is expanded inline
+    @State private var copyAuditMdStatus: String? = nil   // v1.350 — Copy markdown transient feedback (per-row last audit)
     @State private var exportAuditsStatus: String? = nil // v1.260 — Export all audits MD transient feedback
     @AppStorage("inspectorCompactMode") private var compactMode: Bool = false  // v1.305 — collapse all section bodies
     // TODO: wire compactMode to per-section body conditionals
@@ -1571,7 +1575,26 @@ struct InspectorView: View {
         }
     }
 
+    // v1.350 — Resolve the latest AuditReport for a given project codename.
+    // `allAudits` is already sorted desc by createdAt → first match wins.
+    private func latestAudit(for codename: String) -> AuditReport? {
+        allAudits.first(where: { $0.projectCodename == codename })
+    }
+
     private func projectRow(_ project: ProjectRecord) -> some View {
+        let isExpanded = expandedProject == project.codename
+        let isAuditing = auditingCodenames.contains(project.codename)
+        return VStack(alignment: .leading, spacing: 4) {
+            projectRowHeader(project, isExpanded: isExpanded, isAuditing: isAuditing)
+            if isExpanded {
+                projectLastAuditCard(for: project)
+            }
+        }
+    }
+
+    // v1.350 — Header row (existing project metadata + service quick actions + new Audit button + chevron toggle).
+    @ViewBuilder
+    private func projectRowHeader(_ project: ProjectRecord, isExpanded: Bool, isAuditing: Bool) -> some View {
         HStack(alignment: .top, spacing: 6) {
             statusBadge(project.status)
             VStack(alignment: .leading, spacing: 1) {
@@ -1653,16 +1676,27 @@ struct InspectorView: View {
             }
             .buttonStyle(.plain)
             .help(project.status == "archived" ? "Désarchiver (→ active)" : "Archiver le projet")
-            // v1.213 — Audit-now quick action
+            // v1.213 + v1.350 — Audit-now labeled button (borderless, spinner during in-flight)
             Button {
                 triggerAudit(project)
             } label: {
-                Image(systemName: "checkmark.shield")
-                    .font(.system(size: 10))
-                    .foregroundStyle(IRISTokens.aquaTint.opacity(0.7))
+                HStack(spacing: 3) {
+                    if isAuditing {
+                        ProgressView()
+                            .controlSize(.mini)
+                            .scaleEffect(0.7)
+                    } else {
+                        Image(systemName: "checkmark.shield")
+                            .font(.system(size: 10))
+                    }
+                    Text(isAuditing ? "…" : "Audit")
+                        .font(.system(size: 10, weight: .medium))
+                }
+                .foregroundStyle(IRISTokens.aquaTint)
             }
-            .buttonStyle(.plain)
-            .help("Lancer un audit Auditor sur ce projet")
+            .buttonStyle(.borderless)
+            .disabled(isAuditing)
+            .help("Audit this project now (skill damage-control 8 axes — force=true)")
             // v1.342 — Open-in-X quick actions for filled service fields
             if let url = project.vercelURL, !url.isEmpty, let u = URL(string: url) {
                 Button { NSWorkspace.shared.open(u) } label: {
@@ -1705,16 +1739,190 @@ struct InspectorView: View {
             }
             .buttonStyle(.plain)
             .help("Edit services + 3rd party links")
+            // v1.350 — Expand/collapse chevron to reveal last AuditReport inline below
+            Button {
+                if isExpanded {
+                    expandedProject = nil
+                } else {
+                    expandedProject = project.codename
+                }
+            } label: {
+                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help(isExpanded ? "Cacher last audit" : "Voir last audit findings inline")
         }
         .padding(.vertical, 4)
         .padding(.horizontal, 6)
         .background(RoundedRectangle(cornerRadius: 6).fill(.thinMaterial))
     }
 
-    // v1.213 — Fire-and-forget audit trigger from Cartographer row.
+    // v1.213 + v1.350 — Fire-and-forget audit trigger from Cartographer row.
+    // v1.350 tracks in-progress codenames so projectRow can render a spinner state per-project,
+    // and auto-expands the row so the freshly-stored AuditReport is visible inline once it lands.
     private func triggerAudit(_ project: ProjectRecord) {
-        guard !project.codename.isEmpty else { return }
-        Task { await Auditor.shared.auditProject(codename: project.codename, force: true) }
+        let codename = project.codename
+        guard !codename.isEmpty else { return }
+        guard !auditingCodenames.contains(codename) else { return }
+        auditingCodenames.insert(codename)
+        expandedProject = codename
+        Task {
+            await Auditor.shared.auditProject(codename: codename, force: true)
+            await MainActor.run {
+                auditingCodenames.remove(codename)
+            }
+        }
+    }
+
+    // v1.350 — Inline last-audit summary card rendered under projectRow when expanded.
+    // Empty state if no audit ever ran. Reads from `allAudits` (sorted desc by createdAt).
+    @ViewBuilder
+    private func projectLastAuditCard(for project: ProjectRecord) -> some View {
+        if let audit = latestAudit(for: project.codename) {
+            let findings = Self.parseStringArray(audit.findingsJSON)
+            let topActions = Self.parseActionObjects(audit.topActionsJSON)
+            VStack(alignment: .leading, spacing: 6) {
+                // Header line: verdict capsule + headline + age
+                HStack(spacing: 6) {
+                    verdictBadge(audit.verdict)
+                    Text(audit.headline)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer()
+                    Text(audit.createdAt, format: .dateTime.day().month(.abbreviated).hour().minute())
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                // Top 3 findings as bullets
+                if !findings.isEmpty {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("FINDINGS")
+                            .font(.system(size: 8, weight: .bold, design: .monospaced))
+                            .tracking(1.2)
+                            .foregroundStyle(.secondary)
+                        ForEach(Array(findings.prefix(3).enumerated()), id: \.offset) { _, f in
+                            HStack(alignment: .top, spacing: 4) {
+                                Image(systemName: "circle.fill")
+                                    .font(.system(size: 3))
+                                    .foregroundStyle(.secondary)
+                                    .padding(.top, 5)
+                                Text(f)
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(.primary.opacity(0.85))
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                }
+                // Top 1 actionable recommendation
+                if let action = topActions.first {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("NEXT ACTION")
+                            .font(.system(size: 8, weight: .bold, design: .monospaced))
+                            .tracking(1.2)
+                            .foregroundStyle(.secondary)
+                        HStack(alignment: .top, spacing: 4) {
+                            Image(systemName: "arrow.right")
+                                .font(.system(size: 9))
+                                .foregroundStyle(IRISTokens.irisAccent)
+                                .padding(.top, 2)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(action.action)
+                                    .font(.system(size: 10, weight: .medium))
+                                    .fixedSize(horizontal: false, vertical: true)
+                                HStack(spacing: 6) {
+                                    Text("effort: \(action.effort)").foregroundStyle(IRISTokens.goldAccent)
+                                    Text("impact: \(action.impact)").foregroundStyle(IRISTokens.aquaTint)
+                                }
+                                .font(.system(size: 8, design: .monospaced))
+                            }
+                        }
+                    }
+                }
+                // Action row: Voir tout (switches Inspector to .auditor) + Copy markdown
+                HStack(spacing: IRISTokens.spacing8) {
+                    Button {
+                        // v1.350 — Switch Inspector to Auditor agent section for full audit list/detail
+                        appState.selection = .agent(.auditor)
+                    } label: {
+                        Label("Voir tout", systemImage: "list.bullet.rectangle")
+                            .font(.system(size: 10, weight: .medium))
+                    }
+                    .buttonStyle(.borderless)
+                    .tint(IRISTokens.irisAccent)
+                    .help("Ouvrir la section Auditor pour voir tous les audits (\(audit.projectCodename) + autres)")
+                    Button {
+                        copyAuditMarkdown(audit)
+                    } label: {
+                        Label("Copy markdown", systemImage: "doc.on.doc")
+                            .font(.system(size: 10, weight: .medium))
+                    }
+                    .buttonStyle(.borderless)
+                    .tint(.secondary)
+                    .help("Copy l'audit complet en Markdown (NSPasteboard)")
+                    if let status = copyAuditMdStatus {
+                        Text(status)
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(status == "✅" ? .green : .red)
+                    }
+                    Spacer()
+                    Text("\(audit.modelUsed) · $\(String(format: "%.4f", audit.costUSD))")
+                        .font(.system(size: 8, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(IRISTokens.spacing8)
+            .background(
+                RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall)
+                    .fill(.thinMaterial)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall)
+                    .strokeBorder(verdictColor(audit.verdict).opacity(0.35), lineWidth: 1)
+            )
+            .padding(.leading, IRISTokens.spacing16)
+        } else {
+            // Empty state — no audit ever ran for this project
+            HStack(spacing: 6) {
+                Image(systemName: "checkmark.shield")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                Text("Aucun audit — clique pour en lancer un")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button {
+                    triggerAudit(project)
+                } label: {
+                    Text("Lancer")
+                        .font(.system(size: 10, weight: .medium))
+                }
+                .buttonStyle(.borderless)
+                .tint(IRISTokens.aquaTint)
+            }
+            .padding(IRISTokens.spacing8)
+            .background(
+                RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall)
+                    .fill(.thinMaterial)
+            )
+            .padding(.leading, IRISTokens.spacing16)
+        }
+    }
+
+    // v1.350 — Copy the inline audit card's source as Markdown to NSPasteboard (transient ✅ feedback).
+    private func copyAuditMarkdown(_ audit: AuditReport) {
+        let md = Self.formatAuditAsMarkdown(audit)
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        let ok = pb.setString(md, forType: .string)
+        copyAuditMdStatus = ok ? "✅" : "⚠️"
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            copyAuditMdStatus = nil
+        }
     }
 
     // v1.223 — Sequential audit-all over filteredProjects, 2s spacing to avoid API hammering.

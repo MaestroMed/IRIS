@@ -179,7 +179,9 @@ public enum SidebarSection: String, CaseIterable, Hashable, Identifiable, Sendab
 /// Entrées système (sous la section System, en bas du sidebar).
 /// v0.0.3 — `logs` ouvrira le panel Logs runtime des agents.
 /// v1.36 — `stats` panel bus events stats par kind.
+/// v1.351 — `activity` timeline unifiée des actions agents sur 24h.
 public enum SystemDestination: String, CaseIterable, Hashable, Identifiable, Sendable {
+    case activity  // v1.351 — unified 24h feed across Signal / Draft / AuditReport / ActionLog
     case logs
     case stats
     case memory  // v1.56 — browse Memory records + ad-hoc retrieval
@@ -188,6 +190,7 @@ public enum SystemDestination: String, CaseIterable, Hashable, Identifiable, Sen
 
     public var displayName: String {
         switch self {
+        case .activity: return "Activity feed"
         case .logs: return "Logs"
         case .stats: return "Stats"
         case .memory: return "Memory"
@@ -196,6 +199,7 @@ public enum SystemDestination: String, CaseIterable, Hashable, Identifiable, Sen
 
     public var symbol: String {
         switch self {
+        case .activity: return "waveform.path.ecg"
         case .logs: return "list.bullet.rectangle"
         case .stats: return "chart.bar.fill"
         case .memory: return "books.vertical"

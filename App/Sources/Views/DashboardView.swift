@@ -29,6 +29,7 @@ import SwiftData
 /// v1.340 — Hero section (Quick Actions + Projects grid + Recent activity) at top of dashboard.
 /// v1.343 — Hero project cards: service icons + git status badge.
 /// v1.348 — "Ton attention" smart panel at very top: aggregates pending drafts, critical unacked signals, dirty/ahead repos.
+/// v1.349 — Prominent Advisor briefingCard between needsAttention and heroSection: serif title + 200-char preview + "Régénérer", or big "Générer maintenant" CTA with loading spinner when none.
 
 struct DashboardView: View {
     @Environment(IRISAppState.self) private var appState
@@ -72,11 +73,17 @@ struct DashboardView: View {
     // v1.340 — Hero help sheet binding (sheet content added by a separate commit)
     @State private var showHelp: Bool = false
 
+    // v1.349 — Briefing prominent card: loading state while Advisor regenerates
+    @State private var isBriefingLoading: Bool = false
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: IRISTokens.spacing24) {
                 // v1.348 — Smart "Ton attention" panel at very top (above heroSection)
                 needsAttentionSection
+
+                // v1.349 — Prominent briefing card (latest Advisor briefing or "Générer maintenant" CTA)
+                briefingCard
 
                 // v1.340 — Hero section (Quick Actions + Projects + Recent activity)
                 heroSection
@@ -475,6 +482,183 @@ struct DashboardView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
             briefStatus = nil
         }
+    }
+
+    // MARK: — v1.349 Prominent briefing card (latest Advisor briefing OR empty-state CTA)
+
+    /// Returns yyyy-MM-dd style French date for the latest briefing header.
+    private static func formattedBriefingDate(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "EEEE d MMMM"
+        f.locale = Locale(identifier: "fr_FR")
+        return f.string(from: date)
+    }
+
+    /// Fires Advisor.runBriefing(manual) and toggles the loading spinner while the live
+    /// API call runs. Briefing arrives via EventBus → persisted as EventLog → @Query auto-refreshes.
+    private func triggerProminentBrief() {
+        guard !isBriefingLoading else { return }
+        isBriefingLoading = true
+        Task { @MainActor in
+            await Advisor.shared.runBriefing(kind: .manual)
+            // Small grace period so the spinner is perceptible and the @Query
+            // has a tick to refresh after the EventLog write completes.
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            isBriefingLoading = false
+        }
+    }
+
+    @ViewBuilder
+    private var briefingCard: some View {
+        if let latest = advisorBriefings.first {
+            briefingCardFilled(latest)
+        } else {
+            briefingCardEmpty
+        }
+    }
+
+    /// Filled state: serif "Briefing du <date>" + first 200 chars of content + "Voir plus" + "Régénérer".
+    /// Tap the title navigates to the Advisor agent (full briefing in Inspector via EventBus stream).
+    private func briefingCardFilled(_ event: EventLog) -> some View {
+        let content = Self.extractContent(event.payloadJSON)
+        let preview = String(content.prefix(200))
+        let hasMore = content.count > 200
+        return VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
+            HStack(alignment: .firstTextBaseline, spacing: IRISTokens.spacing8) {
+                Image(systemName: "sun.max.fill")
+                    .font(.system(size: 16))
+                    .foregroundStyle(IRISTokens.goldAccent)
+                Button {
+                    appState.selection = .agent(.advisor)
+                } label: {
+                    Text("Briefing du \(Self.formattedBriefingDate(event.timestamp))")
+                        .font(.system(size: 18, weight: .light, design: .serif))
+                        .foregroundStyle(.primary)
+                }
+                .buttonStyle(.plain)
+                .help("Ouvrir Advisor pour le briefing complet")
+                Spacer()
+                Text(event.timestamp, format: .relative(presentation: .named))
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+            if let attr = try? AttributedString(markdown: preview, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
+                Text(attr)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.primary.opacity(0.88))
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text(preview)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.primary.opacity(0.88))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack(spacing: IRISTokens.spacing16) {
+                if hasMore {
+                    Button {
+                        appState.selection = .agent(.advisor)
+                    } label: {
+                        Label("Voir plus", systemImage: "arrow.up.right.square")
+                            .font(.system(size: 11))
+                    }
+                    .buttonStyle(.borderless)
+                    .tint(IRISTokens.aquaTint)
+                    .help("Ouvrir Advisor pour lire le briefing complet")
+                }
+                Button {
+                    triggerProminentBrief()
+                } label: {
+                    if isBriefingLoading {
+                        HStack(spacing: 6) {
+                            ProgressView()
+                                .scaleEffect(0.5)
+                                .frame(width: 12, height: 12)
+                            Text("Génération…")
+                                .font(.system(size: 11))
+                        }
+                    } else {
+                        Label("Régénérer", systemImage: "arrow.clockwise")
+                            .font(.system(size: 11))
+                    }
+                }
+                .buttonStyle(.borderless)
+                .tint(IRISTokens.goldAccent)
+                .disabled(isBriefingLoading)
+                .help("Re-lancer un briefing Advisor maintenant")
+                Spacer()
+                if hasMore {
+                    Text("+\(content.count - 200) chars")
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(.secondary.opacity(0.7))
+                }
+            }
+        }
+        .padding(IRISTokens.spacing16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusMedium)
+                .fill(.regularMaterial)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusMedium)
+                .strokeBorder(IRISTokens.aquaTint.opacity(0.25), lineWidth: 0.5)
+        )
+    }
+
+    /// Empty state: invites Mehdi to generate a first briefing with a big aqua-tinted CTA.
+    private var briefingCardEmpty: some View {
+        VStack(alignment: .leading, spacing: IRISTokens.spacing8) {
+            HStack(alignment: .firstTextBaseline, spacing: IRISTokens.spacing8) {
+                Image(systemName: "sunrise.fill")
+                    .font(.system(size: 16))
+                    .foregroundStyle(IRISTokens.goldAccent)
+                Text("Aucun briefing récent")
+                    .font(.system(size: 18, weight: .light, design: .serif))
+                    .foregroundStyle(.primary)
+                Spacer()
+            }
+            Text("Advisor n'a pas encore produit de briefing. Lance-en un maintenant pour avoir tes 3 priorités + 2 risques + 1 challenge.")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Button {
+                    triggerProminentBrief()
+                } label: {
+                    if isBriefingLoading {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                                .scaleEffect(0.6)
+                                .frame(width: 14, height: 14)
+                            Text("Génération en cours…")
+                                .font(.system(size: 13, weight: .medium))
+                        }
+                        .padding(.horizontal, IRISTokens.spacing16)
+                        .padding(.vertical, IRISTokens.spacing8)
+                    } else {
+                        Label("Générer maintenant", systemImage: "sun.max.fill")
+                            .font(.system(size: 13, weight: .medium))
+                            .padding(.horizontal, IRISTokens.spacing16)
+                            .padding(.vertical, IRISTokens.spacing8)
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(IRISTokens.aquaTint)
+                .disabled(isBriefingLoading)
+                .help("Lancer un briefing Advisor (Opus 4.7 si clé API présente, sinon mock)")
+                Spacer()
+            }
+        }
+        .padding(IRISTokens.spacing16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusMedium)
+                .fill(.regularMaterial)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusMedium)
+                .strokeBorder(IRISTokens.aquaTint.opacity(0.25), lineWidth: 0.5)
+        )
     }
 
     // MARK: — v1.348 "Ton attention" smart panel (above heroSection)

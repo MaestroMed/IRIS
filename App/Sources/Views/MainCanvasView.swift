@@ -438,6 +438,9 @@ struct MainCanvasView: View {
     @ViewBuilder
     private func systemPanel(_ destination: SystemDestination) -> some View {
         switch destination {
+        case .activity:
+            // v1.351 — timeline unifiée 24h Signal/Draft/AuditReport/ActionLog
+            ActivityFeedView()
         case .logs:
             // v1.16 — vraie panel logs runtime (EventLog SwiftData query)
             LogsView()
