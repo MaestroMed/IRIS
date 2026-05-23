@@ -2,10 +2,12 @@ import SwiftUI
 import SwiftData
 
 // IRIS v0.0.2 + v1.8 + v1.13 — ContentView = NavigationSplitView 3 colonnes + raccourcis + toolbar stats live.
+// v1.345 — OnboardingSheet auto-show first launch + when Anthropic key missing.
 
 struct ContentView: View {
     @State private var appState = IRISAppState()
     @State private var showCommandPalette = false  // v1.46
+    @State private var showOnboarding: Bool = false  // v1.345
 
     @Query(sort: \Signal.emittedAt, order: .reverse) private var allSignals: [Signal]
     @Query private var pendingDraftsQuery: [Draft]
@@ -36,6 +38,19 @@ struct ContentView: View {
             CommandPaletteView()
                 .environment(appState)
         }
+        // v1.345 — Onboarding 3 étapes au premier launch (ou si clé Anthropic manquante)
+        .onAppear { showOnboarding = shouldShowOnboarding() }
+        .sheet(isPresented: $showOnboarding) {
+            OnboardingSheet()
+                .environment(appState)
+        }
+    }
+
+    // v1.345 — Décide si l'onboarding doit s'afficher.
+    private func shouldShowOnboarding() -> Bool {
+        let completed = UserDefaults.standard.bool(forKey: "iris.onboarding.completed")
+        if !completed { return true }
+        return !IRISKeychain.shared.hasAnthropicAPIKey()
     }
 
     // MARK: — v1.13 toolbar stats live

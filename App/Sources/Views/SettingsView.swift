@@ -28,6 +28,7 @@ import AppKit
 /// v1.316 — Reset agent visibility button (restore all defaults).
 /// v1.321 — Cmd+? shortcut documented in cheatsheet (binding TODO).
 /// v1.328 — EventLog auto-purge cadence Picker (UI only).
+/// v1.344 — Envoy webhook URL config + real send (Mail.app + webhook POST).
 struct SettingsView: View {
     @Environment(IRISAppState.self) private var appState
     @Environment(\.modelContext) private var modelContext
@@ -50,6 +51,7 @@ struct SettingsView: View {
     @AppStorage("backupAutoFrequency") private var backupAutoFrequency: String = "daily"  // v1.289
     @AppStorage("notificationMinImportance") private var notificationMinImportance: Int = 5  // v1.295
     @AppStorage("eventLogPurgeCadence") private var purgeCadence: String = "off"  // v1.328
+    @AppStorage("envoyWebhookURL") private var envoyWebhookURL: String = ""  // v1.344
     @State private var blocklistRefreshTick: Int = 0  // v1.212 — force re-render after unblock
     @State private var resetVisionStatus: String?  // v1.259
     @State private var importConfigStatus: String?  // v1.274
@@ -89,6 +91,10 @@ struct SettingsView: View {
             Divider()
 
             geminiKeySection  // v1.338
+
+            Divider()
+
+            envoyConfigSection  // v1.344
 
             Divider()
 
@@ -270,6 +276,19 @@ struct SettingsView: View {
             Label(msg, systemImage: "exclamationmark.triangle.fill")
                 .foregroundStyle(.red)
                 .font(.system(size: 12))
+        }
+    }
+
+    // v1.344 — Envoy webhook URL config (real send POST endpoint).
+    private var envoyConfigSection: some View {
+        VStack(alignment: .leading, spacing: IRISTokens.spacing16) {
+            sectionTitle("Envoy webhook", subtitle: "URL POST optionnelle pour drafts channel='webhook' (Slack/Discord/n8n incoming). Stocké UserDefaults.")
+            TextField("https://hooks.slack.com/services/…", text: $envoyWebhookURL)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(size: 13, design: .monospaced))
+            Text("Vide = Envoy reste en mode 'pas de webhook'. Channel='email' utilise toujours Mail.app handoff via mailto:.")
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
         }
     }
 
