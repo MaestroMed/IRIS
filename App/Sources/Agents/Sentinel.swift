@@ -157,10 +157,10 @@ public actor Sentinel {
         defer { Task { await client.stop() } }
 
         // Initialize handshake
-        let initParams: [String: Any] = [
+        let initParams: [String: any Sendable] = [
             "protocolVersion": "2024-11-05",
-            "capabilities": [String: Any](),
-            "clientInfo": ["name": "IRIS-Sentinel", "version": IRISRuntimeInfo.appVersion]
+            "capabilities": [String: any Sendable](),
+            "clientInfo": ["name": "IRIS-Sentinel", "version": IRISRuntimeInfo.appVersion] as [String: any Sendable]
         ]
         do {
             _ = try await client.callMethod("initialize", params: initParams, timeout: 10)
@@ -196,9 +196,9 @@ public actor Sentinel {
 
     /// v1.118 — Call un tool spécifique + parse content[0].text → Signal.
     private func callMCPTool(client: MCPClient, source: String, serverName: String, toolName: String) async {
-        let params: [String: Any] = [
+        let params: [String: any Sendable] = [
             "name": toolName,
-            "arguments": [String: Any]()  // empty pour v1.118 — args personnalisés en v1.119+
+            "arguments": [String: any Sendable]()  // empty pour v1.118 — args personnalisés en v1.119+
         ]
         guard let data = try? await client.callMethod("tools/call", params: params, timeout: 15) else {
             irisLog(.warning, "Sentinel MCP \(source) tools/call '\(toolName)' failed",

@@ -102,13 +102,13 @@ public final class MCPManager {
             Task { await client.stop() }
         }
 
-        let initParams: [String: Any] = [
+        let initParams: [String: any Sendable] = [
             "protocolVersion": "2024-11-05",
-            "capabilities": [String: Any](),
+            "capabilities": [String: any Sendable](),
             "clientInfo": [
                 "name": "IRIS",
                 "version": IRISRuntimeInfo.appVersion
-            ]
+            ] as [String: any Sendable]
         ]
 
         // Étape 1 — initialize

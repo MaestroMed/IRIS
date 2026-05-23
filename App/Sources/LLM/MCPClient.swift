@@ -96,7 +96,7 @@ public actor MCPClient {
     /// Send JSON-RPC method + attend la response (timeout 30s).
     /// Retourne le raw JSON body de la response (Data, Sendable). Caller parse.
     /// `params` est encodé via JSONSerialization donc accepte [String:Any] localement.
-    public func callMethod(_ method: String, params: sending [String: Any] = [:], timeout: TimeInterval = 30) async throws -> Data {
+    public func callMethod(_ method: String, params: [String: any Sendable] = [:], timeout: TimeInterval = 30) async throws -> Data {
         guard process != nil, let stdin = stdinPipe else { throw MCPError.notStarted }
 
         let id = nextId
@@ -144,7 +144,7 @@ public actor MCPClient {
 
     /// v1.115 — Send fire-and-forget notification (no id, no response attendue).
     /// Utilisé pour `notifications/initialized` après le handshake initialize.
-    public func notify(_ method: String, params: sending [String: Any] = [:]) throws {
+    public func notify(_ method: String, params: [String: any Sendable] = [:]) throws {
         guard process != nil, let stdin = stdinPipe else { throw MCPError.notStarted }
         let notif: [String: Any] = [
             "jsonrpc": "2.0",
