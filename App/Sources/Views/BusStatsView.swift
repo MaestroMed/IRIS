@@ -1186,12 +1186,38 @@ struct BusStatsView: View {
     }
 
     private var dbSizeEstimateMB: Double {
-        let eventBytes = allEvents.reduce(0) { $0 + $1.payloadJSON.utf8.count + ($1.fromAgent?.utf8.count ?? 0) + ($1.toAgent?.utf8.count ?? 0) + 100 }
-        let memoryBytes = allMemories.reduce(0) { $0 + $1.content.utf8.count + $1.summary.utf8.count + $1.name.utf8.count + $1.tagsCSV.utf8.count + 100 }
-        let auditBytes = allAudits.reduce(0) { $0 + $1.findingsJSON.utf8.count + $1.topActionsJSON.utf8.count + $1.verdict.utf8.count + $1.headline.utf8.count + 100 }
-        let draftBytes = allDrafts.reduce(0) { $0 + $1.content.utf8.count + 100 }
+        // NB v1.357 — broken into explicit Int locals; précédemment une seule expression chaînée
+        //            que Xcode 26.0.1 ne parvenait pas à type-check (CI red).
+        var eventBytes: Int = 0
+        for e in allEvents {
+            eventBytes += e.payloadJSON.utf8.count
+            eventBytes += e.fromAgent?.utf8.count ?? 0
+            eventBytes += e.toAgent?.utf8.count ?? 0
+            eventBytes += 100
+        }
+        var memoryBytes: Int = 0
+        for m in allMemories {
+            memoryBytes += m.content.utf8.count
+            memoryBytes += m.summary.utf8.count
+            memoryBytes += m.name.utf8.count
+            memoryBytes += m.tagsCSV.utf8.count
+            memoryBytes += 100
+        }
+        var auditBytes: Int = 0
+        for a in allAudits {
+            auditBytes += a.findingsJSON.utf8.count
+            auditBytes += a.topActionsJSON.utf8.count
+            auditBytes += a.verdict.utf8.count
+            auditBytes += a.headline.utf8.count
+            auditBytes += 100
+        }
+        var draftBytes: Int = 0
+        for d in allDrafts {
+            draftBytes += d.content.utf8.count
+            draftBytes += 100
+        }
         let totalBytes = eventBytes + memoryBytes + auditBytes + draftBytes
-        return Double(totalBytes) / (1024 * 1024)
+        return Double(totalBytes) / (1024.0 * 1024.0)
     }
 
     @ViewBuilder
