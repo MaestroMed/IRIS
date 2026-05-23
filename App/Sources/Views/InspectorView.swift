@@ -38,6 +38,7 @@ import AppKit
 /// v1.330 — Conductor today stats row (count + last query timestamp).
 /// v1.333 — Auditor lifetime cost badge (iris infinity) complement v1.209 today.
 /// v1.336 — Latest activity per agent table at top of Inspector.
+/// v1.342 — ProjectStackEditor sheet + Open-in-X buttons per project row.
 
 struct InspectorView: View {
     @Environment(IRISAppState.self) private var appState
@@ -89,6 +90,7 @@ struct InspectorView: View {
     @State private var copyVerdictStatus: String? = nil  // v1.192 — Copy verdict transient feedback
     @State private var cartographerSearch: String = ""   // v1.204 — Cartographer search field
     @State private var cartoStatusFilter: String = ""    // v1.294 — Cartographer status Picker (All/Active/Archived/Experimental)
+    @State private var editingProject: ProjectRecord?    // v1.342 — ProjectStackEditor sheet binding
     @State private var exportAuditsStatus: String? = nil // v1.260 — Export all audits MD transient feedback
     @AppStorage("inspectorCompactMode") private var compactMode: Bool = false  // v1.305 — collapse all section bodies
     // TODO: wire compactMode to per-section body conditionals
@@ -1563,6 +1565,10 @@ struct InspectorView: View {
                     .foregroundStyle(.secondary)
             }
         }
+        // v1.342 — ProjectStackEditor sheet (edit 3rd-party service connections per project)
+        .sheet(item: $editingProject) { proj in
+            ProjectStackEditor(project: proj)
+        }
     }
 
     private func projectRow(_ project: ProjectRecord) -> some View {
@@ -1657,6 +1663,48 @@ struct InspectorView: View {
             }
             .buttonStyle(.plain)
             .help("Lancer un audit Auditor sur ce projet")
+            // v1.342 — Open-in-X quick actions for filled service fields
+            if let url = project.vercelURL, !url.isEmpty, let u = URL(string: url) {
+                Button { NSWorkspace.shared.open(u) } label: {
+                    Image(systemName: "triangle.fill").font(.system(size: 9)).foregroundStyle(.primary.opacity(0.7))
+                }
+                .buttonStyle(.plain).help("Open Vercel: \(url)")
+            }
+            if let url = project.supabaseURL, !url.isEmpty, let u = URL(string: url) {
+                Button { NSWorkspace.shared.open(u) } label: {
+                    Image(systemName: "leaf.fill").font(.system(size: 9)).foregroundStyle(.green)
+                }
+                .buttonStyle(.plain).help("Open Supabase: \(url)")
+            }
+            if let zone = project.cloudflareZone, !zone.isEmpty,
+               let u = URL(string: "https://dash.cloudflare.com/?zone=\(zone)") {
+                Button { NSWorkspace.shared.open(u) } label: {
+                    Image(systemName: "cloud.fill").font(.system(size: 9)).foregroundStyle(.orange)
+                }
+                .buttonStyle(.plain).help("Open Cloudflare zone: \(zone)")
+            }
+            if let domain = project.resendDomain, !domain.isEmpty,
+               let u = URL(string: "https://resend.com/domains") {
+                Button { NSWorkspace.shared.open(u) } label: {
+                    Image(systemName: "envelope.badge.fill").font(.system(size: 9)).foregroundStyle(.purple)
+                }
+                .buttonStyle(.plain).help("Open Resend domains (sender: \(domain))")
+            }
+            if let email = project.clientEmail, !email.isEmpty,
+               let u = URL(string: "mailto:\(email)") {
+                Button { NSWorkspace.shared.open(u) } label: {
+                    Image(systemName: "envelope.fill").font(.system(size: 9)).foregroundStyle(IRISTokens.irisAccent)
+                }
+                .buttonStyle(.plain).help("Email client: \(email)")
+            }
+            // v1.342 — Edit services + 3rd party links
+            Button { editingProject = project } label: {
+                Image(systemName: "rectangle.connected.to.line.below")
+                    .font(.system(size: 10))
+                    .foregroundStyle(IRISTokens.aquaTint.opacity(0.7))
+            }
+            .buttonStyle(.plain)
+            .help("Edit services + 3rd party links")
         }
         .padding(.vertical, 4)
         .padding(.horizontal, 6)

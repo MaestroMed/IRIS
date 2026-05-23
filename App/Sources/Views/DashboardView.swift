@@ -27,6 +27,7 @@ import SwiftData
 /// v1.315 — Activity 7d × time-of-day heatmap card (morning/afternoon/evening × 7 days).
 /// v1.323 — Quick "Brief now" trigger button (Advisor.runBriefing manual).
 /// v1.340 — Hero section (Quick Actions + Projects grid + Recent activity) at top of dashboard.
+/// v1.343 — Hero project cards: service icons + git status badge.
 
 struct DashboardView: View {
     @Environment(IRISAppState.self) private var appState
@@ -601,6 +602,10 @@ struct DashboardView: View {
                                         .font(.system(size: 9, design: .monospaced))
                                         .foregroundStyle(.secondary.opacity(0.6))
                                 }
+                                // v1.343 — Git status badge (branch · dirty · ahead/behind)
+                                heroProjectGitBadge(project)
+                                // v1.343 — Service icons row (Vercel/Supabase/Cloudflare/Resend/email)
+                                heroProjectServiceIcons(project)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(IRISTokens.spacing8)
@@ -616,6 +621,81 @@ struct DashboardView: View {
                         .buttonStyle(.plain)
                         .help("last activity — clique pour ouvrir Cartographer")
                     }
+                }
+            }
+        }
+    }
+
+    // v1.343 — Hero project card: git status badge (branch · dirty · ahead/behind)
+    @ViewBuilder
+    private func heroProjectGitBadge(_ project: ProjectRecord) -> some View {
+        if let branch = project.gitBranch, !branch.isEmpty {
+            HStack(spacing: 3) {
+                Image(systemName: "arrow.triangle.branch")
+                    .font(.system(size: 7))
+                    .foregroundStyle(.secondary)
+                Text(branch)
+                    .font(.system(size: 8, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                if project.gitDirtyCount > 0 {
+                    Text("●\(project.gitDirtyCount)")
+                        .font(.system(size: 8, design: .monospaced))
+                        .foregroundStyle(.orange)
+                }
+                if project.gitAhead > 0 {
+                    Text("↑\(project.gitAhead)")
+                        .font(.system(size: 8, design: .monospaced))
+                        .foregroundStyle(.green)
+                }
+                if project.gitBehind > 0 {
+                    Text("↓\(project.gitBehind)")
+                        .font(.system(size: 8, design: .monospaced))
+                        .foregroundStyle(.red)
+                }
+            }
+        }
+    }
+
+    // v1.343 — Hero project card: service icons row (only render when at least one is set)
+    @ViewBuilder
+    private func heroProjectServiceIcons(_ project: ProjectRecord) -> some View {
+        let hasAny = (project.vercelURL?.isEmpty == false)
+            || (project.supabaseURL?.isEmpty == false)
+            || (project.cloudflareZone?.isEmpty == false)
+            || (project.resendDomain?.isEmpty == false)
+            || (project.clientEmail?.isEmpty == false)
+        if hasAny {
+            HStack(spacing: 3) {
+                if let v = project.vercelURL, !v.isEmpty {
+                    Image(systemName: "triangle.fill")
+                        .font(.system(size: 8))
+                        .foregroundStyle(.primary.opacity(0.6))
+                        .help("Vercel: \(v)")
+                }
+                if let s = project.supabaseURL, !s.isEmpty {
+                    Image(systemName: "leaf.fill")
+                        .font(.system(size: 8))
+                        .foregroundStyle(.green.opacity(0.7))
+                        .help("Supabase: \(s)")
+                }
+                if let c = project.cloudflareZone, !c.isEmpty {
+                    Image(systemName: "cloud.fill")
+                        .font(.system(size: 8))
+                        .foregroundStyle(.orange.opacity(0.7))
+                        .help("Cloudflare: \(c)")
+                }
+                if let r = project.resendDomain, !r.isEmpty {
+                    Image(systemName: "envelope.badge.fill")
+                        .font(.system(size: 8))
+                        .foregroundStyle(.purple.opacity(0.7))
+                        .help("Resend: \(r)")
+                }
+                if let e = project.clientEmail, !e.isEmpty {
+                    Image(systemName: "person.crop.circle.fill")
+                        .font(.system(size: 8))
+                        .foregroundStyle(IRISTokens.irisAccent.opacity(0.7))
+                        .help("Email: \(e)")
                 }
             }
         }
