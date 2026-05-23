@@ -40,6 +40,7 @@ jobs:
         run: tuist generate --no-open
 
       - name: xcodebuild (Debug, macOS)
+        # NB : un seul run, log complet capturé puis filtré sur errors/warnings (avant : `| tail -50` tronquait les `error:` Swift)
         run: |
           set -o pipefail
           xcodebuild \
@@ -47,7 +48,16 @@ jobs:
             -scheme IRIS \
             -destination 'platform=macOS' \
             -configuration Debug \
-            build | tail -50
+            build 2>&1 | tee /tmp/xcb-build.log | grep -E "(error:|warning:|BUILD)" | tail -200 || true
+          # Propagate exit code from the actual xcodebuild via pipefail+tee — last command of pipeline is grep which exits 0/1.
+          # On extrait BUILD result depuis le log :
+          if grep -q "\*\* BUILD SUCCEEDED \*\*" /tmp/xcb-build.log; then
+            echo "Build OK"
+          else
+            echo "Build FAILED — derniers errors :"
+            grep -E "error:" /tmp/xcb-build.log | tail -50
+            exit 1
+          fi
 
       - name: xcodebuild test (IRISTests) — STRICT (v1.0+)
         run: |
@@ -57,7 +67,14 @@ jobs:
             -scheme IRIS \
             -destination 'platform=macOS' \
             -configuration Debug \
-            test | tail -120
+            test 2>&1 | tee /tmp/xcb-test.log | grep -E "(error:|warning:|Test |passed|failed|XCTAssert|FAIL)" | tail -200 || true
+          if grep -q "\*\* TEST SUCCEEDED \*\*" /tmp/xcb-test.log; then
+            echo "Tests OK"
+          else
+            echo "Tests FAILED — derniers errors :"
+            grep -E "(error:|XCTAssert|FAIL)" /tmp/xcb-test.log | tail -50
+            exit 1
+          fi
 
   lint:
     name: Markdown lint (docs)
