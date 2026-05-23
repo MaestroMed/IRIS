@@ -1,3 +1,4 @@
+// v1.339 — refresh() now parses real git status per local repo
 import Foundation
 import SwiftData
 
@@ -91,13 +92,135 @@ public actor Cartographer {
             guard isDir else { return nil }
             let lastModified = (try? dir.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? Date()
             let stack = Self.detectStack(at: dir)
+            let git = Self.parseGitStatus(at: dir)
             return LocalProject(
                 codename: dir.lastPathComponent,
                 localPath: dir.path,
                 stack: stack,
-                lastModified: lastModified
+                lastModified: lastModified,
+                git: git
             )
         }
+    }
+
+    // MARK: — Git status parsing (v1.339)
+
+    /// Parse l'état git d'un repo local en shell-out vers `/usr/bin/git`.
+    /// Retourne `(nil, 0, 0, 0, nil, nil)` si ce n'est pas un repo git ou si git échoue.
+    nonisolated static func parseGitStatus(at url: URL) -> GitStatus {
+        let gitDir = url.appendingPathComponent(".git")
+        guard FileManager.default.fileExists(atPath: gitDir.path) else {
+            return GitStatus.empty
+        }
+
+        let statusOutput = runGit(args: ["-C", url.path, "status", "-sb", "-uall"])
+        var branch: String? = nil
+        var ahead = 0
+        var behind = 0
+        var dirty = 0
+
+        if let statusOutput {
+            let lines = statusOutput.split(separator: "\n", omittingEmptySubsequences: false)
+            for (idx, line) in lines.enumerated() {
+                if idx == 0, line.hasPrefix("## ") {
+                    // Examples:
+                    //   ## main...origin/main
+                    //   ## main...origin/main [ahead 1, behind 2]
+                    //   ## HEAD (no branch)
+                    //   ## main
+                    let header = String(line.dropFirst(3))
+                    let (b, a, bh) = Self.parseStatusHeader(header)
+                    branch = b
+                    ahead = a
+                    behind = bh
+                } else if !line.isEmpty {
+                    dirty += 1
+                }
+            }
+        }
+
+        var lastDate: Date? = nil
+        var lastMessage: String? = nil
+        if let logOutput = runGit(args: ["-C", url.path, "log", "-1", "--format=%ct|%s"]) {
+            let trimmed = logOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let pipeIdx = trimmed.firstIndex(of: "|") {
+                let tsString = String(trimmed[..<pipeIdx])
+                let subject = String(trimmed[trimmed.index(after: pipeIdx)...])
+                if let ts = TimeInterval(tsString) {
+                    lastDate = Date(timeIntervalSince1970: ts)
+                }
+                if !subject.isEmpty {
+                    lastMessage = subject
+                }
+            }
+        }
+
+        return GitStatus(
+            branch: branch,
+            dirty: dirty,
+            ahead: ahead,
+            behind: behind,
+            lastDate: lastDate,
+            lastMessage: lastMessage
+        )
+    }
+
+    nonisolated private static func parseStatusHeader(_ header: String) -> (String?, Int, Int) {
+        // Strip "(no branch)" detached-HEAD case → branch nil
+        if header.hasPrefix("HEAD") || header.contains("(no branch)") {
+            return (nil, 0, 0)
+        }
+
+        // Split off the optional " [ahead N, behind M]" tail
+        var head = header
+        var ahead = 0
+        var behind = 0
+
+        if let bracketStart = header.firstIndex(of: "["),
+           let bracketEnd = header.firstIndex(of: "]"),
+           bracketStart < bracketEnd {
+            let tail = String(header[header.index(after: bracketStart)..<bracketEnd])
+            for part in tail.split(separator: ",") {
+                let kv = part.trimmingCharacters(in: .whitespaces).split(separator: " ")
+                if kv.count == 2 {
+                    let key = String(kv[0])
+                    let val = Int(String(kv[1])) ?? 0
+                    if key == "ahead" { ahead = val }
+                    else if key == "behind" { behind = val }
+                }
+            }
+            head = String(header[..<bracketStart]).trimmingCharacters(in: .whitespaces)
+        }
+
+        // head is "branch" or "branch...origin/branch"
+        let branchPart: String
+        if let dots = head.range(of: "...") {
+            branchPart = String(head[..<dots.lowerBound])
+        } else {
+            branchPart = head
+        }
+        let branch = branchPart.trimmingCharacters(in: .whitespaces)
+        return (branch.isEmpty ? nil : branch, ahead, behind)
+    }
+
+    nonisolated private static func runGit(args: [String]) -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        process.arguments = args
+        let outPipe = Pipe()
+        let errPipe = Pipe()
+        process.standardOutput = outPipe
+        process.standardError = errPipe
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            return nil
+        }
+        guard process.terminationStatus == 0 else { return nil }
+        let data = outPipe.fileHandleForReading.readDataToEndOfFile()
+        return String(data: data, encoding: .utf8)
     }
 
     private static func detectStack(at url: URL) -> [String: String] {
@@ -248,7 +371,17 @@ public actor Cartographer {
                 if let desc = ghMatch?.description, !desc.isEmpty {
                     existing.notes = desc
                 }
+                // v1.339 — live git status overwrite (only when we actually scanned the local repo)
+                if let git = localMatch?.git {
+                    existing.gitBranch = git.branch
+                    existing.gitDirtyCount = git.dirty
+                    existing.gitAhead = git.ahead
+                    existing.gitBehind = git.behind
+                    existing.lastCommitAt = git.lastDate ?? existing.lastCommitAt
+                    existing.lastCommitMessage = git.lastMessage ?? existing.lastCommitMessage
+                }
             } else {
+                let git = localMatch?.git ?? .empty
                 let record = ProjectRecord(
                     codename: codename,
                     displayName: codename,
@@ -260,7 +393,13 @@ public actor Cartographer {
                     lastPushAt: ghMatch?.pushedAt ?? localMatch?.lastModified,
                     lastScannedAt: .now,
                     isPrivate: ghMatch?.isPrivate ?? false,
-                    notes: ghMatch?.description ?? ""
+                    notes: ghMatch?.description ?? "",
+                    gitBranch: git.branch,
+                    gitDirtyCount: git.dirty,
+                    gitAhead: git.ahead,
+                    gitBehind: git.behind,
+                    lastCommitAt: git.lastDate,
+                    lastCommitMessage: git.lastMessage
                 )
                 context.insert(record)
             }
@@ -297,6 +436,19 @@ public actor Cartographer {
         let localPath: String
         let stack: [String: String]
         let lastModified: Date
+        let git: GitStatus
+    }
+
+    /// État git d'un repo local (v1.339).
+    struct GitStatus: Sendable {
+        let branch: String?
+        let dirty: Int
+        let ahead: Int
+        let behind: Int
+        let lastDate: Date?
+        let lastMessage: String?
+
+        static let empty = GitStatus(branch: nil, dirty: 0, ahead: 0, behind: 0, lastDate: nil, lastMessage: nil)
     }
 
     private struct GitHubProject: Sendable {

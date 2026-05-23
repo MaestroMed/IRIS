@@ -26,6 +26,7 @@ import SwiftData
 /// v1.309 — This week summary card (events/signals/audits/drafts since week-start).
 /// v1.315 — Activity 7d × time-of-day heatmap card (morning/afternoon/evening × 7 days).
 /// v1.323 — Quick "Brief now" trigger button (Advisor.runBriefing manual).
+/// v1.340 — Hero section (Quick Actions + Projects grid + Recent activity) at top of dashboard.
 
 struct DashboardView: View {
     @Environment(IRISAppState.self) private var appState
@@ -39,6 +40,8 @@ struct DashboardView: View {
     @Query(sort: \Draft.createdAt, order: .reverse) private var allDraftsForRecent: [Draft]
     @Query private var allAudits: [AuditReport]
     @Query private var allProjects: [ProjectRecord]
+    // v1.340 — Sorted by lastScannedAt desc pour Hero projects grid
+    @Query(sort: \ProjectRecord.lastScannedAt, order: .reverse) private var allProjectsForHero: [ProjectRecord]
     @Query(sort: \ActionLog.executedAt, order: .reverse) private var allActions: [ActionLog]
 
     // v1.173 — All events pour alerts last 1h (agentFailure count)
@@ -64,9 +67,15 @@ struct DashboardView: View {
     // v1.323 — Quick "Brief now" status feedback
     @State private var briefStatus: String?
 
+    // v1.340 — Hero help sheet binding (sheet content added by a separate commit)
+    @State private var showHelp: Bool = false
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: IRISTokens.spacing24) {
+                // v1.340 — Hero section (Quick Actions + Projects + Recent activity)
+                heroSection
+
                 // v1.195 — System status banner (Witness · Sentinel · MCP)
                 systemStatusBanner
 
@@ -79,6 +88,15 @@ struct DashboardView: View {
                     .controlSize(.small)
                     .tint(IRISTokens.goldAccent)
                     .help("Lancer un briefing Advisor manuel maintenant (Cmd+B raccourci aussi)")
+
+                    // v1.341 — Show help (agents + queries examples)
+                    Button { showHelp = true } label: {
+                        Label("Show help", systemImage: "questionmark.circle")
+                            .font(.system(size: 11))
+                    }
+                    .controlSize(.small)
+                    .tint(IRISTokens.aquaTint)
+                    .help("Ouvrir le guide des 10 agents avec exemples de queries cliquables")
 
                     if let status = briefStatus {
                         Text(status)
@@ -209,6 +227,10 @@ struct DashboardView: View {
                 Spacer()
             }
             .padding(IRISTokens.spacing24)
+        }
+        // v1.341 — Agent help sheet (liste des 10 agents + exemples de queries)
+        .sheet(isPresented: $showHelp) {
+            AgentHelpSheet()
         }
     }
 
@@ -447,6 +469,198 @@ struct DashboardView: View {
         briefStatus = "✅ Brief lancé…"
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
             briefStatus = nil
+        }
+    }
+
+    // MARK: — v1.340 Hero section (Quick Actions + Projects + Recent activity)
+
+    /// Combined hero block at the top of the dashboard. Renders 3 sub-blocks:
+    /// quick actions grid (3×2), projects mini grid (top 6 by lastScannedAt),
+    /// recent activity (last 5 events). Wrapped with a soft aqua gradient for visual emphasis.
+    private var heroSection: some View {
+        VStack(alignment: .leading, spacing: IRISTokens.spacing16) {
+            heroQuickActionsBlock
+            heroProjectsBlock
+            heroRecentActivityBlock
+        }
+        .padding(IRISTokens.spacing16)
+        .background(
+            LinearGradient(
+                colors: [IRISTokens.aquaTint.opacity(0.05), Color.clear],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
+    }
+
+    // MARK: Hero — Block 1: Quick Actions grid (3×2)
+
+    private var heroQuickActionsBlock: some View {
+        let columns = Array(repeating: GridItem(.flexible(), spacing: IRISTokens.spacing8), count: 3)
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("ACTIONS RAPIDES")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .tracking(1.4)
+                .foregroundStyle(.secondary)
+            LazyVGrid(columns: columns, spacing: IRISTokens.spacing8) {
+                HeroQuickActionButton(
+                    emoji: "🌅",
+                    title: "Brief now",
+                    subtitle: "Advisor manuel",
+                    action: { Task { await Advisor.shared.runBriefing(kind: .manual) } }
+                )
+                HeroQuickActionButton(
+                    emoji: "🗺️",
+                    title: "Scan projects",
+                    subtitle: "Cartographer refresh",
+                    action: { Task { await Cartographer.shared.refresh() } }
+                )
+                HeroQuickActionButton(
+                    emoji: "🔍",
+                    title: "Search memories…",
+                    subtitle: "via Conductor",
+                    action: {
+                        appState.currentInput = "cherche "
+                        appState.selection = .agent(.conductor)
+                    }
+                )
+                HeroQuickActionButton(
+                    emoji: "✅",
+                    title: "Audit a project",
+                    subtitle: "via Conductor",
+                    action: { appState.currentInput = "audit " }
+                )
+                HeroQuickActionButton(
+                    emoji: "🏗️",
+                    title: "Scaffold new",
+                    subtitle: "via Builder",
+                    action: { appState.currentInput = "scaffold " }
+                )
+                HeroQuickActionButton(
+                    emoji: "❓",
+                    title: "Show help",
+                    subtitle: "raccourcis & tips",
+                    action: { showHelp = true }
+                )
+            }
+        }
+    }
+
+    // MARK: Hero — Block 2: Projects mini grid
+
+    /// Last-activity timestamp for a project, falling back across available fields.
+    private func projectLastActivity(_ project: ProjectRecord) -> Date? {
+        project.lastCommitAt ?? project.lastScannedAt ?? project.lastPushAt
+    }
+
+    private func projectStatusColor(_ status: String) -> Color {
+        switch status.lowercased() {
+        case "active":   return .green
+        case "tiede":    return IRISTokens.goldAccent
+        case "dormant":  return .orange
+        case "archived": return .secondary
+        default:         return .secondary
+        }
+    }
+
+    private var heroProjectsBlock: some View {
+        let topProjects = Array(allProjectsForHero.prefix(6))
+        let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 3)
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("TES PROJETS")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .tracking(1.4)
+                .foregroundStyle(.secondary)
+            if topProjects.isEmpty {
+                Text("Aucun projet scanné. Clique 'Scan projects'.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            } else {
+                LazyVGrid(columns: columns, spacing: 8) {
+                    ForEach(topProjects, id: \.codename) { project in
+                        Button {
+                            appState.selection = .agent(.cartographer)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack(spacing: 4) {
+                                    Circle()
+                                        .fill(projectStatusColor(project.status))
+                                        .frame(width: 6, height: 6)
+                                    Text(project.displayName.isEmpty ? project.codename : project.displayName)
+                                        .font(.system(size: 12, weight: .medium, design: .serif))
+                                        .lineLimit(1)
+                                    Spacer(minLength: 0)
+                                }
+                                if let when = projectLastActivity(project) {
+                                    Text(when, format: .relative(presentation: .named))
+                                        .font(.system(size: 9, design: .monospaced))
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                } else {
+                                    Text("no activity")
+                                        .font(.system(size: 9, design: .monospaced))
+                                        .foregroundStyle(.secondary.opacity(0.6))
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(IRISTokens.spacing8)
+                            .background(
+                                RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall)
+                                    .fill(.thinMaterial)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusSmall)
+                                    .strokeBorder(IRISTokens.aquaTint.opacity(0.12), lineWidth: 0.5)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .help("last activity — clique pour ouvrir Cartographer")
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: Hero — Block 3: Recent activity (last 5 events)
+
+    private var heroRecentActivityBlock: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("ACTIVITÉ")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .tracking(1.4)
+                .foregroundStyle(.secondary)
+            if recentEvents.isEmpty {
+                Text("Aucune activité.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(recentEvents) { event in
+                    HStack(spacing: 6) {
+                        Text(event.timestamp, format: .relative(presentation: .named))
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 80, alignment: .leading)
+                            .lineLimit(1)
+                        Text(event.kind)
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(.primary.opacity(0.85))
+                            .lineLimit(1)
+                        if let from = event.fromAgent {
+                            Text(from)
+                                .font(.system(size: 9, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        if let to = event.toAgent {
+                            Text("→ \(to)")
+                                .font(.system(size: 9, design: .monospaced))
+                                .foregroundStyle(IRISTokens.aquaTint.opacity(0.75))
+                                .lineLimit(1)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                }
+            }
         }
     }
 
@@ -2010,4 +2224,48 @@ struct DashboardView: View {
     DashboardView()
         .environment(IRISAppState())
         .frame(width: 800, height: 600)
+}
+
+// MARK: — v1.340 Hero Quick Action button (with hover scale)
+
+private struct HeroQuickActionButton: View {
+    let emoji: String
+    let title: String
+    let subtitle: String
+    let action: () -> Void
+
+    @State private var isHovering: Bool = false
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Text(emoji)
+                    .font(.system(size: 28))
+                Text(title)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(1)
+                Text(subtitle)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(IRISTokens.spacing16)
+            .background(
+                RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusMedium)
+                    .fill(.thinMaterial)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: IRISTokens.cornerRadiusMedium)
+                    .strokeBorder(IRISTokens.aquaTint.opacity(isHovering ? 0.35 : 0.12), lineWidth: 0.5)
+            )
+            .scaleEffect(isHovering ? 1.02 : 1.0)
+            .animation(.easeOut(duration: 0.15), value: isHovering)
+        }
+        .buttonStyle(.plain)
+        .onHover { hover in isHovering = hover }
+    }
 }
