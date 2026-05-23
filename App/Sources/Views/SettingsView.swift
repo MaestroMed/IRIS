@@ -31,6 +31,7 @@ import AppKit
 /// v1.344 — Envoy webhook URL config + real send (Mail.app + webhook POST).
 /// v1.347 — Cartographer auto-scan on launch toggle (@AppStorage cartographerAutoScanOnLaunch).
 /// v1.346 — Toggle Conductor inject Witness vision dans system prompt (@AppStorage conductorUseWitnessContext).
+/// v1.352 — Cartographer emit-Signals toggle in cartographerSection (@AppStorage cartographerEmitSignals).
 struct SettingsView: View {
     @Environment(IRISAppState.self) private var appState
     @Environment(\.modelContext) private var modelContext
@@ -55,7 +56,12 @@ struct SettingsView: View {
     @AppStorage("eventLogPurgeCadence") private var purgeCadence: String = "off"  // v1.328
     @AppStorage("envoyWebhookURL") private var envoyWebhookURL: String = ""  // v1.344
     @AppStorage("cartographerAutoScanOnLaunch") private var cartographerAutoScanOnLaunch: Bool = true  // v1.347
+    @AppStorage("cartographerEmitSignals") private var cartographerEmitSignals: Bool = true  // v1.352
     @AppStorage("conductorUseWitnessContext") private var conductorUseWitnessContext: Bool = true  // v1.346
+    // v1.353 — Auditor weekly auto-audit (cost-capped, batched)
+    @AppStorage("auditorAutoAuditEnabled") private var auditorAutoAuditEnabled: Bool = true
+    @AppStorage("auditorMaxDailyAuditCostUSD") private var auditorMaxDailyAuditCostUSD: Double = 1.0
+    @AppStorage("auditorAutoAuditIntervalDays") private var auditorAutoAuditIntervalDays: Int = 7
     @State private var blocklistRefreshTick: Int = 0  // v1.212 — force re-render after unblock
     @State private var resetVisionStatus: String?  // v1.259
     @State private var importConfigStatus: String?  // v1.274
@@ -608,6 +614,60 @@ struct SettingsView: View {
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundStyle(.secondary)
                 }
+            }
+            .padding(.leading, IRISTokens.spacing16)
+
+            // v1.353 — Auditor weekly auto-audit (cost-capped, batched ≤ 3 projets/run)
+            HStack {
+                Toggle(isOn: $auditorAutoAuditEnabled) {
+                    Text("Auditor auto-audit hebdo (active, batch ≤ 3, 30s pause)")
+                        .font(.system(size: 11))
+                }
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                Spacer()
+                if let last = Auditor.autoAuditLastBatchAt {
+                    Text("dernier batch : \(RelativeDateTimeFormatter().localizedString(for: last, relativeTo: .now))")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("jamais")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.leading, IRISTokens.spacing16)
+
+            // v1.353 — Daily cost cap stepper (skip batch si dépassé)
+            HStack {
+                Text("Auto-audit daily cost cap")
+                    .font(.system(size: 11))
+                Spacer()
+                Stepper(value: $auditorMaxDailyAuditCostUSD, in: 0.25...10.0, step: 0.25) {
+                    Text("$\(String(format: "%.2f", auditorMaxDailyAuditCostUSD))")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                .controlSize(.small)
+                .disabled(!auditorAutoAuditEnabled)
+            }
+            .padding(.leading, IRISTokens.spacing16)
+
+            // v1.353 — Interval picker (jours entre 2 audits du même projet)
+            HStack {
+                Text("Auto-audit interval (par projet)")
+                    .font(.system(size: 11))
+                Spacer()
+                Picker("", selection: $auditorAutoAuditIntervalDays) {
+                    Text("3 jours").tag(3)
+                    Text("7 jours (hebdo)").tag(7)
+                    Text("14 jours").tag(14)
+                    Text("30 jours (mensuel)").tag(30)
+                }
+                .labelsHidden()
+                .controlSize(.small)
+                .frame(maxWidth: 200)
+                .disabled(!auditorAutoAuditEnabled)
             }
             .padding(.leading, IRISTokens.spacing16)
 
@@ -1830,6 +1890,25 @@ struct SettingsView: View {
                 }
                 Spacer()
                 Toggle("", isOn: $cartographerAutoScanOnLaunch)
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                    .labelsHidden()
+            }
+
+            // v1.352 — emit Signals derived from git state (dirty/ahead/behind/dormant)
+            HStack(spacing: IRISTokens.spacing8) {
+                Image(systemName: "antenna.radiowaves.left.and.right")
+                    .foregroundStyle(IRISTokens.aquaTint)
+                    .font(.system(size: 14))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Émettre des Signals santé projet")
+                        .font(.system(size: 11, weight: .medium))
+                    Text("Après chaque scan : Signal cartographer si repo dirty+stale, ahead ≥5, behind ≥1, ou dormant 30j+ (dedup 24h).")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Toggle("", isOn: $cartographerEmitSignals)
                     .toggleStyle(.switch)
                     .controlSize(.small)
                     .labelsHidden()

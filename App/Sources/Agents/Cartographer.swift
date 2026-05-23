@@ -1,3 +1,4 @@
+// v1.352 — emit Signals for project health (dirty+stale / ahead / behind / dormant) with 24h dedup
 // v1.347 — startAutoScanOnLaunch (delayed non-blocking scan + lastScannedAt guard)
 // v1.339 — refresh() now parses real git status per local repo
 import Foundation
@@ -21,6 +22,16 @@ public actor Cartographer {
     public static let autoScanOnLaunchKey = "cartographerAutoScanOnLaunch"
     /// v1.347 — Skip auto-scan if any project was scanned within this window.
     private static let autoScanFreshnessWindow: TimeInterval = 600 // 10 min
+
+    /// v1.352 — UserDefaults key for emit-Signals toggle (mirror in SettingsView).
+    public static let emitSignalsKey = "cartographerEmitSignals"
+    /// v1.352 — Dedup window: don't emit the same per-project signal twice within this span.
+    private static let signalDedupWindow: TimeInterval = 24 * 3600
+    /// v1.352 — Thresholds for the 4 project health signal types.
+    private static let dirtyStaleAgeThreshold: TimeInterval = 7 * 86400      // 7 days
+    private static let dormantAgeThreshold: TimeInterval = 30 * 86400        // 30 days
+    private static let aheadCommitsThreshold = 5
+    private static let behindCommitsThreshold = 1
 
     private var refreshTask: Task<Void, Never>?
     private var autoScanTask: Task<Void, Never>?
@@ -106,6 +117,9 @@ public actor Cartographer {
 
         await persist(local: localProjects, github: githubMeta)
 
+        // v1.352 — derive Signals from git state (dirty/ahead/behind/dormant) after persist.
+        let emittedCount = await emitProjectHealthSignals()
+
         let summary = localOnly
             ? "Carte projets rafraîchie (local-only) : \(localProjects.count) locaux"
             : "Carte projets rafraîchie : \(localProjects.count) locaux, \(githubMeta.count) GitHub"
@@ -119,8 +133,196 @@ public actor Cartographer {
             )
         )
 
-        irisLog(.info, "Cartographer refresh done — \(localProjects.count) local + \(githubMeta.count) gh",
+        irisLog(.info,
+                "Cartographer refresh done — \(localProjects.count) local + \(githubMeta.count) gh + \(emittedCount) health signals",
                 category: IRISLogger.agents)
+    }
+
+    // MARK: — v1.352 Project health signal emission
+
+    /// Scans persisted ProjectRecords (status == "active") and emits Signals describing
+    /// repos that need attention: dirty+stale, ahead origin, behind origin, dormant.
+    /// Honors @AppStorage `cartographerEmitSignals` (default true). Dedups identical
+    /// (project, kind) signals within the last 24h via a stable `rawLink` key.
+    /// Returns the number of Signals actually inserted (post-dedup).
+    @discardableResult
+    private func emitProjectHealthSignals() async -> Int {
+        let enabled = UserDefaults.standard.object(forKey: Self.emitSignalsKey) as? Bool ?? true
+        guard enabled else {
+            irisLog(.debug, "Cartographer emitProjectHealthSignals skipped (opt-out via Settings)",
+                    category: IRISLogger.agents)
+            return 0
+        }
+
+        let snapshots = await collectActiveProjectSnapshots()
+        guard !snapshots.isEmpty else { return 0 }
+
+        let candidates = buildSignalCandidates(from: snapshots, now: .now)
+        guard !candidates.isEmpty else { return 0 }
+
+        let actuallyInserted = await persistDedupedSignals(candidates: candidates)
+        for candidate in actuallyInserted {
+            await EventBus.shared.publish(
+                .signalEmitted(
+                    from: .cartographer,
+                    importance: candidate.importance,
+                    summary: candidate.summary,
+                    source: "cartographer"
+                )
+            )
+        }
+        return actuallyInserted.count
+    }
+
+    /// Sendable snapshot of the ProjectRecord fields we need to decide on a Signal.
+    /// Avoids carrying the @Model across the actor boundary.
+    private struct ProjectSnapshot: Sendable {
+        let codename: String
+        let displayName: String
+        let gitDirtyCount: Int
+        let gitAhead: Int
+        let gitBehind: Int
+        let lastCommitAt: Date?
+    }
+
+    /// Read-only fetch of active ProjectRecords on MainActor, marshalled to Sendable snapshots.
+    @MainActor
+    private func collectActiveProjectSnapshots() async -> [ProjectSnapshot] {
+        guard let container = await modelContainer else { return [] }
+        let descriptor = FetchDescriptor<ProjectRecord>(
+            predicate: #Predicate { $0.status == "active" }
+        )
+        let projects = (try? container.mainContext.fetch(descriptor)) ?? []
+        return projects.map { project in
+            ProjectSnapshot(
+                codename: project.codename,
+                displayName: project.displayName,
+                gitDirtyCount: project.gitDirtyCount,
+                gitAhead: project.gitAhead,
+                gitBehind: project.gitBehind,
+                lastCommitAt: project.lastCommitAt
+            )
+        }
+    }
+
+    /// Sendable candidate Signal payload (built before dedup / persistence).
+    private struct SignalCandidate: Sendable {
+        let dedupKey: String       // stable per (kind, codename), stored in Signal.rawLink
+        let summary: String
+        let importance: SignalImportance
+        let projectScope: String   // codename
+    }
+
+    /// Pure synthesis of candidate Signals from project snapshots — no side effects.
+    /// Made nonisolated + static so it's trivially Sendable-safe & unit-testable.
+    nonisolated private func buildSignalCandidates(
+        from snapshots: [ProjectSnapshot],
+        now: Date
+    ) -> [SignalCandidate] {
+        var out: [SignalCandidate] = []
+        for snap in snapshots {
+            // 1) Dirty repo with old last commit (>7d).
+            if snap.gitDirtyCount > 0,
+               let lastCommit = snap.lastCommitAt,
+               now.timeIntervalSince(lastCommit) > Self.dirtyStaleAgeThreshold {
+                let days = Int(now.timeIntervalSince(lastCommit) / 86400)
+                let summary = "📝 \(snap.displayName) — \(snap.gitDirtyCount) fichier\(snap.gitDirtyCount == 1 ? "" : "s") modifié\(snap.gitDirtyCount == 1 ? "" : "s"), dernier commit il y a \(days)d"
+                out.append(SignalCandidate(
+                    dedupKey: "cartographer://dirty-stale/\(snap.codename)",
+                    summary: summary,
+                    importance: .medium,
+                    projectScope: snap.codename
+                ))
+            }
+
+            // 2) Ahead origin many commits (>=5).
+            if snap.gitAhead >= Self.aheadCommitsThreshold {
+                let summary = "🚀 \(snap.displayName) — \(snap.gitAhead) commits non pushés"
+                out.append(SignalCandidate(
+                    dedupKey: "cartographer://ahead/\(snap.codename)",
+                    summary: summary,
+                    importance: .low,
+                    projectScope: snap.codename
+                ))
+            }
+
+            // 3) Behind origin (>=1).
+            if snap.gitBehind >= Self.behindCommitsThreshold {
+                let plural = snap.gitBehind == 1 ? "commit" : "commits"
+                let summary = "⬇️ \(snap.displayName) — \(snap.gitBehind) \(plural) à puller"
+                out.append(SignalCandidate(
+                    dedupKey: "cartographer://behind/\(snap.codename)",
+                    summary: summary,
+                    importance: .low,
+                    projectScope: snap.codename
+                ))
+            }
+
+            // 4) Dormant active project: no commit in 30+ days but still marked active.
+            if let lastCommit = snap.lastCommitAt,
+               now.timeIntervalSince(lastCommit) > Self.dormantAgeThreshold {
+                let summary = "💤 \(snap.displayName) — pas de commit depuis 30+ jours, encore actif ?"
+                out.append(SignalCandidate(
+                    dedupKey: "cartographer://dormant/\(snap.codename)",
+                    summary: summary,
+                    importance: .trivial,
+                    projectScope: snap.codename
+                ))
+            }
+        }
+        return out
+    }
+
+    /// Inserts candidates that have no twin emitted in the last 24h.
+    /// Dedup query: source == "cartographer" AND rawLink == dedupKey AND emittedAt within window.
+    /// Returns the candidates actually persisted (so the caller can mirror them on the bus).
+    @MainActor
+    private func persistDedupedSignals(candidates: [SignalCandidate]) async -> [SignalCandidate] {
+        guard let container = await modelContainer else { return [] }
+        let context = container.mainContext
+        let cutoff = Date().addingTimeInterval(-Self.signalDedupWindow)
+
+        var inserted: [SignalCandidate] = []
+        for candidate in candidates {
+            let key = candidate.dedupKey
+            let descriptor = FetchDescriptor<Signal>(
+                predicate: #Predicate { signal in
+                    signal.source == "cartographer"
+                    && signal.rawLink == key
+                    && signal.emittedAt > cutoff
+                }
+            )
+            let existing = (try? context.fetch(descriptor)) ?? []
+            if !existing.isEmpty {
+                irisLog(.debug,
+                        "Cartographer signal dedup skip (\(candidate.dedupKey))",
+                        category: IRISLogger.agents)
+                continue
+            }
+            let signal = Signal(
+                source: "cartographer",
+                importance: candidate.importance.rawValue,
+                summary: candidate.summary,
+                rawLink: candidate.dedupKey,
+                projectScope: candidate.projectScope
+            )
+            context.insert(signal)
+            inserted.append(candidate)
+        }
+        if !inserted.isEmpty {
+            do {
+                try context.save()
+                irisLog(.notice,
+                        "Cartographer emitted \(inserted.count) health signal(s)",
+                        category: IRISLogger.agents)
+            } catch {
+                irisLog(.error,
+                        "Cartographer save health signals failed: \(error)",
+                        category: IRISLogger.agents)
+                return []
+            }
+        }
+        return inserted
     }
 
     private func startScheduledRefresh() {

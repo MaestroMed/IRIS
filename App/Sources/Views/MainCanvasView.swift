@@ -5,6 +5,9 @@ import SwiftData
 // Si un agent est sélectionné dans la sidebar (autre que Conductor), affiche placeholder spécifique.
 // Sinon, affiche la conversation Conductor.
 // v1.7 : footer compteurs live (Memory + Signal + Draft + ProjectRecord + AuditReport).
+// v1.354 — Empty-state suggestion chips above input. 3-5 contextual prompts dérivés
+//          des counts live (criticalUnacked / draftsPending / dirtyOrAhead) + fallbacks
+//          (bilan / focus / audit random projet). Hide quand user tape ou quand un turn arrive.
 
 struct MainCanvasView: View {
     @Environment(IRISAppState.self) private var appState
@@ -18,6 +21,9 @@ struct MainCanvasView: View {
 
     @State private var placeholderIndex: Int = 0  // v1.146
     private let placeholderTimer = Timer.publish(every: 4, on: .main, in: .common).autoconnect()
+
+    // v1.354 — Focus state pour l'input field. Tap sur un chip = injecte la query + focus input.
+    @FocusState private var isInputFocused: Bool
 
     var body: some View {
         ZStack {
@@ -208,8 +214,14 @@ struct MainCanvasView: View {
         VStack(spacing: 0) {
             transcriptView
             Divider()
+            // v1.354 — Suggestion chips au-dessus de l'input quand chat vide/stale.
+            if shouldShowSuggestions {
+                suggestionsBlock
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
             inputBar
         }
+        .animation(.easeOut(duration: 0.18), value: shouldShowSuggestions)
     }
 
     private var transcriptView: some View {
@@ -307,6 +319,7 @@ struct MainCanvasView: View {
                 .textFieldStyle(.plain)
                 .font(.system(size: 14))
                 .lineLimit(1...5)
+                .focused($isInputFocused)  // v1.354 — focus state pour les chips de suggestion
                 .onSubmit(submitInput)
                 .padding(IRISTokens.spacing16)
                 .background(
@@ -451,6 +464,192 @@ struct MainCanvasView: View {
             // v1.56 — browse Memory + ad-hoc retrieval Scribe
             MemoryBrowserView()
         }
+    }
+
+    // MARK: — v1.354 Empty-state suggestion chips
+
+    /// Drafts pending Mehdi's approval. Mirrors DashboardView.draftsPendingCount.
+    private var draftsPendingCount: Int {
+        allDraftsCount.filter { $0.status == "pending" || $0.status == "ready" }.count
+    }
+
+    /// Critical signals not yet acknowledged. Mirrors DashboardView.criticalUnackedCount.
+    private var criticalUnackedCount: Int {
+        allSignalsCount.filter { $0.importance == 5 && !$0.acknowledged }.count
+    }
+
+    /// Repos avec changements locaux non-commit OR commits non-pushés.
+    /// Mirrors DashboardView.dirtyOrAheadReposCount.
+    private var dirtyOrAheadReposCount: Int {
+        allProjectsCount.filter { $0.gitDirtyCount > 0 || $0.gitAhead > 0 }.count
+    }
+
+    /// True quand on doit afficher les suggestions :
+    /// - User ne tape pas
+    /// - Pas de stream en cours
+    /// - Soit transcript vide, soit dernier message > 10 min
+    private var shouldShowSuggestions: Bool {
+        guard appState.currentInput.trimmingCharacters(in: .whitespaces).isEmpty,
+              appState.streamingText.isEmpty,
+              !appState.isProcessing
+        else { return false }
+        guard let lastEntry = appState.transcript.last else { return true }  // cold start
+        return Date().timeIntervalSince(lastEntry.timestamp) > 600  // 10 min
+    }
+
+    /// Compose la liste des suggestions selon le state app, capped à 5.
+    /// Ordre : urgent items first (critical/drafts/dirty), puis fallbacks
+    /// (bilan/focus/audit), puis salutation cold-start si transcript vide.
+    private var computedSuggestions: [SuggestionChip] {
+        var chips: [SuggestionChip] = []
+
+        // Urgent — driven by live counts.
+        if criticalUnackedCount > 0 {
+            chips.append(SuggestionChip(
+                emoji: "⚠️",
+                label: "Résume mes alertes critiques",
+                query: "Résume mes alertes critiques",
+                count: criticalUnackedCount,
+                tint: .red
+            ))
+        }
+        if draftsPendingCount > 0 {
+            chips.append(SuggestionChip(
+                emoji: "✉️",
+                label: "Lis-moi les drafts en attente",
+                query: "Lis-moi les drafts en attente",
+                count: draftsPendingCount,
+                tint: IRISTokens.irisAccent
+            ))
+        }
+        if dirtyOrAheadReposCount > 0 {
+            chips.append(SuggestionChip(
+                emoji: "🌿",
+                label: "Quels projets ont du travail non commit/pushé ?",
+                query: "Quels projets ont du travail non commit/pushé ?",
+                count: dirtyOrAheadReposCount,
+                tint: IRISTokens.goldAccent
+            ))
+        }
+
+        // Fallbacks — always candidates.
+        chips.append(SuggestionChip(
+            emoji: "📊",
+            label: "Fais un bilan de ma journée",
+            query: "Fais un bilan de ma journée",
+            count: nil,
+            tint: IRISTokens.aquaTint
+        ))
+        chips.append(SuggestionChip(
+            emoji: "🎯",
+            label: "Quels sont mes 3 prochains focus ?",
+            query: "Quels sont mes 3 prochains focus ?",
+            count: nil,
+            tint: IRISTokens.aquaTint
+        ))
+
+        // Audit chip avec projet random parmi les actifs (si dispo).
+        if let project = allProjectsCount
+            .filter({ $0.status == "active" })
+            .randomElement()
+        {
+            let codename = project.codename
+            chips.append(SuggestionChip(
+                emoji: "🔍",
+                label: "Audit-moi \(project.displayName)",
+                query: "audit \(codename)",
+                count: nil,
+                tint: IRISTokens.aquaTint
+            ))
+        }
+
+        // Cold-start salutation : insère en tête si transcript vide.
+        if appState.transcript.isEmpty {
+            chips.insert(SuggestionChip(
+                emoji: "👋",
+                label: "Salut IRIS, qu'est-ce qui se passe ?",
+                query: "Salut IRIS, qu'est-ce qui se passe ?",
+                count: nil,
+                tint: IRISTokens.irisAccent
+            ), at: 0)
+        }
+
+        return Array(chips.prefix(5))
+    }
+
+    private var suggestionsBlock: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("💡 SUGGESTIONS")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .tracking(1.4)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 2)
+
+            // HStack qui wrap horizontalement via lineLimit + layoutPriority.
+            // Plus simple qu'un FlowLayout custom — chips sont courts, 5 max.
+            HStack(alignment: .center, spacing: IRISTokens.spacing8) {
+                ForEach(computedSuggestions) { chip in
+                    SuggestionChipView(chip: chip) {
+                        appState.currentInput = chip.query
+                        isInputFocused = true
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(.horizontal, IRISTokens.spacing24)
+        .padding(.top, IRISTokens.spacing16)
+        .padding(.bottom, IRISTokens.spacing4)
+    }
+}
+
+// MARK: — v1.354 SuggestionChip model + view
+
+private struct SuggestionChip: Identifiable {
+    let id: UUID = UUID()
+    let emoji: String
+    let label: String
+    let query: String
+    let count: Int?
+    let tint: Color
+}
+
+private struct SuggestionChipView: View {
+    let chip: SuggestionChip
+    let action: () -> Void
+
+    @State private var isHovering: Bool = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Text(chip.emoji)
+                    .font(.system(size: 12))
+                if let count = chip.count {
+                    Text("\(count)")
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(chip.tint)
+                }
+                Text(chip.label)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                Capsule().fill(IRISTokens.aquaTint.opacity(isHovering ? 0.18 : 0.12))
+            )
+            .overlay(
+                Capsule().strokeBorder(IRISTokens.aquaTint.opacity(isHovering ? 0.55 : 0.40), lineWidth: 0.5)
+            )
+            .scaleEffect(isHovering ? 1.02 : 1.0)
+            .animation(.easeOut(duration: 0.15), value: isHovering)
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .help(chip.query)
+        .layoutPriority(1)
     }
 }
 

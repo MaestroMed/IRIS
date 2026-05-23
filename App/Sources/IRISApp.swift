@@ -157,7 +157,9 @@ struct IRISApp: App {
         await Cartographer.shared.startAutoScanOnLaunch()
 
         // 8. Auditor démarre — on-demand audit via UI (v1.18 real Sonnet, v1.22 cost wire)
+        // v1.353 — Auto-audit loop hebdo (cost-capped, batched, opt-in via @AppStorage).
         await Auditor.shared.start(modelContainer: modelContainer, onCost: costSink)
+        await Auditor.shared.startAutoAuditLoop()
 
         // 9. Builder démarre — scaffold on-demand via UI (v0.8 mock)
         await Builder.shared.start(modelContainer: modelContainer)

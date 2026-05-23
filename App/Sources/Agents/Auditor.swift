@@ -5,6 +5,9 @@ import CryptoKit  // v1.124 — project fingerprint hash
 /// Auditor v0.7 — audit projets via skill damage-control.
 /// v0.7 : MOCK report (verdict random + findings + actions hardcoded).
 /// v0.7.5+ : shell-out `claude --skill damage-control --project <path>` et parse l'output Markdown.
+/// v1.353 — Weekly auto-audit loop (`startAutoAuditLoop`) avec daily cost cap, batch ≤ 3,
+///          30s pause inter-projets, picker oldest-first (or never-audited). Persiste
+///          costUSD sur AuditReport pour pouvoir borner via sumOfAuditCostsToday.
 ///
 /// Cf docs/IRIS-AGENTS-CATALOG.md §5 Auditor + skill installé ~/.claude/skills/damage-control/.
 public actor Auditor {
@@ -13,6 +16,7 @@ public actor Auditor {
     private weak var modelContainer: ModelContainer?
     private var subscriptionTask: Task<Void, Never>?
     private var monthlyAuditTask: Task<Void, Never>?  // v1.93
+    private var autoAuditTask: Task<Void, Never>?  // v1.353
     private var onCost: CostSink?
 
     private init() {}
@@ -32,6 +36,8 @@ public actor Auditor {
         subscriptionTask = nil
         monthlyAuditTask?.cancel()
         monthlyAuditTask = nil
+        autoAuditTask?.cancel()  // v1.353
+        autoAuditTask = nil
     }
 
     // MARK: — v1.93 Monthly auto-audit (active projects, opt-in)
@@ -90,6 +96,201 @@ public actor Auditor {
         )
         let projects = (try? container.mainContext.fetch(descriptor)) ?? []
         return projects.map(\.codename)
+    }
+
+    // MARK: — v1.353 Weekly auto-audit loop (cost-capped, batched)
+
+    /// @AppStorage("auditorAutoAuditEnabled") · default true.
+    public static let autoAuditEnabledKey = "auditorAutoAuditEnabled"
+    /// @AppStorage("auditorMaxDailyAuditCostUSD") · default 1.0 USD.
+    public static let autoAuditMaxDailyCostKey = "auditorMaxDailyAuditCostUSD"
+    /// @AppStorage("auditorAutoAuditIntervalDays") · default 7 days (= weekly).
+    public static let autoAuditIntervalDaysKey = "auditorAutoAuditIntervalDays"
+    /// Internal timestamp (Date) of last successful auto-audit batch.
+    private static let autoAuditLastBatchAtKey = "iris.auditor.autoAuditLastBatchAt"
+    /// Per-call batch cap (max projects audited per wake).
+    private static let autoAuditBatchSize = 3
+    /// Pause inter-projets pour respecter rate limits Anthropic + éviter thundering herd.
+    private static let autoAuditInterProjectSleepSeconds: UInt64 = 30
+    /// Wake cadence (1h). Le loop re-vérifie l'éligibilité (interval, cost cap) à chaque wake.
+    private static let autoAuditWakeIntervalSeconds: UInt64 = 3600
+
+    public static var autoAuditEnabled: Bool {
+        // Default true (UserDefaults.bool returns false if key absent, donc on check présence).
+        if UserDefaults.standard.object(forKey: autoAuditEnabledKey) == nil { return true }
+        return UserDefaults.standard.bool(forKey: autoAuditEnabledKey)
+    }
+
+    public static var maxDailyAuditCostUSD: Double {
+        if UserDefaults.standard.object(forKey: autoAuditMaxDailyCostKey) == nil { return 1.0 }
+        let raw = UserDefaults.standard.double(forKey: autoAuditMaxDailyCostKey)
+        return raw > 0 ? raw : 1.0
+    }
+
+    public static var autoAuditIntervalDays: Int {
+        let raw = UserDefaults.standard.integer(forKey: autoAuditIntervalDaysKey)
+        return raw > 0 ? raw : 7
+    }
+
+    public static var autoAuditLastBatchAt: Date? {
+        UserDefaults.standard.object(forKey: autoAuditLastBatchAtKey) as? Date
+    }
+
+    /// v1.353 — Démarre la boucle wake/check/batch. Idempotent. Wake toutes les 1h,
+    /// run batch si enabled + interval écoulé + cost cap pas dépassé.
+    /// Doit être appelé depuis IRISApp.bootstrap après `Auditor.shared.start(...)`.
+    public func startAutoAuditLoop() {
+        guard autoAuditTask == nil else { return }
+        autoAuditTask = Task { [weak self] in
+            // Premier check 60s après start (laisse les autres agents bootstrap).
+            try? await Task.sleep(nanoseconds: 60 * 1_000_000_000)
+            while !Task.isCancelled {
+                await self?.runAutoAuditBatchIfDue()
+                try? await Task.sleep(nanoseconds: Self.autoAuditWakeIntervalSeconds * 1_000_000_000)
+            }
+        }
+        irisLog(.info, "Auditor auto-audit loop started (wake every 1h, batch ≤ \(Self.autoAuditBatchSize), interval=\(Self.autoAuditIntervalDays)d, dailyCap=$\(String(format: "%.2f", Self.maxDailyAuditCostUSD)))",
+                category: IRISLogger.agents)
+    }
+
+    /// Sum costUSD des AuditReport créés depuis startOfDay (calendrier user).
+    /// Utilisé par le cost cap (skip run si > maxDailyAuditCostUSD).
+    @MainActor
+    public static func sumOfAuditCostsToday(container: ModelContainer) -> Double {
+        let startOfDay = Calendar.current.startOfDay(for: Date())
+        let descriptor = FetchDescriptor<AuditReport>(
+            predicate: #Predicate { $0.createdAt >= startOfDay }
+        )
+        let reports = (try? container.mainContext.fetch(descriptor)) ?? []
+        return reports.reduce(0.0) { $0 + $1.costUSD }
+    }
+
+    /// Sendable struct pour traverser MainActor isolation lors du batch select.
+    private struct BatchCandidate: Sendable {
+        let codename: String
+        let lastAuditAt: Date?  // nil = never audited
+    }
+
+    /// Pick batch : status=="active", lastAudit > intervalDays jours OR jamais audité.
+    /// Ordered : never-audited first (lastAuditAt = nil), puis oldest audit first.
+    /// Limit autoAuditBatchSize (3).
+    @MainActor
+    private static func selectAutoAuditBatch(container: ModelContainer, intervalDays: Int) -> [BatchCandidate] {
+        let projDescriptor = FetchDescriptor<ProjectRecord>(
+            predicate: #Predicate { $0.status == "active" }
+        )
+        let activeProjects = (try? container.mainContext.fetch(projDescriptor)) ?? []
+        guard !activeProjects.isEmpty else { return [] }
+
+        // Cutoff : last audit must be older than this to qualify.
+        let cutoff = Date().addingTimeInterval(-Double(intervalDays) * 86400)
+
+        // Fetch all audits (we'll group in-memory ; cheap pour ≤ N audits totaux).
+        let auditDescriptor = FetchDescriptor<AuditReport>()
+        let allAudits = (try? container.mainContext.fetch(auditDescriptor)) ?? []
+        // Map codename → most recent audit date.
+        var latestByCodename: [String: Date] = [:]
+        for audit in allAudits {
+            let existing = latestByCodename[audit.projectCodename]
+            if existing == nil || audit.createdAt > existing! {
+                latestByCodename[audit.projectCodename] = audit.createdAt
+            }
+        }
+
+        // Build candidates : keep si never audited OR last audit < cutoff.
+        var candidates: [BatchCandidate] = []
+        for project in activeProjects {
+            let lastAt = latestByCodename[project.codename]
+            if lastAt == nil || lastAt! < cutoff {
+                candidates.append(BatchCandidate(codename: project.codename, lastAuditAt: lastAt))
+            }
+        }
+
+        // Order : never-audited (nil) first, puis oldest audit first.
+        candidates.sort { lhs, rhs in
+            switch (lhs.lastAuditAt, rhs.lastAuditAt) {
+            case (nil, nil): return lhs.codename < rhs.codename
+            case (nil, _): return true
+            case (_, nil): return false
+            case (let a?, let b?): return a < b
+            }
+        }
+        return Array(candidates.prefix(autoAuditBatchSize))
+    }
+
+    private func runAutoAuditBatchIfDue() async {
+        guard Self.autoAuditEnabled else { return }
+        guard let container = modelContainer else { return }
+
+        // Interval check : skip si dernier batch < intervalDays jours.
+        // Note : on borne au niveau batch (pas au niveau projet) — le picker s'occupe
+        // de filtrer projets déjà audités récemment. Ça évite plusieurs batches/jour
+        // si l'utilisateur a moins de projets que la batch size.
+        if let last = Self.autoAuditLastBatchAt {
+            let elapsed = Date().timeIntervalSince(last)
+            // Run au plus une fois par 24h (rate-limit du loop lui-même), même si
+            // intervalDays est > 1 ça permet d'étaler les audits sur plusieurs jours
+            // si on a > batch size projets éligibles.
+            guard elapsed > 86400 else { return }
+        }
+
+        // Cost cap check : skip si déjà dépassé pour aujourd'hui.
+        let spentToday = await MainActor.run { Self.sumOfAuditCostsToday(container: container) }
+        let cap = Self.maxDailyAuditCostUSD
+        guard spentToday < cap else {
+            irisLog(.info, "Auditor auto-audit skipped — daily cost cap atteint ($\(String(format: "%.2f", spentToday)) / $\(String(format: "%.2f", cap)))",
+                    category: IRISLogger.agents)
+            return
+        }
+
+        // Select batch.
+        let intervalDays = Self.autoAuditIntervalDays
+        let batch = await MainActor.run {
+            Self.selectAutoAuditBatch(container: container, intervalDays: intervalDays)
+        }
+        guard !batch.isEmpty else {
+            irisLog(.info, "Auditor auto-audit : aucun projet éligible (tous audités < \(intervalDays)d)",
+                    category: IRISLogger.agents)
+            return
+        }
+
+        irisLog(.notice, "Auditor auto-audit batch start — \(batch.count) projets (interval=\(intervalDays)d, spentToday=$\(String(format: "%.4f", spentToday))/$\(String(format: "%.2f", cap)))",
+                category: IRISLogger.agents)
+
+        let costBefore = spentToday
+        var audited: [String] = []
+        for (idx, candidate) in batch.enumerated() {
+            // Re-check cap entre chaque audit (au cas où un audit serait coûteux).
+            let currentSpent = await MainActor.run { Self.sumOfAuditCostsToday(container: container) }
+            if currentSpent >= cap {
+                irisLog(.notice, "Auditor auto-audit batch interrompu — cost cap atteint ($\(String(format: "%.4f", currentSpent)) / $\(String(format: "%.2f", cap)))",
+                        category: IRISLogger.agents)
+                break
+            }
+            await auditProject(codename: candidate.codename)
+            audited.append(candidate.codename)
+            // 30s pause inter-projets (sauf après le dernier).
+            if idx < batch.count - 1 {
+                try? await Task.sleep(nanoseconds: Self.autoAuditInterProjectSleepSeconds * 1_000_000_000)
+            }
+        }
+
+        UserDefaults.standard.set(Date(), forKey: Self.autoAuditLastBatchAtKey)
+
+        // Compute batch cost (delta vs start).
+        let costAfter = await MainActor.run { Self.sumOfAuditCostsToday(container: container) }
+        let batchCost = max(0, costAfter - costBefore)
+
+        let summary = "Auto-audit batch: \(audited.count) projets · \(audited.joined(separator: ", ")) · $\(String(format: "%.4f", batchCost))"
+        irisLog(.notice, summary, category: IRISLogger.agents)
+        await EventBus.shared.publish(
+            .signalEmitted(
+                from: .auditor,
+                importance: .low,
+                summary: summary,
+                source: "auditor-auto"
+            )
+        )
     }
 
     // MARK: — v1.49 Model picker (Sonnet/Opus/Haiku)
@@ -297,6 +498,9 @@ public actor Auditor {
         let auditModel = Self.currentModel
         var accumulated = ""
         let costCallback = onCostCallback
+        // v1.353 — accumulate cost so we can persist it on AuditReport (needed by
+        // sumOfAuditCostsToday daily cap enforcement).
+        let costBox = CostBox()
         let stream = AnthropicClient.shared.streamMessage(
             model: auditModel,
             system: Self.realAuditSystemPrompt,
@@ -305,6 +509,7 @@ public actor Auditor {
             cacheSystem: true,
             onUsage: { usage in
                 let cost = usage.estimatedCostUSD(model: auditModel)
+                costBox.add(cost)
                 costCallback?(cost, auditModel.rawValue)
             }
         )
@@ -324,6 +529,7 @@ public actor Auditor {
 
         var resultVerdict = parsed.verdict
         var resultHeadline = parsed.headline
+        let auditCost = costBox.total  // v1.353
         if let container = await modelContainer {
             await MainActor.run {
                 let report = AuditReport(
@@ -334,7 +540,7 @@ public actor Auditor {
                     topActionsJSON: parsed.actionsJSON,
                     modelUsed: auditModel.rawValue,
                     executedSkill: "damage-control-api",
-                    costUSD: 0,  // cost tracké via onCost callback global, pas attribué ici
+                    costUSD: auditCost,  // v1.353 — persist pour daily cap + dashboards
                     durationSeconds: duration
                 )
                 container.mainContext.insert(report)
@@ -345,6 +551,21 @@ public actor Auditor {
         }
 
         await publishAuditDone(codename: codename, verdict: resultVerdict, headline: resultHeadline)
+    }
+
+    /// v1.353 — Thread-safe cost accumulator pour capturer le coût total d'un audit
+    /// depuis le callback onUsage (qui peut être invoqué plusieurs fois pendant le stream).
+    private final class CostBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var _total: Double = 0
+        func add(_ amount: Double) {
+            lock.lock(); defer { lock.unlock() }
+            _total += amount
+        }
+        var total: Double {
+            lock.lock(); defer { lock.unlock() }
+            return _total
+        }
     }
 
     private func publishAuditDone(codename: String, verdict: String, headline: String) async {
